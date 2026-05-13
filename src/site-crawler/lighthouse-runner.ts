@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { logger } from "../utils/logger.js";
 import type { LighthouseResult, SeoDiagnostic } from "../types/index.js";
 
 const execFileAsync = promisify(execFile);
 const TIMEOUT_MS = 30_000;
-const CHROME_PATH = process.env.CHROME_PATH ?? "/usr/bin/chromium";
+const CHROME_PATH = process.env.CHROME_PATH ?? defaultChromePath();
 
 export async function measureSeo(url: string): Promise<LighthouseResult | null> {
   try {
@@ -74,4 +75,14 @@ const SEO_AUDIT_IDS = new Set([
 interface LhReport {
   categories: { seo?: { score: number } };
   audits: Record<string, { id: string; title: string; score: number | null; description: string }>;
+}
+
+function defaultChromePath(): string {
+  const candidates = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+  ];
+  return candidates.find((path) => existsSync(path)) ?? "/usr/bin/chromium";
 }
