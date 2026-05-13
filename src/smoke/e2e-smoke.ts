@@ -66,7 +66,7 @@ export async function runE2eSmoke(options: SmokeOptions = {}): Promise<SmokeRunR
   );
 
   steps.push(await runStep("sendgrid_email", () => smokeSendGrid(target)));
-  steps.push(await runStep("slack_notification", () => smokeSlack(target)));
+  steps.push(await runStep("telegram_notification", () => smokeTelegram(target)));
   steps.push(await runStep("stripe_payment_link", () => smokeStripe(target, outputs)));
 
   const completedAtDate = now();
@@ -120,28 +120,29 @@ async function smokeSendGrid(target: Target | undefined): Promise<Omit<SmokeStep
   return { status: "passed", details: { to } };
 }
 
-async function smokeSlack(target: Target | undefined): Promise<Omit<SmokeStepResult, "name" | "durationMs">> {
+async function smokeTelegram(target: Target | undefined): Promise<Omit<SmokeStepResult, "name" | "durationMs">> {
   if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
-  if (process.env.SMOKE_SEND_SLACK !== "true") {
-    return { status: "skipped", reason: "SMOKE_SEND_SLACK is not true" };
+  if (process.env.SMOKE_SEND_TELEGRAM !== "true") {
+    return { status: "skipped", reason: "SMOKE_SEND_TELEGRAM is not true" };
   }
-  if (!process.env.SLACK_BOT_TOKEN || !process.env.SLACK_CHANNEL_ID) {
-    return { status: "skipped", reason: "SLACK_BOT_TOKEN or SLACK_CHANNEL_ID is not set" };
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+    return { status: "skipped", reason: "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set" };
   }
-  const res = await fetch("https://slack.com/api/chat.postMessage", {
+  const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      channel: process.env.SLACK_CHANNEL_ID,
+      chat_id: process.env.TELEGRAM_CHAT_ID,
       text: `[Smoke Test] ${target.domain} SEO score: ${target.seoScore}/100`,
+      disable_web_page_preview: true,
     }),
   });
-  const json = (await res.json()) as { ok: boolean; error?: string; ts?: string };
-  if (!json.ok) throw new Error(`Slack API error: ${json.error ?? "unknown"}`);
-  return { status: "passed", details: { channel: process.env.SLACK_CHANNEL_ID, ts: json.ts } };
+  const json = (await res.json()) as { ok: boolean; error?: string; result?: { message_id?: number } };
+  if (!json.ok) throw new Error(`Telegram API error: ${json.error ?? "unknown"}`);
+  return {
+    status: "passed",
+    details: { chatId: process.env.TELEGRAM_CHAT_ID, messageId: json.result?.message_id },
+  };
 }
 
 async function smokeStripe(

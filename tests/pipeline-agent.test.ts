@@ -5,7 +5,7 @@ vi.mock("@sendgrid/mail", () => ({
   default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }, {}]) },
 }));
 
-vi.mock("../src/hil-approval-flow/slack-notifier.js", () => ({
+vi.mock("../src/hil-approval-flow/telegram-notifier.js", () => ({
   notifyHil: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -42,7 +42,7 @@ vi.mock("../src/utils/db.js", () => {
 
 import { runSendStep } from "../src/pipeline/agent.js";
 import { getDb } from "../src/utils/db.js";
-import { notifyHil } from "../src/hil-approval-flow/slack-notifier.js";
+import { notifyHil } from "../src/hil-approval-flow/telegram-notifier.js";
 
 describe("runSendStep", () => {
   beforeEach(async () => {

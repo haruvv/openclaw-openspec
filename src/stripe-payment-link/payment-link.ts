@@ -50,7 +50,7 @@ export async function createAndSendPaymentLink(targetId: string): Promise<string
   ).run(paymentLink.url, paymentLink.id, expiresAt, Date.now(), targetId);
 
   await sendPaymentLinkEmail(row, paymentLink.url, expiresAt);
-  await notifySlackPaymentSent(row.domain, paymentLink.url);
+  await notifyTelegramPaymentSent(row.domain, paymentLink.url);
 
   logger.info("Payment link created and sent", { domain: row.domain, url: paymentLink.url });
   return paymentLink.url;
@@ -107,19 +107,17 @@ export async function sendPaymentReminders(): Promise<void> {
   }
 }
 
-async function notifySlackPaymentSent(domain: string, linkUrl: string): Promise<void> {
-  if (!process.env.SLACK_BOT_TOKEN || !process.env.SLACK_CHANNEL_ID) return;
-  await fetch("https://slack.com/api/chat.postMessage", {
+async function notifyTelegramPaymentSent(domain: string, linkUrl: string): Promise<void> {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return;
+  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      channel: process.env.SLACK_CHANNEL_ID,
+      chat_id: process.env.TELEGRAM_CHAT_ID,
       text: `Payment Link送付完了: \`${domain}\`\n${linkUrl}`,
+      disable_web_page_preview: true,
     }),
-  }).catch((err) => logger.error("Slack notify failed", { err }));
+  }).catch((err) => logger.error("Telegram notify failed", { err }));
 }
 
 interface TargetRow {

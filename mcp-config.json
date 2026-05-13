@@ -10,8 +10,8 @@
         "SENDGRID_FROM_NAME": "${SENDGRID_FROM_NAME}",
         "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}",
         "STRIPE_WEBHOOK_SECRET": "${STRIPE_WEBHOOK_SECRET}",
-        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
-        "SLACK_CHANNEL_ID": "${SLACK_CHANNEL_ID}",
+        "TELEGRAM_BOT_TOKEN": "${TELEGRAM_BOT_TOKEN}",
+        "TELEGRAM_CHAT_ID": "${TELEGRAM_CHAT_ID}",
         "GEMINI_API_KEY": "${GEMINI_API_KEY}",
         "ZAI_API_KEY": "${ZAI_API_KEY}",
         "HIL_APPROVAL_BASE_URL": "${HIL_APPROVAL_BASE_URL}",
@@ -33,7 +33,7 @@
       "approvalEndpoint": "${HIL_APPROVAL_BASE_URL}/hil/approve",
       "rejectionEndpoint": "${HIL_APPROVAL_BASE_URL}/hil/reject",
       "timeoutHours": 48,
-      "notificationChannel": "${SLACK_CHANNEL_ID}"
+      "notificationChannel": "${TELEGRAM_CHAT_ID}"
     }
   }
 }

@@ -54,7 +54,7 @@ describe("runE2eSmoke", () => {
     process.env.FIRECRAWL_API_KEY = "firecrawl-test";
     process.env.GEMINI_API_KEY = "gemini-test";
     delete process.env.SMOKE_SEND_EMAIL;
-    delete process.env.SMOKE_SEND_SLACK;
+    delete process.env.SMOKE_SEND_TELEGRAM;
     delete process.env.SMOKE_CREATE_STRIPE_LINK;
     vi.clearAllMocks();
   });
@@ -75,7 +75,7 @@ describe("runE2eSmoke", () => {
     expect(report.status).toBe("passed");
     expect(report.reportPath).toBeTruthy();
     expect(report.steps.find((step) => step.name === "sendgrid_email")?.status).toBe("skipped");
-    expect(report.steps.find((step) => step.name === "slack_notification")?.status).toBe("skipped");
+    expect(report.steps.find((step) => step.name === "telegram_notification")?.status).toBe("skipped");
     expect(report.steps.find((step) => step.name === "stripe_payment_link")?.status).toBe("skipped");
     expect(sgMail.send).not.toHaveBeenCalled();
 

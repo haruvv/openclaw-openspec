@@ -27,7 +27,7 @@ The system SHALL record each smoke step as `passed`, `failed`, or `skipped`, inc
 - **THEN** that step is marked `failed` with a sanitized error message
 
 ### Requirement: Side-effecting steps are opt-in
-The system SHALL NOT send emails, post Slack messages, or create Stripe Payment Links during smoke validation unless the corresponding smoke flag is explicitly enabled.
+The system SHALL NOT send emails, post Telegram messages, or create Stripe Payment Links during smoke validation unless the corresponding smoke flag is explicitly enabled.
 
 #### Scenario: Side-effect flag is disabled
 - **WHEN** a side-effecting provider credential is configured but its smoke flag is not enabled

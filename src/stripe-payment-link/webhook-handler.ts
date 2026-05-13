@@ -33,20 +33,17 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
   );
 
   logger.info("Payment confirmed", { targetId, domain });
-  await notifySlackPaid(domain ?? targetId);
+  await notifyTelegramPaid(domain ?? targetId);
 }
 
-async function notifySlackPaid(domain: string): Promise<void> {
-  if (!process.env.SLACK_BOT_TOKEN || !process.env.SLACK_CHANNEL_ID) return;
-  await fetch("https://slack.com/api/chat.postMessage", {
+async function notifyTelegramPaid(domain: string): Promise<void> {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return;
+  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      channel: process.env.SLACK_CHANNEL_ID,
+      chat_id: process.env.TELEGRAM_CHAT_ID,
       text: `:white_check_mark: 着金確認済み: \`${domain}\``,
     }),
-  }).catch((err) => logger.error("Slack paid notify failed", { err }));
+  }).catch((err) => logger.error("Telegram paid notify failed", { err }));
 }

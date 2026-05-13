@@ -2,7 +2,7 @@ import { crawlBatch } from "../site-crawler/crawler.js";
 import { generateProposal } from "../proposal-generator/generator.js";
 import { saveProposalWithPdf } from "../proposal-generator/storage.js";
 import { sendOutreachEmail } from "../outreach-sender/sender.js";
-import { notifyHil } from "../hil-approval-flow/slack-notifier.js";
+import { notifyHil } from "../hil-approval-flow/telegram-notifier.js";
 import { generateHilToken, buildApprovalUrls } from "../hil-approval-flow/token.js";
 import { createAndSendPaymentLink } from "../stripe-payment-link/payment-link.js";
 import { saveTarget, getTargetsByStatus } from "./state.js";
