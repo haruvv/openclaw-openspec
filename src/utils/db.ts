@@ -34,6 +34,8 @@ function initSchema(db: Database.Database): void {
       hil_token TEXT,
       payment_link_url TEXT,
       payment_link_id TEXT,
+      payment_link_expires_at INTEGER,
+      payment_reminder_sent_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -47,4 +49,17 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_outreach_log_sent_at ON outreach_log(sent_at);
     CREATE INDEX IF NOT EXISTS idx_targets_status ON targets(status);
   `);
+  ensureColumn(db, "targets", "payment_link_expires_at", "INTEGER");
+  ensureColumn(db, "targets", "payment_reminder_sent_at", "INTEGER");
+}
+
+function ensureColumn(
+  db: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (rows.some((row) => row.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

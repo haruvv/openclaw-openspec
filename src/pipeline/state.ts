@@ -15,6 +15,8 @@ interface TargetRow {
   hil_token?: string;
   payment_link_url?: string;
   payment_link_id?: string;
+  payment_link_expires_at?: number;
+  payment_reminder_sent_at?: number;
   created_at: number;
   updated_at: number;
 }
@@ -24,8 +26,9 @@ export async function saveTarget(target: Target): Promise<void> {
   db.prepare(`
     INSERT OR REPLACE INTO targets
       (id, domain, url, contact_email, industry, seo_score, diagnostics, status,
-       proposal_path, hil_token, payment_link_url, payment_link_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       proposal_path, hil_token, payment_link_url, payment_link_id,
+       payment_link_expires_at, payment_reminder_sent_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     target.id,
     target.domain,
@@ -39,6 +42,8 @@ export async function saveTarget(target: Target): Promise<void> {
     target.hilToken ?? null,
     target.paymentLinkUrl ?? null,
     target.paymentLinkId ?? null,
+    target.paymentLinkExpiresAt ?? null,
+    target.paymentReminderSentAt ?? null,
     target.createdAt,
     target.updatedAt
   );
@@ -70,6 +75,8 @@ function rowToTarget(row: TargetRow): Target {
     hilToken: row.hil_token,
     paymentLinkUrl: row.payment_link_url,
     paymentLinkId: row.payment_link_id,
+    paymentLinkExpiresAt: row.payment_link_expires_at,
+    paymentReminderSentAt: row.payment_reminder_sent_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

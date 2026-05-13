@@ -1,8 +1,4 @@
-## Purpose
-
-生成済みSEO改善提案書をターゲット企業へ送信し、送信制限・重複防止・HIL承認への引き渡しを管理する。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: SendGrid APIでアウトリーチメールを送信する
 システムは、生成された提案書を添付または本文に含め、SendGrid APIを通じてターゲット企業の問い合わせメールアドレスにアウトリーチメールを送信しなければならない（SHALL）。送信に成功したターゲットはHIL承認待ちとして通知されなければならない（SHALL）。

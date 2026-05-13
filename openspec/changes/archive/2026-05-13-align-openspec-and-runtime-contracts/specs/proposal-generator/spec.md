@@ -1,8 +1,4 @@
-## Purpose
-
-サイトクローラーが抽出したターゲットのSEO診断結果をもとに、LLMプロバイダー経由でパーソナライズされた改善提案書を生成する。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Lighthouse診断結果をもとにSEO改善提案書を生成する
 システムは、サイトクローラーが出力したターゲットリスト（URL・スコア・診断項目）を入力として受け取り、`llm-provider` モジュール経由で LLM を呼び出して企業ごとにパーソナライズされたSEO改善提案書をMarkdown形式で生成しなければならない（SHALL）。使用する LLM プロバイダーは `llm-provider` が決定し、`proposal-generator` はプロバイダーを意識しない。

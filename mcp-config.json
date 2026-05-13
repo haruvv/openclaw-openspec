@@ -6,9 +6,16 @@
       "env": {
         "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}",
         "SENDGRID_API_KEY": "${SENDGRID_API_KEY}",
+        "SENDGRID_FROM_EMAIL": "${SENDGRID_FROM_EMAIL}",
+        "SENDGRID_FROM_NAME": "${SENDGRID_FROM_NAME}",
         "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}",
+        "STRIPE_WEBHOOK_SECRET": "${STRIPE_WEBHOOK_SECRET}",
         "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
-        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+        "SLACK_CHANNEL_ID": "${SLACK_CHANNEL_ID}",
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+        "ZAI_API_KEY": "${ZAI_API_KEY}",
+        "HIL_APPROVAL_BASE_URL": "${HIL_APPROVAL_BASE_URL}",
+        "HIL_APPROVAL_TOKEN_SECRET": "${HIL_APPROVAL_TOKEN_SECRET}"
       }
     }
   },
@@ -16,14 +23,11 @@
     "model": "claude-sonnet-4-6",
     "tools": [
       "crawl_sites",
-      "score_seo",
-      "filter_targets",
-      "generate_proposal",
+      "generate_proposals",
       "queue_outreach",
       "send_outreach",
-      "notify_hil",
-      "create_payment_link",
-      "send_payment_link"
+      "create_payment_links",
+      "get_pipeline_status"
     ],
     "humanInTheLoop": {
       "approvalEndpoint": "${HIL_APPROVAL_BASE_URL}/hil/approve",

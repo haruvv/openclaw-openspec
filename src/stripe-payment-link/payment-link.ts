@@ -8,13 +8,14 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const LINK_VALIDITY_DAYS = 30;
 const REMINDER_DAYS_BEFORE = 7;
+const DAY_MS = 86400 * 1000;
 
 export async function createAndSendPaymentLink(targetId: string): Promise<string> {
   const db = await getDb();
   const row = db.prepare("SELECT * FROM targets WHERE id = ?").get(targetId) as TargetRow | undefined;
   if (!row) throw new Error(`Target not found: ${targetId}`);
 
-  const expiresAt = Math.floor(Date.now() / 1000) + LINK_VALIDITY_DAYS * 86400;
+  const expiresAt = Date.now() + LINK_VALIDITY_DAYS * DAY_MS;
 
   const product = await stripe.products.create({
     name: `SEO改善サービス初月費用 - ${row.domain}`,
@@ -39,8 +40,14 @@ export async function createAndSendPaymentLink(targetId: string): Promise<string
   );
 
   db.prepare(
-    "UPDATE targets SET payment_link_url = ?, payment_link_id = ?, status = 'payment_link_sent', updated_at = ? WHERE id = ?"
-  ).run(paymentLink.url, paymentLink.id, Date.now(), targetId);
+    `UPDATE targets
+     SET payment_link_url = ?,
+         payment_link_id = ?,
+         payment_link_expires_at = ?,
+         status = 'payment_link_sent',
+         updated_at = ?
+     WHERE id = ?`
+  ).run(paymentLink.url, paymentLink.id, expiresAt, Date.now(), targetId);
 
   await sendPaymentLinkEmail(row, paymentLink.url, expiresAt);
   await notifySlackPaymentSent(row.domain, paymentLink.url);
@@ -56,7 +63,7 @@ async function sendPaymentLinkEmail(
 ): Promise<void> {
   if (!target.contact_email) return;
   sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
-  const expiryDate = new Date(expiresAt * 1000).toLocaleDateString("ja-JP");
+  const expiryDate = new Date(expiresAt).toLocaleDateString("ja-JP");
   await withRetry(() =>
     sgMail.send({
       to: target.contact_email!,
@@ -69,18 +76,22 @@ async function sendPaymentLinkEmail(
 
 export async function sendPaymentReminders(): Promise<void> {
   const db = await getDb();
-  const reminderCutoff = Date.now() + REMINDER_DAYS_BEFORE * 86400 * 1000;
+  const reminderCutoff = Date.now() + REMINDER_DAYS_BEFORE * DAY_MS;
   const rows = db
     .prepare(
-      "SELECT * FROM targets WHERE status = 'payment_link_sent' AND updated_at < ?"
+      `SELECT * FROM targets
+       WHERE status = 'payment_link_sent'
+         AND payment_link_expires_at IS NOT NULL
+         AND payment_link_expires_at <= ?
+         AND payment_link_expires_at > ?
+         AND payment_reminder_sent_at IS NULL`
     )
-    .all(reminderCutoff) as TargetRow[];
+    .all(reminderCutoff, Date.now()) as TargetRow[];
 
   for (const row of rows) {
     if (!row.contact_email || !row.payment_link_url) continue;
-    const sentAgo = Date.now() - row.updated_at;
-    const daysUntilExpiry = LINK_VALIDITY_DAYS - Math.floor(sentAgo / 86400 / 1000);
-    if (daysUntilExpiry !== REMINDER_DAYS_BEFORE) continue;
+    if (!row.payment_link_expires_at) continue;
+    const daysUntilExpiry = Math.ceil((row.payment_link_expires_at - Date.now()) / DAY_MS);
 
     sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
     await sgMail.send({
@@ -89,6 +100,9 @@ export async function sendPaymentReminders(): Promise<void> {
       subject: `【リマインド】お支払いリンクの有効期限は残り${daysUntilExpiry}日です`,
       text: `お支払いリンクの有効期限が${daysUntilExpiry}日後に迫っています。\n\n${row.payment_link_url}`,
     });
+    db.prepare(
+      "UPDATE targets SET payment_reminder_sent_at = ?, updated_at = ? WHERE id = ?"
+    ).run(Date.now(), Date.now(), row.id);
     logger.info("Payment reminder sent", { domain: row.domain });
   }
 }
@@ -114,5 +128,7 @@ interface TargetRow {
   contact_email?: string;
   payment_link_url?: string;
   payment_link_id?: string;
+  payment_link_expires_at?: number;
+  payment_reminder_sent_at?: number;
   updated_at: number;
 }

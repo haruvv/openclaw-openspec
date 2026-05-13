@@ -44,13 +44,19 @@ export async function runSendStep(): Promise<void> {
   const targets = await getTargetsByStatus("outreach_queued");
   logger.info("Pipeline: sending outreach emails", { count: targets.length });
   for (const target of targets) {
-    const sent = await sendOutreachEmail(target);
-    if (sent) {
+    const result = await sendOutreachEmail(target);
+    if (result.status === "sent") {
       const token = generateHilToken(target.id);
-      await saveTarget({
+      await runHilStep({
         ...target,
         status: "outreach_sent",
         hilToken: token,
+        updatedAt: Date.now(),
+      });
+    } else if (result.status === "skipped") {
+      await saveTarget({
+        ...target,
+        status: "skipped",
         updatedAt: Date.now(),
       });
     }

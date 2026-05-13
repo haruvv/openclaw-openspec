@@ -48,6 +48,8 @@ export interface Target {
   hilToken?: string;
   paymentLinkUrl?: string;
   paymentLinkId?: string;
+  paymentLinkExpiresAt?: number;
+  paymentReminderSentAt?: number;
   createdAt: number;
   updatedAt: number;
 }

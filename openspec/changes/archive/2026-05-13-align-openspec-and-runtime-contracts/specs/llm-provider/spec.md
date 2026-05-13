@@ -1,8 +1,4 @@
-## Purpose
-
-提案書生成などのテキスト生成要求に対して、Geminiを主系、Z.ai GLMを429時のフォールバックとして扱う統一LLM呼び出し口を提供する。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Gemini をプライマリ LLM として使用する
 システムは、テキスト生成リクエストを `gemini-1.5-flash` モデルに送信しなければならない（SHALL）。MCP実行環境は `GEMINI_API_KEY` をLLM生成用のプライマリ資格情報として渡さなければならない（SHALL）。

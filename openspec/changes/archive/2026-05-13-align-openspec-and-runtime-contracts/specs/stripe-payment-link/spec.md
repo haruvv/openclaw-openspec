@@ -1,8 +1,4 @@
-## Purpose
-
-HIL承認済みターゲットに対してStripe Payment Linkを発行・送付し、有効期限、リマインド、決済完了状態を管理する。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: HIL承認後にStripe Payment Linkを生成する
 システムは、HIL承認フローで「承認済み」になったターゲットに対して、Stripe Payment Link APIを使ってPayment Linkを生成しなければならない（SHALL）。

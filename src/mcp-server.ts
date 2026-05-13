@@ -63,7 +63,7 @@ server.tool(
   {},
   async () => {
     await runSendStep();
-    const targets = await getTargetsByStatus("outreach_sent");
+    const targets = await getTargetsByStatus("hil_pending");
     return {
       content: [{ type: "text", text: `Sent outreach emails. ${targets.length} targets awaiting HIL.` }],
     };

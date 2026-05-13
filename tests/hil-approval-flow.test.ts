@@ -8,11 +8,12 @@ vi.mock("../src/utils/db.js", () => {
       id TEXT PRIMARY KEY, domain TEXT, url TEXT, contact_email TEXT, industry TEXT,
       seo_score INTEGER, diagnostics TEXT, status TEXT, proposal_path TEXT,
       hil_token TEXT, payment_link_url TEXT, payment_link_id TEXT,
+      payment_link_expires_at INTEGER, payment_reminder_sent_at INTEGER,
       created_at INTEGER, updated_at INTEGER
     );
   `);
-  db.prepare(`INSERT INTO targets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run("t1", "example.com", "https://example.com", null, null, 30, "[]", "outreach_sent", null, null, null, null, Date.now(), Date.now());
+  db.prepare(`INSERT INTO targets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run("t1", "example.com", "https://example.com", null, null, 30, "[]", "outreach_sent", null, null, null, null, null, null, Date.now(), Date.now());
   return { getDb: vi.fn().mockResolvedValue(db) };
 });
 

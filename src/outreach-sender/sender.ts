@@ -10,22 +10,27 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 const MAX_DAILY = Number(process.env.MAX_DAILY_EMAILS ?? 50);
 const COOLDOWN_DAYS = Number(process.env.OUTREACH_COOLDOWN_DAYS ?? 30);
 
-export async function sendOutreachEmail(target: Target): Promise<boolean> {
+export type OutreachSendResult =
+  | { status: "sent" }
+  | { status: "skipped"; reason: "missing_contact" | "duplicate" }
+  | { status: "queued"; reason: "daily_limit" };
+
+export async function sendOutreachEmail(target: Target): Promise<OutreachSendResult> {
   if (!target.contactEmail) {
     logger.warn("No contact email, skipping", { domain: target.domain });
-    return false;
+    return { status: "skipped", reason: "missing_contact" };
   }
 
   const db = await getDb();
 
   if (isDuplicate(db, target.domain)) {
     logger.info("Duplicate domain within cooldown, skipping", { domain: target.domain });
-    return false;
+    return { status: "skipped", reason: "duplicate" };
   }
 
   if (isDailyLimitReached(db)) {
     logger.info("Daily email limit reached, queuing for tomorrow", { domain: target.domain });
-    return false;
+    return { status: "queued", reason: "daily_limit" };
   }
 
   const proposalMd = target.proposalPath
@@ -51,7 +56,7 @@ export async function sendOutreachEmail(target: Target): Promise<boolean> {
   );
 
   logger.info("Outreach email sent", { domain: target.domain, to: target.contactEmail });
-  return true;
+  return { status: "sent" };
 }
 
 function isDuplicate(db: Database.Database, domain: string): boolean {

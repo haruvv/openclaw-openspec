@@ -13,6 +13,7 @@ vi.mock("../src/utils/db.js", () => {
       id TEXT PRIMARY KEY, domain TEXT, url TEXT, contact_email TEXT, industry TEXT,
       seo_score INTEGER, diagnostics TEXT, status TEXT, proposal_path TEXT,
       hil_token TEXT, payment_link_url TEXT, payment_link_id TEXT,
+      payment_link_expires_at INTEGER, payment_reminder_sent_at INTEGER,
       created_at INTEGER, updated_at INTEGER
     );
   `);
@@ -41,24 +42,24 @@ describe("sendOutreachEmail", () => {
     db.exec("DELETE FROM outreach_log");
   });
 
-  it("returns false when contact email is missing", async () => {
+  it("returns skipped when contact email is missing", async () => {
     const result = await sendOutreachEmail({ ...base, contactEmail: undefined });
-    expect(result).toBe(false);
+    expect(result).toEqual({ status: "skipped", reason: "missing_contact" });
   });
 
-  it("returns false for duplicate domain within cooldown", async () => {
+  it("returns skipped for duplicate domain within cooldown", async () => {
     const db = await getDb();
     db.prepare("INSERT INTO outreach_log (domain, sent_at) VALUES (?, ?)").run(
       "example.com",
       Date.now()
     );
     const result = await sendOutreachEmail(base);
-    expect(result).toBe(false);
+    expect(result).toEqual({ status: "skipped", reason: "duplicate" });
   });
 
   it("sends email and records log for new domain", async () => {
     const result = await sendOutreachEmail(base);
-    expect(result).toBe(true);
+    expect(result).toEqual({ status: "sent" });
     const db = await getDb();
     const row = db.prepare("SELECT * FROM outreach_log WHERE domain = ?").get("example.com");
     expect(row).toBeTruthy();

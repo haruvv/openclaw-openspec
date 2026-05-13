@@ -1,8 +1,4 @@
-## Purpose
-
-URLリストまたは業種キーワードを入力としてサイトをクロールし、Lighthouse SEOスコアを測定して、改善提案対象となる低スコアサイトを抽出する。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 業種・URLリストからサイトをクロールする
 システムは、指定された業種キーワードまたはURLリストを入力として受け取り、Firecrawl APIを使って各サイトのHTMLコンテンツを取得しなければならない（SHALL）。
