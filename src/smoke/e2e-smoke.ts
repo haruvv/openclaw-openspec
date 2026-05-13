@@ -106,7 +106,7 @@ async function smokeSendGrid(target: Target | undefined): Promise<Omit<SmokeStep
   if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
     return { status: "skipped", reason: "SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set" };
   }
-  const to = process.env.SMOKE_EMAIL_TO ?? process.env.SENDGRID_FROM_EMAIL;
+  const to = process.env.SMOKE_EMAIL_TO || process.env.SENDGRID_FROM_EMAIL;
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   await sgMail.send({
     to,
