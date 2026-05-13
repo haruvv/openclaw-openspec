@@ -117,7 +117,7 @@ REVENUE_AGENT_INTEGRATION_TOKEN=<same-long-random-secret>
 | 項目 | 方針 |
 | --- | --- |
 | Hosting | Cloudflare Containers |
-| Hostname | 例: `revenue-agent.<domain>` |
+| Hostname | 初期は `https://revenue-agent-platform.<workers-subdomain>.workers.dev` |
 | TLS | Cloudflare managed HTTPS |
 | Rate Limiting | `POST /api/revenue-agent/run` を対象に設定 |
 | Request filtering | 必要に応じて WAF / custom rules を追加 |
@@ -125,9 +125,71 @@ REVENUE_AGENT_INTEGRATION_TOKEN=<same-long-random-secret>
 
 Rate Limiting は Cloudflare 側を第一防衛線にし、アプリ側の `REVENUE_AGENT_RATE_LIMIT_PER_MINUTE` はローカル fallback として残します。
 
+`wrangler.jsonc` では `workers_dev=true` を明示し、初回は Cloudflare の workers.dev hostname を本番候補 URL として使います。独自ドメインを使う場合は、Cloudflare zone が決まった後で `routes` を追加します。
+
+このリポジトリには Cloudflare Containers 用の最小構成を置きます。
+
+| ファイル | 役割 |
+| --- | --- |
+| `wrangler.jsonc` | Worker、Container、Durable Object、初期 env の設定 |
+| `worker/revenue-agent-container.ts` | Cloudflare Worker から singleton Container に proxy する wrapper |
+| `Dockerfile` | RevenueAgentPlatform production image |
+| `infra/cloudflare/revenue-agent-rate-limit.tf.example` | Cloudflare zone-level Rate Limiting rule の Terraform 例 |
+
+デプロイ時は `wrangler deploy` が Docker image を build/push し、Worker と Container binding を Cloudflare に反映します。
+
+```bash
+npm run deploy:cloudflare
+```
+
+本番 secret は `wrangler secret put` で登録します。
+
+```bash
+npx wrangler secret put REVENUE_AGENT_INTEGRATION_TOKEN
+npx wrangler secret put FIRECRAWL_API_KEY
+npx wrangler secret put GEMINI_API_KEY
+```
+
+任意 provider を使う場合だけ、追加 secret を登録します。
+
+```bash
+npx wrangler secret put ZAI_API_KEY
+npx wrangler secret put SENDGRID_API_KEY
+npx wrangler secret put SENDGRID_FROM_EMAIL
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_CHAT_ID
+npx wrangler secret put STRIPE_SECRET_KEY
+npx wrangler secret put STRIPE_WEBHOOK_SECRET
+```
+
+Rate Limiting を Terraform で管理する場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
+
+```bash
+cp infra/cloudflare/revenue-agent-rate-limit.tf.example infra/cloudflare/revenue-agent-rate-limit.tf
+```
+
+Cloudflare Dashboard で設定する場合も同じ条件にします。
+
+```text
+Expression:
+(http.host eq "<production-hostname>" and http.request.method eq "POST" and http.request.uri.path eq "/api/revenue-agent/run")
+
+Characteristics:
+cf.colo.id, ip.src
+
+Period:
+60 seconds
+
+Requests per period:
+10
+
+Mitigation timeout:
+600 seconds
+```
+
 ## 初回検証
 
-1. `GET /health` を確認します。
+1. `GET /health` を確認します。workers.dev hostname の場合、URL は `https://revenue-agent-platform.<workers-subdomain>.workers.dev` です。
 
 ```bash
 curl -sS https://<production-hostname>/health

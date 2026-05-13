@@ -1,0 +1,62 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "revenue-agent-platform",
+  "main": "worker/revenue-agent-container.ts",
+  "workers_dev": true,
+  "compatibility_date": "2026-05-14",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "build": {
+    "command": "npm run build"
+  },
+  "containers": [
+    {
+      "class_name": "RevenueAgentContainer",
+      "image": "./Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REVENUE_AGENT_CONTAINER",
+        "class_name": "RevenueAgentContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "RevenueAgentContainer"
+      ]
+    }
+  ],
+  "vars": {
+    "NODE_ENV": "production",
+    "PORT": "3000",
+    "DB_PATH": "/tmp/revenue-agent/pipeline.db",
+    "OUTPUT_DIR": "/tmp/revenue-agent/proposals",
+    "REVENUE_AGENT_RATE_LIMIT_PER_MINUTE": "60",
+    "REVENUE_AGENT_ALLOW_EMAIL": "false",
+    "REVENUE_AGENT_ALLOW_TELEGRAM": "false",
+    "REVENUE_AGENT_ALLOW_PAYMENT_LINK": "false",
+    "REVENUE_AGENT_CONTAINER_SLEEP_AFTER": "10m",
+    "GEMINI_MODEL": "gemini-2.0-flash",
+    "ZAI_BASE_URL": "https://api.z.ai/api/paas/v4",
+    "ZAI_MODEL": "glm-4.5-flash",
+    "SENDGRID_FROM_NAME": "RevenueAgentPlatform"
+  },
+  "secrets": {
+    "required": [
+      "REVENUE_AGENT_INTEGRATION_TOKEN",
+      "FIRECRAWL_API_KEY",
+      "GEMINI_API_KEY"
+    ]
+  }
+}
