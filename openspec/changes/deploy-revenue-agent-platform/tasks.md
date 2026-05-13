@@ -1,6 +1,6 @@
 ## 1. Deployment Target
 
-- [ ] 1.1 Choose Cloudflare Containers or Cloudflare Tunnel plus a Node host for RevenueAgentPlatform production.
+- [x] 1.1 Choose Cloudflare Containers or Cloudflare Tunnel plus a Node host for RevenueAgentPlatform production.
 - [ ] 1.2 Add the deployment configuration needed for the chosen hosting target.
 - [ ] 1.3 Configure the production hostname and Cloudflare route.
 

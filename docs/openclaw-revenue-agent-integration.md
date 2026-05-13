@@ -107,6 +107,8 @@ REVENUE_AGENT_INTEGRATION_TOKEN=<same-shared-secret>
 
 The run endpoint is intended for machine-to-machine calls from OpenClaw Gateway, not browser clients.
 
+Production deployment, cost assumptions, Cloudflare configuration, and rollback steps are tracked in [RevenueAgentPlatform 本番デプロイ方針](./revenue-agent-platform-deployment.md).
+
 Required production controls:
 
 - Serve the API only over HTTPS.

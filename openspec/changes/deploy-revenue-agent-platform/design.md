@@ -23,9 +23,13 @@ The first production deployment should minimize blast radius: side effects stay 
 
 ## Decisions
 
-### Use Cloudflare as the production front door
+### Use Cloudflare Containers as the production target
 
-Cloudflare will provide TLS, routing, rate limiting, and a consistent public hostname. The RevenueAgentPlatform process may run in Cloudflare Containers or behind Cloudflare Tunnel on a separate host; the API contract and environment requirements remain the same.
+Cloudflare Containers is the selected first production target. It can run the existing Node/Express service and Chromium/Lighthouse dependencies while Cloudflare provides TLS, routing, rate limiting, and a consistent public hostname.
+
+Cloudflare Tunnel plus a separate Node host remains the fallback if Containers blocks progress, but it is not the primary path because it would add host patching, process supervision, and Chrome dependency management outside Cloudflare.
+
+The cost assumption is documented in `docs/revenue-agent-platform-deployment.md`: start from Workers Paid at about $5/month, keep containers idle-sleeping when possible, and treat high crawl volume, Lighthouse runtime, and third-party APIs as the main variable costs.
 
 ### Keep side effects disabled for first deployment
 
@@ -41,14 +45,15 @@ All provider keys and integration tokens will be set as production secrets or en
 
 ## Risks / Trade-offs
 
-- Cloudflare Containers may add platform-specific build/deploy work -> keep the deployment contract host-agnostic enough to allow Tunnel plus another host if Containers block progress.
+- Cloudflare Containers may add platform-specific build/deploy work -> keep Cloudflare Tunnel plus another Node host as a documented fallback.
+- Container cost can rise with long Chromium/Lighthouse runs -> start with low-frequency manual verification and idle sleep, then review usage before enabling scheduled or high-volume runs.
 - LLM provider quota can block proposal generation -> verify crawler/API health separately and track provider fallback as a separate change if needed.
 - Side-effect flags may be accidentally enabled -> default all server-side policy flags to `false` and document staged enablement.
 - Production secrets can drift from local config -> add an explicit environment checklist and smoke command.
 
 ## Migration Plan
 
-1. Choose the hosting path: Cloudflare Containers, or Cloudflare Tunnel in front of another Node host.
+1. Use Cloudflare Containers as the hosting path.
 2. Configure production environment variables and secrets.
 3. Deploy RevenueAgentPlatform and verify `/health`.
 4. Call `POST /api/revenue-agent/run` directly with side effects disabled.
