@@ -1,11 +1,9 @@
 ## Purpose
 
 外部サービス境界を含むSEOアウトリーチパイプラインの実行環境を、1件のターゲットURLで安全に検証するためのE2E smoke harnessを提供する。
-
 ## Requirements
-
 ### Requirement: E2E smoke harness command
-The system SHALL provide an operator command that runs a one-target E2E smoke validation and produces a structured result.
+The system SHALL provide an operator command that runs a one-target E2E smoke validation and produces a structured result. The smoke harness SHALL reuse the same neutral run logic used by OpenClaw-facing execution while preserving smoke-specific defaults and report persistence.
 
 #### Scenario: Smoke command runs with target URL
 - **WHEN** the operator runs the smoke command with a target URL
@@ -14,6 +12,10 @@ The system SHALL provide an operator command that runs a one-target E2E smoke va
 #### Scenario: Smoke command uses default target URL
 - **WHEN** the operator runs the smoke command without a target URL
 - **THEN** the system uses the configured default smoke target URL
+
+#### Scenario: Smoke command and OpenClaw run share step behavior
+- **WHEN** the smoke command and OpenClaw-facing run capability execute with equivalent inputs and side-effect flags
+- **THEN** both paths SHALL use consistent crawl, proposal, email, Telegram, and Stripe step behavior
 
 ### Requirement: Step-level pass/fail/skip reporting
 The system SHALL record each smoke step as `passed`, `failed`, or `skipped`, including duration and diagnostic details.
@@ -43,3 +45,4 @@ The system SHALL save each smoke run report as JSON under `output/smoke-runs/`.
 #### Scenario: Smoke run completes
 - **WHEN** the smoke run reaches the summary phase
 - **THEN** the system writes a timestamped JSON report containing step results and run metadata
+
