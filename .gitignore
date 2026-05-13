@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Runtime data and generated artifacts
+data/
+output/
+codex-presentations/
+
+# Test and coverage output
+coverage/
+.vitest/
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# Local tool settings
+.claude/settings.local.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
