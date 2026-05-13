@@ -1,27 +1,13 @@
-export type SmokeStepStatus = "passed" | "failed" | "skipped";
+import type { RevenueAgentRunReport, RevenueAgentRunOptions, RevenueAgentStepResult, RevenueAgentStepStatus } from "../revenue-agent/types.js";
 
-export interface SmokeStepResult {
-  name: string;
-  status: SmokeStepStatus;
-  durationMs: number;
-  reason?: string;
-  error?: string;
-  details?: Record<string, unknown>;
-}
+export type SmokeStepStatus = RevenueAgentStepStatus;
 
-export interface SmokeRunReport {
-  id: string;
-  targetUrl: string;
-  startedAt: string;
-  completedAt: string;
-  status: SmokeStepStatus;
-  steps: SmokeStepResult[];
-  outputs: Record<string, unknown>;
-  reportPath?: string;
-}
+export type SmokeStepResult = RevenueAgentStepResult;
+
+export type SmokeRunReport = RevenueAgentRunReport;
 
 export interface SmokeOptions {
   targetUrl?: string;
-  now?: () => Date;
+  now?: RevenueAgentRunOptions["now"];
   reportDir?: string;
 }

@@ -7,8 +7,9 @@ import { getTarget } from "./pipeline/state.js";
 import { checkHilTimeouts } from "./hil-approval-flow/timeout-watcher.js";
 import { sendPaymentReminders } from "./stripe-payment-link/payment-link.js";
 import { logger } from "./utils/logger.js";
+import { handleRevenueAgentRun } from "./revenue-agent/http.js";
 
-const app = express();
+export const app = express();
 
 app.post(
   "/webhooks/stripe",
@@ -31,6 +32,10 @@ app.post(
 );
 
 app.use(express.json());
+
+app.post("/api/revenue-agent/run", async (req, res) => {
+  await handleRevenueAgentRun(req, res);
+});
 
 app.get("/hil/approve", async (req, res) => {
   const { targetId, token } = req.query as Record<string, string>;
@@ -56,10 +61,12 @@ app.get("/thank-you", (_req, res) => {
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
-const PORT = Number(process.env.PORT ?? 3000);
-app.listen(PORT, () => logger.info(`Server listening on :${PORT}`));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const PORT = Number(process.env.PORT ?? 3000);
+  app.listen(PORT, () => logger.info(`Server listening on :${PORT}`));
 
-setInterval(async () => {
-  await checkHilTimeouts().catch((e) => logger.error("Timeout check failed", { e }));
-  await sendPaymentReminders().catch((e) => logger.error("Reminder check failed", { e }));
-}, 60 * 60 * 1000);
+  setInterval(async () => {
+    await checkHilTimeouts().catch((e) => logger.error("Timeout check failed", { e }));
+    await sendPaymentReminders().catch((e) => logger.error("Reminder check failed", { e }));
+  }, 60 * 60 * 1000);
+}

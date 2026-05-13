@@ -1,11 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SmokeRunReport } from "./types.js";
+import { summarizeRunStatus } from "../revenue-agent/runner.js";
 
 export function summarizeSmokeStatus(steps: SmokeRunReport["steps"]): SmokeRunReport["status"] {
-  if (steps.some((step) => step.status === "failed")) return "failed";
-  if (steps.every((step) => step.status === "skipped")) return "skipped";
-  return "passed";
+  return summarizeRunStatus(steps);
 }
 
 export async function saveSmokeReport(

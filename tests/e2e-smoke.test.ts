@@ -98,4 +98,31 @@ describe("runE2eSmoke", () => {
     });
     expect(crawlBatch).not.toHaveBeenCalled();
   });
+
+  it("passes enabled side-effect flags through the shared run path", async () => {
+    process.env.SMOKE_SEND_EMAIL = "true";
+    process.env.SMOKE_SEND_TELEGRAM = "true";
+    process.env.SMOKE_CREATE_STRIPE_LINK = "true";
+    process.env.SENDGRID_API_KEY = "sendgrid-test";
+    process.env.SENDGRID_FROM_EMAIL = "from@example.com";
+    process.env.TELEGRAM_BOT_TOKEN = "telegram-test";
+    process.env.TELEGRAM_CHAT_ID = "123";
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: async () => ({ ok: true, result: { message_id: 99 } }),
+      })
+    );
+
+    const reportDir = await mkdtemp(join(tmpdir(), "smoke-report-"));
+    const report = await runE2eSmoke({ targetUrl: "https://example.com", reportDir });
+
+    expect(report.status).toBe("passed");
+    expect(report.steps.find((step) => step.name === "sendgrid_email")?.status).toBe("passed");
+    expect(report.steps.find((step) => step.name === "telegram_notification")?.status).toBe("passed");
+    expect(report.steps.find((step) => step.name === "stripe_payment_link")?.status).toBe("passed");
+    expect(report.outputs.paymentLinkUrl).toBe("https://buy.stripe.com/test");
+    expect(sgMail.send).toHaveBeenCalledOnce();
+  });
 });
