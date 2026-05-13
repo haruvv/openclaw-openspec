@@ -25,6 +25,7 @@ export interface RevenueAgentRunOptions {
   sendEmail?: boolean;
   sendTelegram?: boolean;
   createPaymentLink?: boolean;
+  sideEffectSkipReasons?: Partial<Record<"sendEmail" | "sendTelegram" | "createPaymentLink", string>>;
   now?: () => Date;
 }
 

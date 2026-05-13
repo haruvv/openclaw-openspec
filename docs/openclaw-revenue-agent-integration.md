@@ -26,11 +26,11 @@ Fields:
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
 | `url` | yes | none | Target URL to crawl, score, and generate a proposal for. Must be `http` or `https`. |
-| `sendEmail` | no | `false` | Sends the SendGrid smoke-style email when true. |
-| `sendTelegram` | no | `false` | Sends the Telegram notification when true. |
-| `createPaymentLink` | no | `false` | Creates a Stripe Payment Link when true. Use test keys until production policy is finalized. |
+| `sendEmail` | no | `false` | Requests the SendGrid smoke-style email. The server also requires `REVENUE_AGENT_ALLOW_EMAIL=true`. |
+| `sendTelegram` | no | `false` | Requests the Telegram notification. The server also requires `REVENUE_AGENT_ALLOW_TELEGRAM=true`. |
+| `createPaymentLink` | no | `false` | Requests a Stripe Payment Link. The server also requires `REVENUE_AGENT_ALLOW_PAYMENT_LINK=true`. Use test keys until production policy is finalized. |
 
-Default behavior is dry-run style: crawl, score, and proposal generation only. Side effects are opt-in.
+Default behavior is dry-run style: crawl, score, and proposal generation only. Side effects are opt-in twice: the caller must request them and the server-side policy flag must allow them.
 
 ## Response
 
@@ -70,9 +70,19 @@ RevenueAgentPlatform:
 
 ```dotenv
 REVENUE_AGENT_INTEGRATION_TOKEN=<shared-secret>
+REVENUE_AGENT_RATE_LIMIT_PER_MINUTE=60
+REVENUE_AGENT_ALLOW_EMAIL=false
+REVENUE_AGENT_ALLOW_TELEGRAM=false
+REVENUE_AGENT_ALLOW_PAYMENT_LINK=false
 FIRECRAWL_API_KEY=...
 GEMINI_API_KEY=...
 ZAI_API_KEY=...
+```
+
+Generate `REVENUE_AGENT_INTEGRATION_TOKEN` as a long random value, for example:
+
+```bash
+openssl rand -hex 32
 ```
 
 Optional side-effect providers:
@@ -92,6 +102,26 @@ OpenClaw Gateway:
 REVENUE_AGENT_BASE_URL=http://localhost:3000
 REVENUE_AGENT_INTEGRATION_TOKEN=<same-shared-secret>
 ```
+
+## Production Security
+
+The run endpoint is intended for machine-to-machine calls from OpenClaw Gateway, not browser clients.
+
+Required production controls:
+
+- Serve the API only over HTTPS.
+- Put the API behind Cloudflare.
+- Configure Cloudflare Rate Limiting for `POST /api/revenue-agent/run`; the application also has `REVENUE_AGENT_RATE_LIMIT_PER_MINUTE` as a local fallback.
+- Keep CORS closed unless a separate browser-facing client is intentionally introduced.
+- Keep `REVENUE_AGENT_ALLOW_EMAIL`, `REVENUE_AGENT_ALLOW_TELEGRAM`, and `REVENUE_AGENT_ALLOW_PAYMENT_LINK` set to `false` until each side effect is manually verified in production.
+- Do not log `Authorization` headers, integration tokens, provider API keys, Telegram bot tokens, or Stripe secrets.
+
+The API rejects unsafe crawl targets before starting expensive work:
+
+- unsupported schemes such as `file:`
+- `localhost`
+- loopback, private, link-local, multicast, and metadata IP ranges
+- hostnames that resolve to those address ranges
 
 ## Local Verification
 

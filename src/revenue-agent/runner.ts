@@ -5,6 +5,7 @@ import { crawlBatch } from "../site-crawler/crawler.js";
 import { generateProposal } from "../proposal-generator/generator.js";
 import { saveProposal } from "../proposal-generator/storage.js";
 import type { Target } from "../types/index.js";
+import { sanitizeSecretText } from "./security.js";
 import type { RevenueAgentRunOptions, RevenueAgentRunReport, RevenueAgentStepResult } from "./types.js";
 
 type StepBody = () => Promise<Omit<RevenueAgentStepResult, "name" | "durationMs">>;
@@ -63,9 +64,21 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
     })
   );
 
-  steps.push(await runStep("sendgrid_email", () => sendGridStep(target, options.sendEmail === true)));
-  steps.push(await runStep("telegram_notification", () => telegramStep(target, options.sendTelegram === true)));
-  steps.push(await runStep("stripe_payment_link", () => stripeStep(target, options.createPaymentLink === true, outputs)));
+  steps.push(
+    await runStep("sendgrid_email", () =>
+      sendGridStep(target, options.sendEmail === true, options.sideEffectSkipReasons?.sendEmail)
+    )
+  );
+  steps.push(
+    await runStep("telegram_notification", () =>
+      telegramStep(target, options.sendTelegram === true, options.sideEffectSkipReasons?.sendTelegram)
+    )
+  );
+  steps.push(
+    await runStep("stripe_payment_link", () =>
+      stripeStep(target, options.createPaymentLink === true, outputs, options.sideEffectSkipReasons?.createPaymentLink)
+    )
+  );
 
   const completedAtDate = now();
   return {
@@ -102,10 +115,11 @@ async function runStep(name: string, body: StepBody): Promise<RevenueAgentStepRe
 
 async function sendGridStep(
   target: Target | undefined,
-  enabled: boolean
+  enabled: boolean,
+  disabledReason?: string
 ): Promise<Omit<RevenueAgentStepResult, "name" | "durationMs">> {
   if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
-  if (!enabled) return { status: "skipped", reason: "sendEmail is not true" };
+  if (!enabled) return { status: "skipped", reason: disabledReason ?? "sendEmail is not true" };
   if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
     return { status: "skipped", reason: "SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set" };
   }
@@ -125,10 +139,11 @@ async function sendGridStep(
 
 async function telegramStep(
   target: Target | undefined,
-  enabled: boolean
+  enabled: boolean,
+  disabledReason?: string
 ): Promise<Omit<RevenueAgentStepResult, "name" | "durationMs">> {
   if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
-  if (!enabled) return { status: "skipped", reason: "sendTelegram is not true" };
+  if (!enabled) return { status: "skipped", reason: disabledReason ?? "sendTelegram is not true" };
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
     return { status: "skipped", reason: "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set" };
   }
@@ -152,10 +167,11 @@ async function telegramStep(
 async function stripeStep(
   target: Target | undefined,
   enabled: boolean,
-  outputs: Record<string, unknown>
+  outputs: Record<string, unknown>,
+  disabledReason?: string
 ): Promise<Omit<RevenueAgentStepResult, "name" | "durationMs">> {
   if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
-  if (!enabled) return { status: "skipped", reason: "createPaymentLink is not true" };
+  if (!enabled) return { status: "skipped", reason: disabledReason ?? "createPaymentLink is not true" };
   if (!process.env.STRIPE_SECRET_KEY) {
     return { status: "skipped", reason: "STRIPE_SECRET_KEY is not set" };
   }
@@ -182,6 +198,5 @@ function toRunId(date: Date): string {
 }
 
 function sanitizeError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  return sanitizeSecretText(err);
 }

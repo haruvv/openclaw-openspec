@@ -1,15 +1,26 @@
 import type { Request, Response } from "express";
 import { runRevenueAgent } from "./runner.js";
+import {
+  applySideEffectPolicy,
+  checkRevenueAgentRateLimit,
+  sanitizeRunReport,
+  sideEffectPolicyReason,
+  validateRevenueAgentAuth,
+  validateSafeTargetUrl,
+} from "./security.js";
 import type { RevenueAgentRunRequest } from "./types.js";
 
 export async function handleRevenueAgentRun(req: Request, res: Response): Promise<void> {
-  const token = process.env.REVENUE_AGENT_INTEGRATION_TOKEN;
-  if (!token) {
-    res.status(503).json({ error: "REVENUE_AGENT_INTEGRATION_TOKEN is not configured" });
+  const auth = validateRevenueAgentAuth(req.headers.authorization);
+  if (!auth.ok) {
+    res.status(auth.status).json(auth.body);
     return;
   }
-  if (req.headers.authorization !== `Bearer ${token}`) {
-    res.status(401).json({ error: "Unauthorized" });
+
+  const rateLimit = checkRevenueAgentRateLimit(req);
+  if (!rateLimit.allowed) {
+    if (rateLimit.retryAfterSeconds) res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
+    res.status(429).json({ error: "Too many requests" });
     return;
   }
 
@@ -19,13 +30,36 @@ export async function handleRevenueAgentRun(req: Request, res: Response): Promis
     return;
   }
 
-  const report = await runRevenueAgent({
-    targetUrl: parsed.value.url,
+  const safeUrl = await validateSafeTargetUrl(parsed.value.url);
+  if (!safeUrl.ok) {
+    res.status(400).json({ error: safeUrl.error });
+    return;
+  }
+
+  const requested = {
     sendEmail: parsed.value.sendEmail === true,
     sendTelegram: parsed.value.sendTelegram === true,
     createPaymentLink: parsed.value.createPaymentLink === true,
+  };
+  const allowed = applySideEffectPolicy(requested);
+  const sideEffectSkipReasons = {
+    sendEmail: requested.sendEmail && !allowed.sendEmail ? sideEffectPolicyReason("sendEmail") : undefined,
+    sendTelegram:
+      requested.sendTelegram && !allowed.sendTelegram ? sideEffectPolicyReason("sendTelegram") : undefined,
+    createPaymentLink:
+      requested.createPaymentLink && !allowed.createPaymentLink
+        ? sideEffectPolicyReason("createPaymentLink")
+        : undefined,
+  };
+
+  const report = await runRevenueAgent({
+    targetUrl: safeUrl.url,
+    sendEmail: allowed.sendEmail,
+    sendTelegram: allowed.sendTelegram,
+    createPaymentLink: allowed.createPaymentLink,
+    sideEffectSkipReasons,
   });
-  res.status(report.status === "failed" ? 502 : 200).json(report);
+  res.status(report.status === "failed" ? 502 : 200).json(sanitizeRunReport(report));
 }
 
 function parseRunRequest(body: unknown):
@@ -37,14 +71,6 @@ function parseRunRequest(body: unknown):
   const candidate = body as Record<string, unknown>;
   if (typeof candidate.url !== "string") {
     return { ok: false, error: "url is required" };
-  }
-  try {
-    const url = new URL(candidate.url);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return { ok: false, error: "url must be http or https" };
-    }
-  } catch {
-    return { ok: false, error: "url must be a valid URL" };
   }
   for (const key of ["sendEmail", "sendTelegram", "createPaymentLink"]) {
     if (candidate[key] !== undefined && typeof candidate[key] !== "boolean") {
