@@ -10,6 +10,7 @@ import { logger } from "./utils/logger.js";
 import { handleRevenueAgentRun } from "./revenue-agent/http.js";
 import { handleTelegramWebhook } from "./revenue-agent/telegram-webhook.js";
 import { adminRouter } from "./admin/routes.js";
+import { sitesRouter } from "./sites/routes.js";
 
 export const app = express();
 
@@ -44,6 +45,7 @@ app.post("/telegram/webhook", async (req, res) => {
 });
 
 app.use("/admin", adminRouter);
+app.use("/sites", sitesRouter);
 
 app.get("/hil/approve", async (req, res) => {
   const { targetId, token } = req.query as Record<string, string>;

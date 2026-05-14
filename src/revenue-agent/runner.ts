@@ -6,6 +6,7 @@ import { generateProposal } from "../proposal-generator/generator.js";
 import { saveProposal } from "../proposal-generator/storage.js";
 import type { Target } from "../types/index.js";
 import { completeAgentRun, createAgentRun } from "../agent-runs/repository.js";
+import { persistSiteResult } from "../sites/repository.js";
 import { logger } from "../utils/logger.js";
 import { sanitizeSecretText } from "./security.js";
 import type { RevenueAgentRunOptions, RevenueAgentRunReport, RevenueAgentStepResult } from "./types.js";
@@ -118,6 +119,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
     outputs,
   };
   await recordRunComplete(report, artifacts, completedAtDate);
+  await recordSiteResult(report, target, artifacts, completedAtDate);
   return report;
 }
 
@@ -288,5 +290,46 @@ async function recordRunComplete(
     });
   } catch (error) {
     logger.error("Failed to persist agent run completion", { error });
+  }
+}
+
+async function recordSiteResult(
+  report: RevenueAgentRunReport,
+  target: Target | undefined,
+  artifacts: Array<{
+    type: string;
+    label: string;
+    pathOrUrl?: string;
+    contentText?: string;
+    metadata?: Record<string, unknown>;
+  }>,
+  completedAt: Date
+): Promise<void> {
+  if (!target) return;
+
+  try {
+    await persistSiteResult({
+      runId: report.id,
+      status: report.status,
+      target,
+      summary: {
+        targetUrl: report.targetUrl,
+        domain: report.outputs.domain,
+        seoScore: report.outputs.seoScore,
+        proposalPath: report.outputs.proposalPath,
+        paymentLinkUrl: report.outputs.paymentLinkUrl,
+      },
+      proposals: artifacts
+        .filter((artifact) => artifact.type === "proposal")
+        .map((artifact) => ({
+          label: artifact.label,
+          pathOrUrl: artifact.pathOrUrl,
+          contentText: artifact.contentText,
+          metadata: artifact.metadata,
+        })),
+      createdAt: completedAt,
+    });
+  } catch (error) {
+    logger.error("Failed to persist site result", { error });
   }
 }

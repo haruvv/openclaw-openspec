@@ -1,9 +1,9 @@
 import express, { Router } from "express";
-import type { Request, Response } from "express";
 import type { AgentRunDetail } from "../agent-runs/types.js";
 import { getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
 import { runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
+import { isAdminAuthorized, isAdminTokenConfigured, renderAdminLogin } from "./auth.js";
 
 export const adminRouter = Router();
 
@@ -14,7 +14,7 @@ adminRouter.use((req, res, next) => {
   }
 
   if (isAdminTokenConfigured()) {
-    res.status(401).send(renderPage("Admin Login", renderLogin(req.originalUrl), { compact: true }));
+    res.status(401).send(renderPage("Admin Login", renderAdminLogin(req.originalUrl), { compact: true }));
     return;
   }
 
@@ -91,43 +91,6 @@ async function runManualRevenueAgent(targetUrl: string, metadata: Record<string,
   });
 }
 
-function isAdminAuthorized(req: Request, res: Response): boolean {
-  const token = process.env.ADMIN_TOKEN;
-  if (!token) return process.env.NODE_ENV !== "production";
-
-  const queryToken = typeof req.query.token === "string" ? req.query.token : undefined;
-  if (queryToken === token) {
-    res.cookie("admin_token", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
-    return true;
-  }
-
-  const cookieToken = parseCookie(req.headers.cookie ?? "").admin_token;
-  return cookieToken === token;
-}
-
-function isAdminTokenConfigured(): boolean {
-  return typeof process.env.ADMIN_TOKEN === "string" && process.env.ADMIN_TOKEN.length > 0;
-}
-
-function parseCookie(cookie: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of cookie.split(";")) {
-    const [rawKey, ...rawValue] = part.trim().split("=");
-    if (!rawKey || rawValue.length === 0) continue;
-    out[rawKey] = decodeURIComponent(rawValue.join("="));
-  }
-  return out;
-}
-
-function renderLogin(returnTo: string): string {
-  return `
-    <form method="get" action="${escapeHtml(returnTo.split("?")[0] || "/admin")}">
-      <label>Admin token <input name="token" type="password" autocomplete="current-password" /></label>
-      <button type="submit">Open dashboard</button>
-    </form>
-  `;
-}
-
 function renderDashboard(runs: Awaited<ReturnType<typeof listAgentRuns>>): string {
   return `
     <section class="panel">
@@ -140,7 +103,7 @@ function renderDashboard(runs: Awaited<ReturnType<typeof listAgentRuns>>): strin
     <section class="panel">
       <div class="section-header">
         <h2>Recent Runs</h2>
-        <a href="/admin/integrations">Integrations</a>
+        <nav><a href="/sites">Sites</a><a href="/admin/integrations">Integrations</a></nav>
       </div>
       <table>
         <thead>
@@ -301,6 +264,7 @@ function renderPage(title: string, body: string, options: { compact?: boolean } 
           a:hover { text-decoration: underline; }
           .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin-bottom: 18px; }
           .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+          nav { display: inline-flex; gap: 14px; align-items: center; }
           h2 { margin: 0 0 14px; font-size: 16px; letter-spacing: 0; }
           h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }
           table { width: 100%; border-collapse: collapse; }

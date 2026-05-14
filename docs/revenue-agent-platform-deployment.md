@@ -220,6 +220,18 @@ https://<production-hostname>/admin?token=<ADMIN_TOKEN>
 
 The token is stored in an HTTP-only cookie after the first request. The dashboard shows recent runs, run details, proposal artifacts, integration configuration status, and manual RevenueAgent run/retry actions. It does not display secret values and does not edit secrets.
 
+### Site results dashboard
+
+The site-centric results dashboard is served under `/sites` and uses the same `ADMIN_TOKEN` protection as `/admin`.
+
+Use `/admin` for operations work: failures, retries, integration status, raw steps, and artifacts. Use `/sites` for product-facing review of analyzed URLs: latest status, latest SEO score, latest proposal, snapshot history, and links back to the related run detail.
+
+```text
+https://<production-hostname>/sites?token=<ADMIN_TOKEN>
+```
+
+Each successful RevenueAgent run that produces a crawled target writes both the generic run log and the site result state. Runs that do not produce a target remain visible in `/admin` but do not create a `/sites` record.
+
 独自ドメイン移行後、zone-level Rate Limiting も追加したい場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
 
 ```bash

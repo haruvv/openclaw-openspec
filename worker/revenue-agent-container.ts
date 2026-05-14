@@ -123,7 +123,7 @@ export default {
       return container.fetch(request);
     }
 
-    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname === "/sites" || url.pathname.startsWith("/sites/")) {
       return container.fetch(request);
     }
 
