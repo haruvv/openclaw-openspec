@@ -16,7 +16,7 @@
   "containers": [
     {
       "class_name": "RevenueAgentContainer",
-      "image": "./Dockerfile",
+      "image": "registry.cloudflare.com/bbcaddbc9938b5f98b25475a69589baf/revenue-agent-platform-revenueagentcontainer:c36ca1d9",
       "instance_type": "standard-1",
       "max_instances": 2
     }
@@ -66,7 +66,8 @@
     "required": [
       "REVENUE_AGENT_INTEGRATION_TOKEN",
       "FIRECRAWL_API_KEY",
-      "GEMINI_API_KEY"
+      "GEMINI_API_KEY",
+      "ADMIN_TOKEN"
     ]
   }
 }
