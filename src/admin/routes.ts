@@ -14,6 +14,11 @@ export const adminApiRouter = Router();
 
 const adminUiDir = join(process.cwd(), "dist/admin-ui");
 const adminIndexPath = join(adminUiDir, "index.html");
+export const adminAssetsRouter = express.static(join(adminUiDir, "assets"), {
+  immutable: true,
+  index: false,
+  maxAge: "1y",
+});
 
 adminApiRouter.use(express.json());
 adminApiRouter.use(requireAdminApiAuth);
@@ -112,11 +117,7 @@ adminApiRouter.get("/seo-sales/settings", (_req, res) => {
 
 adminRouter.use(
   "/assets",
-  express.static(join(adminUiDir, "assets"), {
-    immutable: true,
-    index: false,
-    maxAge: "1y",
-  }),
+  adminAssetsRouter,
 );
 
 adminRouter.use(requireAdminPageAuth);
