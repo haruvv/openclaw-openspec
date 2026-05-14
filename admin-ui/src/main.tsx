@@ -108,8 +108,34 @@ const navItems = [
 ];
 
 function App() {
-  const path = window.location.pathname;
+  const [path, setPath] = useState(window.location.pathname);
   const page = routePage(path);
+
+  useEffect(() => {
+    const onPopState = () => setPath(window.location.pathname);
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target instanceof Element ? event.target.closest("a") : null;
+      if (!(link instanceof HTMLAnchorElement)) return;
+      if (link.target && link.target !== "_self") return;
+
+      const url = new URL(link.href);
+      if (url.origin !== window.location.origin || !isClientRoute(url.pathname)) return;
+
+      event.preventDefault();
+      const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+      if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+      window.history.pushState({}, "", nextUrl);
+      setPath(url.pathname);
+    };
+
+    window.addEventListener("popstate", onPopState);
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
@@ -680,6 +706,10 @@ async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<
 function isActive(href: string, path: string): boolean {
   if (href === "/admin" || href === "/admin/seo-sales") return path === href;
   return path === href || path.startsWith(`${href}/`);
+}
+
+function isClientRoute(path: string): boolean {
+  return path === "/admin" || path.startsWith("/admin/seo-sales");
 }
 
 function getTargetUrl(run: AgentRun): string {
