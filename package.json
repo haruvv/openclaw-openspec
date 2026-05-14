@@ -12,6 +12,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "smoke:e2e": "tsx src/smoke/e2e-smoke.ts",
+    "smoke:production": "node scripts/smoke-production.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -1,18 +1,15 @@
-name: Deploy Production
+name: Deploy Staging
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
-  group: revenue-agent-platform-production
+  group: revenue-agent-platform-staging
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Test and deploy
+    name: Test and deploy staging
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -39,10 +36,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Deploy to Cloudflare
-        run: npm run deploy:cloudflare
-
-      - name: Smoke test production
-        run: npm run smoke:production
-        env:
-          PRODUCTION_BASE_URL: https://revenue-agent-platform.haruki-ito0044.workers.dev
+      - name: Deploy staging
+        run: npm run deploy:cloudflare -- --name revenue-agent-platform-staging
