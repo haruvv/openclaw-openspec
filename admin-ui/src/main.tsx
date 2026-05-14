@@ -323,7 +323,6 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
       setReport(result.report);
       setLastCompletedAt(new Date().toISOString());
       setActivity("実行結果を受信しました");
-      await onDone?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "候補発見に失敗しました");
       setActivity("実行に失敗しました");
