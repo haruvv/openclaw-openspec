@@ -14,14 +14,14 @@ adminRouter.use((req, res, next) => {
   }
 
   if (isAdminTokenConfigured()) {
-    res.status(401).send(renderPage("Admin Login", renderAdminLogin(req.originalUrl), { compact: true }));
+    res.status(401).send(renderPage("管理画面ログイン", renderAdminLogin(req.originalUrl), { compact: true }));
     return;
   }
 
   if (process.env.NODE_ENV === "production") {
     res
       .status(503)
-      .send(renderPage("Admin Unavailable", "<p><code>ADMIN_TOKEN</code> is required in production.</p>", { compact: true }));
+      .send(renderPage("管理画面を利用できません", "<p>本番環境では <code>ADMIN_TOKEN</code> が必要です。</p>", { compact: true }));
     return;
   }
 
@@ -32,18 +32,18 @@ adminRouter.use(express.urlencoded({ extended: false }));
 
 adminRouter.get("/", async (_req, res) => {
   const runs = await listAgentRuns(50);
-  res.send(renderPage("Agent Operations", renderDashboard(runs)));
+  res.send(renderPage("運用ダッシュボード", renderDashboard(runs)));
 });
 
 adminRouter.get("/integrations", (_req, res) => {
-  res.send(renderPage("Integrations", renderIntegrations()));
+  res.send(renderPage("外部サービス設定", renderIntegrations()));
 });
 
 adminRouter.post("/runs", async (req, res) => {
   const url = typeof req.body.url === "string" ? req.body.url : "";
   const safeUrl = await validateSafeTargetUrl(url);
   if (!safeUrl.ok) {
-    res.status(400).send(renderPage("Invalid URL", `<p>${escapeHtml(safeUrl.error)}</p><p><a href="/admin">Back</a></p>`));
+    res.status(400).send(renderPage("URLが無効です", `<p>${escapeHtml(safeUrl.error)}</p><p><a href="/admin">戻る</a></p>`));
     return;
   }
 
@@ -55,7 +55,7 @@ adminRouter.post("/runs/:id/retry", async (req, res) => {
   const prior = await getAgentRunDetail(req.params.id);
   const targetUrl = typeof prior?.input.targetUrl === "string" ? prior.input.targetUrl : undefined;
   if (!targetUrl) {
-    res.status(400).send(renderPage("Retry Failed", "<p>Original run does not include a target URL.</p>"));
+    res.status(400).send(renderPage("再実行できません", "<p>元の実行に対象URLが含まれていません。</p>"));
     return;
   }
 
@@ -66,11 +66,11 @@ adminRouter.post("/runs/:id/retry", async (req, res) => {
 adminRouter.get("/runs/:id", async (req, res) => {
   const run = await getAgentRunDetail(req.params.id);
   if (!run) {
-    res.status(404).send(renderPage("Run Not Found", "<p>Run not found.</p>"));
+    res.status(404).send(renderPage("実行が見つかりません", "<p>指定された実行は見つかりません。</p>"));
     return;
   }
 
-  res.send(renderPage(`Run ${run.id}`, renderRunDetail(run)));
+  res.send(renderPage(`実行詳細 ${run.id}`, renderRunDetail(run)));
 });
 
 async function runManualRevenueAgent(targetUrl: string, metadata: Record<string, unknown>) {
@@ -94,30 +94,30 @@ async function runManualRevenueAgent(targetUrl: string, metadata: Record<string,
 function renderDashboard(runs: Awaited<ReturnType<typeof listAgentRuns>>): string {
   return `
     <section class="panel">
-      <h2>Manual Run</h2>
+      <h2>手動実行</h2>
       <form method="post" action="/admin/runs" class="inline-form">
         <input name="url" type="url" placeholder="https://example.com" required />
-        <button type="submit">Run RevenueAgent</button>
+        <button type="submit">RevenueAgentを実行</button>
       </form>
     </section>
     <section class="panel">
       <div class="section-header">
-        <h2>Recent Runs</h2>
-        <nav><a href="/sites">Sites</a><a href="/admin/integrations">Integrations</a></nav>
+        <h2>最近の実行</h2>
+        <nav><a href="/sites">URL別結果</a><a href="/admin/integrations">外部サービス設定</a></nav>
       </div>
       <table>
         <thead>
           <tr>
-            <th>Status</th>
-            <th>Agent</th>
-            <th>Source</th>
-            <th>Target</th>
-            <th>Started</th>
-            <th>Duration</th>
+            <th>状態</th>
+            <th>エージェント</th>
+            <th>起点</th>
+            <th>対象URL</th>
+            <th>開始</th>
+            <th>所要時間</th>
           </tr>
         </thead>
         <tbody>
-          ${runs.map(renderRunRow).join("") || `<tr><td colspan="6">No runs recorded yet.</td></tr>`}
+          ${runs.map(renderRunRow).join("") || `<tr><td colspan="6">実行履歴はまだありません。</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -128,7 +128,7 @@ function renderRunRow(run: Awaited<ReturnType<typeof listAgentRuns>>[number]): s
   const target = stringValue(run.summary.targetUrl) || stringValue(run.input.targetUrl) || "-";
   return `
     <tr>
-      <td><span class="badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></td>
+      <td><span class="badge ${escapeHtml(run.status)}">${escapeHtml(formatStatus(run.status))}</span></td>
       <td>${escapeHtml(run.agentType)}</td>
       <td>${escapeHtml(run.source)}</td>
       <td><a href="/admin/runs/${encodeURIComponent(run.id)}">${escapeHtml(target)}</a></td>
@@ -140,37 +140,37 @@ function renderRunRow(run: Awaited<ReturnType<typeof listAgentRuns>>[number]): s
 
 function renderRunDetail(run: AgentRunDetail) {
   return `
-    <p><a href="/admin">Back to runs</a></p>
+    <p><a href="/admin">実行一覧に戻る</a></p>
     <section class="panel">
       <div class="section-header">
         <h2>${escapeHtml(stringValue(run.summary.targetUrl) || stringValue(run.input.targetUrl) || run.id)}</h2>
         <form method="post" action="/admin/runs/${encodeURIComponent(run.id)}/retry">
-          <button type="submit">Retry</button>
+          <button type="submit">再実行</button>
         </form>
       </div>
       <dl class="grid">
-        <dt>Status</dt><dd><span class="badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></dd>
-        <dt>Agent</dt><dd>${escapeHtml(run.agentType)}</dd>
-        <dt>Source</dt><dd>${escapeHtml(run.source)}</dd>
-        <dt>Started</dt><dd>${formatDate(run.startedAt)}</dd>
-        <dt>Completed</dt><dd>${run.completedAt ? formatDate(run.completedAt) : "-"}</dd>
-        <dt>Duration</dt><dd>${formatDuration(run.startedAt, run.completedAt)}</dd>
-        <dt>Domain</dt><dd>${escapeHtml(stringValue(run.summary.domain) || "-")}</dd>
-        <dt>SEO score</dt><dd>${escapeHtml(stringValue(run.summary.seoScore) || "-")}</dd>
+        <dt>状態</dt><dd><span class="badge ${escapeHtml(run.status)}">${escapeHtml(formatStatus(run.status))}</span></dd>
+        <dt>エージェント</dt><dd>${escapeHtml(run.agentType)}</dd>
+        <dt>起点</dt><dd>${escapeHtml(formatSource(run.source))}</dd>
+        <dt>開始</dt><dd>${formatDate(run.startedAt)}</dd>
+        <dt>完了</dt><dd>${run.completedAt ? formatDate(run.completedAt) : "-"}</dd>
+        <dt>所要時間</dt><dd>${formatDuration(run.startedAt, run.completedAt)}</dd>
+        <dt>ドメイン</dt><dd>${escapeHtml(stringValue(run.summary.domain) || "-")}</dd>
+        <dt>SEOスコア</dt><dd>${escapeHtml(stringValue(run.summary.seoScore) || "-")}</dd>
       </dl>
       ${run.error ? `<p class="error">${escapeHtml(run.error)}</p>` : ""}
     </section>
     <section class="panel">
-      <h2>Steps</h2>
+      <h2>処理ステップ</h2>
       <table>
-        <thead><tr><th>Status</th><th>Name</th><th>Duration</th><th>Reason / Error</th></tr></thead>
+        <thead><tr><th>状態</th><th>名前</th><th>所要時間</th><th>理由 / エラー</th></tr></thead>
         <tbody>
           ${run.steps
             .map(
               (step) => `
                 <tr>
-                  <td><span class="badge ${escapeHtml(step.status)}">${escapeHtml(step.status)}</span></td>
-                  <td>${escapeHtml(step.name)}</td>
+                  <td><span class="badge ${escapeHtml(step.status)}">${escapeHtml(formatStatus(step.status))}</span></td>
+                  <td>${escapeHtml(formatStepName(step.name))}</td>
                   <td>${step.durationMs} ms</td>
                   <td>${escapeHtml(step.error ?? step.reason ?? "")}</td>
                 </tr>
@@ -181,7 +181,7 @@ function renderRunDetail(run: AgentRunDetail) {
       </table>
     </section>
     <section class="panel">
-      <h2>Artifacts</h2>
+      <h2>成果物</h2>
       ${
         run.artifacts
           .map(
@@ -193,11 +193,11 @@ function renderRunDetail(run: AgentRunDetail) {
               </article>
             `,
           )
-          .join("") || "<p>No artifacts recorded.</p>"
+          .join("") || "<p>成果物は記録されていません。</p>"
       }
     </section>
     <section class="panel">
-      <h2>Raw Metadata</h2>
+      <h2>詳細データ</h2>
       <pre>${escapeHtml(JSON.stringify({ input: run.input, summary: run.summary, metadata: run.metadata }, null, 2))}</pre>
     </section>
   `;
@@ -210,20 +210,20 @@ function renderIntegrations(): string {
     ["Z.ai", "ZAI_API_KEY"],
     ["SendGrid", "SENDGRID_API_KEY"],
     ["Telegram bot", "TELEGRAM_BOT_TOKEN"],
-    ["Telegram chat allowlist", "TELEGRAM_CHAT_ID"],
+    ["Telegram chat許可リスト", "TELEGRAM_CHAT_ID"],
     ["Telegram webhook secret", "TELEGRAM_WEBHOOK_SECRET"],
     ["Stripe", "STRIPE_SECRET_KEY"],
-    ["Admin token", "ADMIN_TOKEN"],
+    ["管理トークン", "ADMIN_TOKEN"],
   ];
   const policies = [
-    ["Email side effects", process.env.REVENUE_AGENT_ALLOW_EMAIL === "true"],
-    ["Telegram side effects", process.env.REVENUE_AGENT_ALLOW_TELEGRAM === "true"],
-    ["Payment link side effects", process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK === "true"],
+    ["メール送信", process.env.REVENUE_AGENT_ALLOW_EMAIL === "true"],
+    ["Telegram通知", process.env.REVENUE_AGENT_ALLOW_TELEGRAM === "true"],
+    ["決済リンク作成", process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK === "true"],
   ];
   return `
-    <p><a href="/admin">Back to runs</a></p>
+    <p><a href="/admin">実行一覧に戻る</a></p>
     <section class="panel">
-      <h2>Provider Configuration</h2>
+      <h2>外部サービス設定</h2>
       <table>
         <tbody>
           ${integrations
@@ -233,7 +233,7 @@ function renderIntegrations(): string {
       </table>
     </section>
     <section class="panel">
-      <h2>Side Effect Policy</h2>
+      <h2>副作用の許可設定</h2>
       <table>
         <tbody>
           ${policies.map(([label, enabled]) => `<tr><th>${escapeHtml(String(label))}</th><td>${configuredBadge(Boolean(enabled), "enabled", "disabled")}</td></tr>`).join("")}
@@ -243,13 +243,13 @@ function renderIntegrations(): string {
   `;
 }
 
-function configuredBadge(value: boolean, yes = "configured", no = "missing"): string {
+function configuredBadge(value: boolean, yes = "設定済み", no = "未設定"): string {
   return `<span class="badge ${value ? "passed" : "skipped"}">${value ? yes : no}</span>`;
 }
 
 function renderPage(title: string, body: string, options: { compact?: boolean } = {}): string {
   return `<!doctype html>
-    <html lang="en">
+    <html lang="ja">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -294,6 +294,36 @@ function renderPage(title: string, body: string, options: { compact?: boolean } 
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+}
+
+function formatStatus(status: string): string {
+  const labels: Record<string, string> = {
+    running: "実行中",
+    passed: "成功",
+    failed: "失敗",
+    skipped: "スキップ",
+  };
+  return labels[status] ?? status;
+}
+
+function formatSource(source: string): string {
+  const labels: Record<string, string> = {
+    api: "API",
+    telegram: "Telegram",
+    manual: "手動",
+  };
+  return labels[source] ?? source;
+}
+
+function formatStepName(name: string): string {
+  const labels: Record<string, string> = {
+    crawl_and_score: "クロール・SEO採点",
+    generate_proposal: "提案書生成",
+    sendgrid_email: "メール送信",
+    telegram_notification: "Telegram通知",
+    stripe_payment_link: "決済リンク作成",
+  };
+  return labels[name] ?? name;
 }
 
 function formatDuration(startedAt: string, completedAt?: string): string {

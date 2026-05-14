@@ -36,8 +36,8 @@ describe("admin routes", () => {
     const response = await dispatch(adminRouter, "/?token=admin-test");
 
     expect(response.status).toBe(200);
-    expect(response.body).toContain("Agent Operations");
-    expect(response.body).toContain("Recent Runs");
+    expect(response.body).toContain("運用ダッシュボード");
+    expect(response.body).toContain("最近の実行");
   });
 });
 

@@ -12,14 +12,14 @@ sitesRouter.use((req, res, next) => {
   }
 
   if (isAdminTokenConfigured()) {
-    res.status(401).send(renderPage("Site Results Login", renderAdminLogin(req.originalUrl), { compact: true }));
+    res.status(401).send(renderPage("URL別結果ログイン", renderAdminLogin(req.originalUrl), { compact: true }));
     return;
   }
 
   if (process.env.NODE_ENV === "production") {
     res
       .status(503)
-      .send(renderPage("Site Results Unavailable", "<p><code>ADMIN_TOKEN</code> is required in production.</p>", { compact: true }));
+      .send(renderPage("URL別結果を利用できません", "<p>本番環境では <code>ADMIN_TOKEN</code> が必要です。</p>", { compact: true }));
     return;
   }
 
@@ -28,13 +28,13 @@ sitesRouter.use((req, res, next) => {
 
 sitesRouter.get("/", async (_req, res) => {
   const sites = await listSites(100);
-  res.send(renderPage("Site Results", renderSiteList(sites)));
+  res.send(renderPage("URL別結果", renderSiteList(sites)));
 });
 
 sitesRouter.get("/:id", async (req, res) => {
   const site = await getSiteDetail(req.params.id);
   if (!site) {
-    res.status(404).send(renderPage("Site Not Found", `<p>Site result not found.</p><p><a href="/sites">Back to sites</a></p>`));
+    res.status(404).send(renderPage("結果が見つかりません", `<p>指定されたURL別結果は見つかりません。</p><p><a href="/sites">一覧に戻る</a></p>`));
     return;
   }
 
@@ -45,22 +45,22 @@ function renderSiteList(sites: SiteRecord[]): string {
   return `
     <section class="panel">
       <div class="section-header">
-        <h2>Analyzed Sites</h2>
-        <nav><a href="/admin">Operations</a><a href="/admin/integrations">Integrations</a></nav>
+        <h2>解析済みURL</h2>
+        <nav><a href="/admin">運用ログ</a><a href="/admin/integrations">外部サービス設定</a></nav>
       </div>
       <table>
         <thead>
           <tr>
-            <th>Status</th>
+            <th>状態</th>
             <th>URL</th>
-            <th>Domain</th>
-            <th>SEO score</th>
-            <th>Updated</th>
-            <th>Run</th>
+            <th>ドメイン</th>
+            <th>SEOスコア</th>
+            <th>更新</th>
+            <th>実行ログ</th>
           </tr>
         </thead>
         <tbody>
-          ${sites.map(renderSiteRow).join("") || `<tr><td colspan="6">No site results recorded yet.</td></tr>`}
+          ${sites.map(renderSiteRow).join("") || `<tr><td colspan="6">URL別結果はまだありません。</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -70,12 +70,12 @@ function renderSiteList(sites: SiteRecord[]): string {
 function renderSiteRow(site: SiteRecord): string {
   return `
     <tr>
-      <td><span class="badge ${escapeHtml(site.latestStatus)}">${escapeHtml(site.latestStatus)}</span></td>
+      <td><span class="badge ${escapeHtml(site.latestStatus)}">${escapeHtml(formatStatus(site.latestStatus))}</span></td>
       <td><a href="/sites/${encodeURIComponent(site.id)}">${escapeHtml(site.displayUrl)}</a></td>
       <td>${escapeHtml(site.domain)}</td>
       <td>${formatScore(site.latestSeoScore)}</td>
       <td>${formatDate(site.updatedAt)}</td>
-      <td>${site.latestRunId ? `<a href="/admin/runs/${encodeURIComponent(site.latestRunId)}">Run</a>` : "-"}</td>
+      <td>${site.latestRunId ? `<a href="/admin/runs/${encodeURIComponent(site.latestRunId)}">開く</a>` : "-"}</td>
     </tr>
   `;
 }
@@ -84,41 +84,41 @@ function renderSiteDetail(site: SiteDetail): string {
   const latestSnapshot = site.snapshots[0];
   const latestProposal = site.proposals[0];
   return `
-    <p><a href="/sites">Back to sites</a> · <a href="/admin">Operations</a></p>
+    <p><a href="/sites">一覧に戻る</a> · <a href="/admin">運用ログ</a></p>
     <section class="panel">
       <div class="section-header">
         <h2>${escapeHtml(site.displayUrl)}</h2>
-        ${site.latestRunId ? `<a href="/admin/runs/${encodeURIComponent(site.latestRunId)}">Open latest run</a>` : ""}
+        ${site.latestRunId ? `<a href="/admin/runs/${encodeURIComponent(site.latestRunId)}">最新の実行ログを開く</a>` : ""}
       </div>
       <dl class="grid">
-        <dt>Status</dt><dd><span class="badge ${escapeHtml(site.latestStatus)}">${escapeHtml(site.latestStatus)}</span></dd>
-        <dt>Domain</dt><dd>${escapeHtml(site.domain)}</dd>
-        <dt>SEO score</dt><dd>${formatScore(site.latestSeoScore)}</dd>
-        <dt>Normalized URL</dt><dd><code>${escapeHtml(site.normalizedUrl)}</code></dd>
-        <dt>Updated</dt><dd>${formatDate(site.updatedAt)}</dd>
+        <dt>状態</dt><dd><span class="badge ${escapeHtml(site.latestStatus)}">${escapeHtml(formatStatus(site.latestStatus))}</span></dd>
+        <dt>ドメイン</dt><dd>${escapeHtml(site.domain)}</dd>
+        <dt>SEOスコア</dt><dd>${formatScore(site.latestSeoScore)}</dd>
+        <dt>正規化URL</dt><dd><code>${escapeHtml(site.normalizedUrl)}</code></dd>
+        <dt>更新</dt><dd>${formatDate(site.updatedAt)}</dd>
       </dl>
     </section>
     <section class="panel">
-      <h2>Latest Snapshot</h2>
-      ${latestSnapshot ? renderSnapshotSummary(latestSnapshot) : "<p>No snapshots recorded.</p>"}
+      <h2>最新の解析結果</h2>
+      ${latestSnapshot ? renderSnapshotSummary(latestSnapshot) : "<p>解析結果は記録されていません。</p>"}
     </section>
     <section class="panel">
-      <h2>Latest Proposal</h2>
+      <h2>最新の提案書</h2>
       ${
         latestProposal
           ? `
             ${latestProposal.pathOrUrl ? `<p><code>${escapeHtml(latestProposal.pathOrUrl)}</code></p>` : ""}
-            ${latestProposal.contentText ? `<pre>${escapeHtml(latestProposal.contentText)}</pre>` : "<p>No proposal content recorded.</p>"}
+            ${latestProposal.contentText ? `<pre>${escapeHtml(latestProposal.contentText)}</pre>` : "<p>提案書の本文は記録されていません。</p>"}
           `
-          : "<p>No proposal generated yet.</p>"
+          : "<p>提案書はまだ生成されていません。</p>"
       }
     </section>
     <section class="panel">
-      <h2>History</h2>
+      <h2>履歴</h2>
       <table>
-        <thead><tr><th>Status</th><th>SEO score</th><th>Created</th><th>Diagnostics</th><th>Run</th></tr></thead>
+        <thead><tr><th>状態</th><th>SEOスコア</th><th>作成</th><th>診断項目</th><th>実行ログ</th></tr></thead>
         <tbody>
-          ${site.snapshots.map(renderSnapshotRow).join("") || `<tr><td colspan="5">No history recorded.</td></tr>`}
+          ${site.snapshots.map(renderSnapshotRow).join("") || `<tr><td colspan="5">履歴はありません。</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -128,10 +128,10 @@ function renderSiteDetail(site: SiteDetail): string {
 function renderSnapshotSummary(snapshot: SiteSnapshotRecord): string {
   return `
     <dl class="grid">
-      <dt>Status</dt><dd><span class="badge ${escapeHtml(snapshot.status)}">${escapeHtml(snapshot.status)}</span></dd>
-      <dt>SEO score</dt><dd>${formatScore(snapshot.seoScore)}</dd>
-      <dt>Diagnostics</dt><dd>${snapshot.diagnostics.length}</dd>
-      <dt>Created</dt><dd>${formatDate(snapshot.createdAt)}</dd>
+      <dt>状態</dt><dd><span class="badge ${escapeHtml(snapshot.status)}">${escapeHtml(formatStatus(snapshot.status))}</span></dd>
+      <dt>SEOスコア</dt><dd>${formatScore(snapshot.seoScore)}</dd>
+      <dt>診断項目</dt><dd>${snapshot.diagnostics.length}</dd>
+      <dt>作成</dt><dd>${formatDate(snapshot.createdAt)}</dd>
     </dl>
     <pre>${escapeHtml(JSON.stringify(snapshot.summary, null, 2))}</pre>
   `;
@@ -140,18 +140,18 @@ function renderSnapshotSummary(snapshot: SiteSnapshotRecord): string {
 function renderSnapshotRow(snapshot: SiteSnapshotRecord): string {
   return `
     <tr>
-      <td><span class="badge ${escapeHtml(snapshot.status)}">${escapeHtml(snapshot.status)}</span></td>
+      <td><span class="badge ${escapeHtml(snapshot.status)}">${escapeHtml(formatStatus(snapshot.status))}</span></td>
       <td>${formatScore(snapshot.seoScore)}</td>
       <td>${formatDate(snapshot.createdAt)}</td>
       <td>${snapshot.diagnostics.length}</td>
-      <td>${snapshot.runId ? `<a href="/admin/runs/${encodeURIComponent(snapshot.runId)}">Run</a>` : "-"}</td>
+      <td>${snapshot.runId ? `<a href="/admin/runs/${encodeURIComponent(snapshot.runId)}">開く</a>` : "-"}</td>
     </tr>
   `;
 }
 
 function renderPage(title: string, body: string, options: { compact?: boolean } = {}): string {
   return `<!doctype html>
-    <html lang="en">
+    <html lang="ja">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -202,6 +202,16 @@ function formatScore(value: number | undefined): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+}
+
+function formatStatus(status: string): string {
+  const labels: Record<string, string> = {
+    running: "実行中",
+    passed: "成功",
+    failed: "失敗",
+    skipped: "スキップ",
+  };
+  return labels[status] ?? status;
 }
 
 function escapeHtml(value: string): string {

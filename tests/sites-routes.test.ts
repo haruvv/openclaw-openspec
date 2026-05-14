@@ -63,10 +63,10 @@ describe("site result routes", () => {
     const detailResponse = await dispatch(sitesRouter, `/${site.id}?token=admin-test`);
 
     expect(listResponse.status).toBe(200);
-    expect(listResponse.body).toContain("Site Results");
+    expect(listResponse.body).toContain("URL別結果");
     expect(listResponse.body).toContain("https://example.com/");
     expect(detailResponse.status).toBe(200);
-    expect(detailResponse.body).toContain("Latest Proposal");
+    expect(detailResponse.body).toContain("最新の提案書");
     expect(detailResponse.body).toContain("# Proposal");
   });
 });

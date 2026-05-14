@@ -21,8 +21,8 @@ export function isAdminTokenConfigured(): boolean {
 export function renderAdminLogin(returnTo: string): string {
   return `
     <form method="get" action="${escapeHtml(returnTo.split("?")[0] || "/admin")}">
-      <label>Admin token <input name="token" type="password" autocomplete="current-password" /></label>
-      <button type="submit">Open dashboard</button>
+      <label>管理トークン <input name="token" type="password" autocomplete="current-password" /></label>
+      <button type="submit">開く</button>
     </form>
   `;
 }
