@@ -107,6 +107,8 @@ const navItems = [
   { label: "外部サービス設定", href: "/admin/seo-sales/settings", icon: Settings },
 ];
 
+const apiCache = new Map<string, unknown>();
+
 function App() {
   const [path, setPath] = useState(window.location.pathname);
   const page = routePage(path);
@@ -115,7 +117,7 @@ function App() {
     const onPopState = () => setPath(window.location.pathname);
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const link = event.target instanceof Element ? event.target.closest("a") : null;
+      const link = getAnchorFromEventTarget(event.target);
       if (!(link instanceof HTMLAnchorElement)) return;
       if (link.target && link.target !== "_self") return;
 
@@ -669,24 +671,43 @@ function StatusPill({ status, label }: { status: Status; label?: string }) {
 }
 
 function useApi<T>(path: string) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = apiCache.get(path) as T | undefined;
+  const [data, setData] = useState<T | null>(cached ?? null);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
-  async function load() {
-    setLoading(true);
+
+  async function fetchPath(targetPath: string, force = false, shouldApply: () => boolean = () => true) {
+    const cachedData = apiCache.get(targetPath) as T | undefined;
+    if (cachedData && !force) {
+      setData(cachedData);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const res = await fetch(path, { credentials: "same-origin" });
+      const res = await fetch(targetPath, { credentials: "same-origin" });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
-      setData((await res.json()) as T);
+      const json = (await res.json()) as T;
+      apiCache.set(targetPath, json);
+      if (shouldApply()) setData(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "読み込みに失敗しました");
+      if (shouldApply()) setError(err instanceof Error ? err.message : "読み込みに失敗しました");
     } finally {
-      setLoading(false);
+      if (shouldApply()) setLoading(false);
     }
   }
+
+  async function load() {
+    await fetchPath(path, true);
+  }
+
   useEffect(() => {
-    void load();
+    let active = true;
+    void fetchPath(path, false, () => active);
+    return () => {
+      active = false;
+    };
   }, [path]);
   return { data, loading, error, reload: load };
 }
@@ -710,6 +731,13 @@ function isActive(href: string, path: string): boolean {
 
 function isClientRoute(path: string): boolean {
   return path === "/admin" || path.startsWith("/admin/seo-sales");
+}
+
+function getAnchorFromEventTarget(target: EventTarget | null): HTMLAnchorElement | null {
+  if (target instanceof HTMLAnchorElement) return target;
+  if (target instanceof Element) return target.closest("a");
+  if (target instanceof Text && target.parentElement) return target.parentElement.closest("a");
+  return null;
 }
 
 function getTargetUrl(run: AgentRun): string {
