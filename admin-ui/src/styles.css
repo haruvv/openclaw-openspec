@@ -44,4 +44,8 @@
   .data-table tr:last-child td {
     @apply border-b-0;
   }
+
+  .table-link {
+    @apply font-black text-blue-700 hover:text-blue-900;
+  }
 }

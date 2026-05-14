@@ -49,7 +49,7 @@ interface AgentRun {
 
 interface AgentRunDetail extends AgentRun {
   steps: Array<{ id: string; name: string; status: Status; durationMs: number; reason?: string; error?: string }>;
-  artifacts: Array<{ id: string; type: string; label: string; pathOrUrl?: string; contentText?: string }>;
+  artifacts: Array<ArtifactRecord>;
 }
 
 interface SiteRecord {
@@ -65,7 +65,33 @@ interface SiteRecord {
 
 interface SiteDetail extends SiteRecord {
   snapshots: Array<{ id: string; status: Status; seoScore?: number; diagnostics: unknown[]; createdAt: string; runId?: string; summary: Record<string, unknown> }>;
-  proposals: Array<{ id: string; label: string; pathOrUrl?: string; contentText?: string; createdAt: string }>;
+  proposals: Array<ProposalRecord>;
+}
+
+interface ArtifactRecord {
+  id: string;
+  type: string;
+  label: string;
+  pathOrUrl?: string;
+  contentText?: string;
+  bodyStorage?: "inline" | "object";
+  objectKey?: string;
+  contentType?: string;
+  byteSize?: number;
+  createdAt?: string;
+}
+
+interface ProposalRecord {
+  id: string;
+  label: string;
+  pathOrUrl?: string;
+  contentText?: string;
+  bodyStorage?: "inline" | "object";
+  objectKey?: string;
+  contentType?: string;
+  byteSize?: number;
+  createdAt: string;
+  runId?: string;
 }
 
 interface SettingsPayload {
@@ -287,14 +313,24 @@ function RunDetailPage({ id }: { id: string }) {
   if (error) return <ErrorState message={error} />;
   const run = data?.run;
   if (!run) return <Empty title="実行が見つかりません" />;
+  const targetUrl = getTargetUrl(run);
+  const seoScore = getSeoScore(run);
+  const domain = typeof run.summary.domain === "string" ? run.summary.domain : "-";
+  const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal" || artifact.contentType === "text/markdown");
   return (
     <div className="space-y-5">
-      <Panel title={String(run.summary.targetUrl ?? run.input.targetUrl ?? run.id)} action={<button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>}>
+      <Panel title={targetUrl} action={<button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>}>
         <div className="grid gap-3 md:grid-cols-4">
           <Info label="状態" value={<StatusPill status={run.status} />} />
           <Info label="起点" value={formatSource(run.source)} />
           <Info label="開始" value={formatDate(run.startedAt)} />
           <Info label="所要時間" value={formatDuration(run.startedAt, run.completedAt)} />
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <Info label="ドメイン" value={domain} />
+          <Info label="SEOスコア" value={seoScore ?? "-"} />
+          <Info label="提案書" value={`${proposalArtifacts.length}件`} />
+          <Info label="成果物" value={`${run.artifacts.length}件`} />
         </div>
         {run.error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{run.error}</p> : null}
       </Panel>
@@ -306,11 +342,15 @@ function RunDetailPage({ id }: { id: string }) {
       </Panel>
       <Panel title="成果物">
         {run.artifacts.length === 0 ? <Empty title="成果物はありません" /> : run.artifacts.map((artifact) => (
-          <article key={artifact.id} className="mb-4 rounded-lg border border-slate-200 p-4">
-            <h3 className="font-black">{artifact.label}</h3>
-            {artifact.pathOrUrl ? <p className="mt-2 rounded bg-slate-100 px-2 py-1 font-mono text-xs">{artifact.pathOrUrl}</p> : null}
-            {artifact.contentText ? <pre className="mt-3 max-h-[520px] overflow-auto rounded-lg bg-slate-950 p-4 text-sm text-slate-50">{artifact.contentText}</pre> : null}
-          </article>
+          <ProposalViewer
+            key={artifact.id}
+            title={artifact.label}
+            pathOrUrl={artifact.pathOrUrl}
+            contentText={artifact.contentText}
+            storage={artifact.bodyStorage}
+            byteSize={artifact.byteSize}
+            createdAt={artifact.createdAt}
+          />
         ))}
       </Panel>
     </div>
@@ -329,6 +369,7 @@ function SiteDetailPage({ id }: { id: string }) {
   const site = data?.site;
   if (!site) return <Empty title="URL結果が見つかりません" />;
   const latestProposal = site.proposals[0];
+  const passedSnapshots = site.snapshots.filter((snapshot) => snapshot.status === "passed").length;
   return (
     <div className="space-y-5">
       <Panel title={site.displayUrl} action={site.latestRunId ? <a href={`/admin/seo-sales/runs/${site.latestRunId}`} className="btn-secondary">実行ログを開く</a> : null}>
@@ -338,14 +379,32 @@ function SiteDetailPage({ id }: { id: string }) {
           <Info label="SEOスコア" value={site.latestSeoScore ?? "-"} />
           <Info label="更新" value={formatDate(site.updatedAt)} />
         </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <Info label="解析回数" value={`${site.snapshots.length}回`} />
+          <Info label="成功回数" value={`${passedSnapshots}回`} />
+          <Info label="提案書" value={`${site.proposals.length}件`} />
+          <Info label="最新実行" value={site.latestRunId ? <a className="table-link" href={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</a> : "-"} />
+        </div>
       </Panel>
       <Panel title="最新の提案書">
         {latestProposal ? (
-          <>
-            {latestProposal.pathOrUrl ? <p className="mb-3 rounded bg-slate-100 px-2 py-1 font-mono text-xs">{latestProposal.pathOrUrl}</p> : null}
-            <pre className="max-h-[580px] overflow-auto rounded-lg bg-slate-950 p-4 text-sm text-slate-50">{latestProposal.contentText ?? "本文は記録されていません。"}</pre>
-          </>
+          <ProposalViewer
+            title={latestProposal.label}
+            pathOrUrl={latestProposal.pathOrUrl}
+            contentText={latestProposal.contentText}
+            storage={latestProposal.bodyStorage}
+            byteSize={latestProposal.byteSize}
+            createdAt={latestProposal.createdAt}
+          />
         ) : <Empty title="提案書はまだありません" />}
+      </Panel>
+      <Panel title="提案書履歴">
+        {site.proposals.length === 0 ? <Empty title="提案書履歴はまだありません" /> : (
+          <table className="data-table">
+            <thead><tr><th>作成</th><th>提案書</th><th>保存先</th><th>サイズ</th><th>実行ログ</th></tr></thead>
+            <tbody>{site.proposals.map((proposal) => <tr key={proposal.id}><td>{formatDate(proposal.createdAt)}</td><td>{proposal.label}</td><td>{proposal.pathOrUrl ?? proposal.objectKey ?? "-"}</td><td>{formatBytes(proposal.byteSize)}</td><td>{proposal.runId ? <a className="table-link" href={`/admin/seo-sales/runs/${proposal.runId}`}>開く</a> : "-"}</td></tr>)}</tbody>
+          </table>
+        )}
       </Panel>
       <Panel title="解析履歴">
         <table className="data-table">
@@ -379,6 +438,114 @@ function SettingsPage() {
   );
 }
 
+function ProposalViewer({
+  title,
+  pathOrUrl,
+  contentText,
+  storage,
+  byteSize,
+  createdAt,
+}: {
+  title: string;
+  pathOrUrl?: string;
+  contentText?: string;
+  storage?: "inline" | "object";
+  byteSize?: number;
+  createdAt?: string;
+}) {
+  const body = contentText?.trim();
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-base font-black text-slate-950">{title}</h3>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {storage ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600">{storage === "object" ? "R2保存" : "DB保存"}</span> : null}
+              {byteSize ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600">{formatBytes(byteSize)}</span> : null}
+              {createdAt ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600">{formatDate(createdAt)}</span> : null}
+            </div>
+          </div>
+          {pathOrUrl ? <div className="max-w-full rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700 md:max-w-xl">{pathOrUrl}</div> : null}
+        </div>
+      </div>
+      {body ? (
+        <div className="max-h-[680px] overflow-auto p-5">
+          <MarkdownPreview text={body} />
+        </div>
+      ) : (
+        <div className="p-5">
+          <Empty title="本文は記録されていません" description="保存先パスだけが残っています。今後の実行では本文も管理画面に表示されます。" />
+        </div>
+      )}
+    </article>
+  );
+}
+
+function MarkdownPreview({ text }: { text: string }) {
+  const nodes: React.ReactNode[] = [];
+  let bullets: string[] = [];
+  let numbers: string[] = [];
+  let paragraph: string[] = [];
+
+  function flush() {
+    if (paragraph.length > 0) {
+      nodes.push(<p key={`p-${nodes.length}`} className="whitespace-pre-wrap">{paragraph.join("\n")}</p>);
+      paragraph = [];
+    }
+    if (bullets.length > 0) {
+      nodes.push(<ul key={`ul-${nodes.length}`} className="list-disc space-y-1 pl-5">{bullets.map((item, index) => <li key={index}>{item}</li>)}</ul>);
+      bullets = [];
+    }
+    if (numbers.length > 0) {
+      nodes.push(<ol key={`ol-${nodes.length}`} className="list-decimal space-y-1 pl-5">{numbers.map((item, index) => <li key={index}>{item}</li>)}</ol>);
+      numbers = [];
+    }
+  }
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) {
+      flush();
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      flush();
+      nodes.push(<h2 key={`h2-${nodes.length}`} className="border-b border-slate-200 pb-2 text-xl font-black leading-8 text-slate-950">{line.replace(/^#\s+/, "")}</h2>);
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      flush();
+      nodes.push(<h3 key={`h3-${nodes.length}`} className="mt-6 text-lg font-black leading-7 text-slate-950">{line.replace(/^##\s+/, "")}</h3>);
+      continue;
+    }
+    if (line.startsWith("### ")) {
+      flush();
+      nodes.push(<h4 key={`h4-${nodes.length}`} className="mt-5 text-base font-black leading-7 text-slate-900">{line.replace(/^###\s+/, "")}</h4>);
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      if (paragraph.length > 0 || numbers.length > 0) flush();
+      bullets.push(line.replace(/^[-*]\s+/, ""));
+      continue;
+    }
+    if (/^\d+\.\s+/.test(line)) {
+      if (paragraph.length > 0 || bullets.length > 0) flush();
+      numbers.push(line.replace(/^\d+\.\s+/, ""));
+      continue;
+    }
+    if (bullets.length > 0 || numbers.length > 0) flush();
+    paragraph.push(line);
+  }
+  flush();
+
+  return (
+    <div className="space-y-4 text-sm leading-7 text-slate-700">
+      {nodes}
+    </div>
+  );
+}
+
 function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; compact?: boolean }) {
   if (sites.length === 0) return <Empty title="URL別結果はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<a href="/admin/seo-sales/runs" className="btn-primary">URLを解析する</a>} />;
   return (
@@ -393,8 +560,8 @@ function RunsTable({ runs, compact = false }: { runs: AgentRun[]; compact?: bool
   if (runs.length === 0) return <Empty title="実行履歴はまだありません" description="URLを解析すると、ここに実行ステータスと詳細ログが表示されます。" action={<a href="/admin/seo-sales/runs" className="btn-primary">URLを解析する</a>} />;
   return (
     <table className="data-table">
-      <thead><tr><th>状態</th><th>対象URL</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
-      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><a className="table-link" href={`/admin/seo-sales/runs/${run.id}`}>{String(run.summary.targetUrl ?? run.input.targetUrl ?? "-")}</a></td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
+      <thead><tr><th>状態</th><th>対象URL</th><th>SEOスコア</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
+      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><a className="table-link" href={`/admin/seo-sales/runs/${run.id}`}>{getTargetUrl(run)}</a></td><td>{getSeoScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
     </table>
   );
 }
@@ -515,6 +682,18 @@ function isActive(href: string, path: string): boolean {
   return path === href || path.startsWith(`${href}/`);
 }
 
+function getTargetUrl(run: AgentRun): string {
+  const candidates = [run.summary.targetUrl, run.input.targetUrl, run.input.url];
+  const value = candidates.find((candidate) => typeof candidate === "string" && candidate.length > 0);
+  return typeof value === "string" ? value : "-";
+}
+
+function getSeoScore(run: AgentRun): number | null {
+  const candidates = [run.summary.seoScore, run.summary.score, run.summary.latestScore];
+  const value = candidates.find((candidate) => typeof candidate === "number" && Number.isFinite(candidate));
+  return typeof value === "number" ? value : null;
+}
+
 function formatDate(value?: string): string {
   if (!value) return "-";
   return new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
@@ -526,6 +705,13 @@ function formatDuration(startedAt: string, completedAt?: string): string {
   if (!Number.isFinite(ms) || ms < 0) return "-";
   if (ms < 1000) return `${ms} ms`;
   return `${(ms / 1000).toFixed(1)} s`;
+}
+
+function formatBytes(value?: number): string {
+  if (!value || !Number.isFinite(value)) return "-";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatStatus(status: Status): string {
