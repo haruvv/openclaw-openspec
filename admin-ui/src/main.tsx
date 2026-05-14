@@ -302,9 +302,12 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<DiscoveryReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastCompletedAt, setLastCompletedAt] = useState<string | null>(null);
 
   async function runDiscovery() {
     setRunning(true);
+    setReport(null);
+    setLastCompletedAt(null);
     setError(null);
     try {
       const result = await apiPost<{ report: DiscoveryReport }>("/api/admin/seo-sales/discovery/run", {});
@@ -312,6 +315,7 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
       apiCache.delete("/api/admin/seo-sales/runs");
       apiCache.delete("/api/admin/seo-sales/sites");
       setReport(result.report);
+      setLastCompletedAt(new Date().toISOString());
       await onDone?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "候補発見に失敗しました");
@@ -327,12 +331,23 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
     >
       <div className="space-y-4">
         <p className="text-sm font-semibold leading-6 text-slate-600">検索条件からURL候補を探し、未解析のURLだけを上限件数まで解析します。</p>
+        {running ? (
+          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
+            候補発見を実行中です。検索と解析が入る場合は少し時間がかかります。
+          </div>
+        ) : null}
         {report ? (
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Info label="状態" value={<StatusPill status={report.status === "disabled" ? "skipped" : report.status} label={formatDiscoveryStatus(report.status)} />} />
-            <Info label="候補" value={`${report.candidateCount}件`} />
-            <Info label="解析開始" value={`${report.selectedCount}件`} />
-            <Info label="上限" value={`${report.quota}件/日`} />
+          <div className="space-y-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+              {formatDiscoverySummary(report)}
+              {lastCompletedAt ? <span className="ml-2 text-xs font-semibold text-slate-500">完了: {formatDate(lastCompletedAt)}</span> : null}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Info label="状態" value={<StatusPill status={report.status === "disabled" ? "skipped" : report.status} label={formatDiscoveryStatus(report.status)} />} />
+              <Info label="候補" value={`${report.candidateCount}件`} />
+              <Info label="解析開始" value={`${report.selectedCount}件`} />
+              <Info label="上限" value={`${report.quota}件/日`} />
+            </div>
           </div>
         ) : null}
         {report?.runs.length ? (
@@ -346,6 +361,14 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
         ) : null}
         {report?.status === "skipped" ? (
           <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">解析できる新規候補がありませんでした。</p>
+        ) : null}
+        {report?.skipped.length ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="text-xs font-black text-slate-500">スキップ理由</div>
+            <ul className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
+              {report.skipped.slice(0, 5).map((item, index) => <li key={`${item.url}-${index}`}>{item.url}: {formatSkipReason(item.reason)}</li>)}
+            </ul>
+          </div>
         ) : null}
         {error ? <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
         <a href="/admin/seo-sales/settings" className="inline-flex items-center gap-1 text-sm font-black text-blue-700">設定を確認する<ArrowUpRight className="h-4 w-4" /></a>
@@ -801,6 +824,21 @@ function formatSource(source: string): string {
 
 function formatDiscoveryStatus(status: DiscoveryReport["status"]): string {
   return { disabled: "無効", skipped: "候補なし", passed: "成功", failed: "失敗" }[status];
+}
+
+function formatDiscoverySummary(report: DiscoveryReport): string {
+  if (report.status === "disabled") return "手動の候補発見は無効です。";
+  if (report.runs.length > 0) return `${report.runs.length}件の解析を開始しました。`;
+  if (report.candidateCount === 0) return "候補URLが見つかりませんでした。検索キーワードまたは固定候補を設定してください。";
+  if (report.selectedCount === 0) return "新しく解析するURLはありませんでした。既に解析済み、またはURL検証で除外されています。";
+  return "候補発見は完了しました。";
+}
+
+function formatSkipReason(reason: string): string {
+  return {
+    already_analyzed: "解析済み",
+    "REVENUE_AGENT_DISCOVERY_SEED_URLS is empty": "候補設定なし",
+  }[reason] ?? reason;
 }
 
 function formatStepName(name: string): string {
