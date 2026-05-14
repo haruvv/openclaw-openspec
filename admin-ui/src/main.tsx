@@ -678,7 +678,7 @@ async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<
 }
 
 function isActive(href: string, path: string): boolean {
-  if (href === "/admin") return path === "/admin";
+  if (href === "/admin" || href === "/admin/seo-sales") return path === href;
   return path === href || path.startsWith(`${href}/`);
 }
 
