@@ -9,16 +9,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
-  CreditCard,
-  FileText,
   Globe2,
   LayoutDashboard,
-  Mail,
   PlayCircle,
   RefreshCw,
   Search,
   Settings,
-  ShieldCheck,
   TrendingUp,
   XCircle,
 } from "lucide-react";
@@ -165,9 +161,9 @@ function App() {
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100/90 px-5 py-4 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="text-xs font-bold text-slate-500">管理画面 / いま確認している場所</div>
+              <div className="text-xs font-bold text-slate-500">管理画面</div>
               <h1 className="text-2xl font-black tracking-normal text-slate-950">{page.title}</h1>
-              <p className="mt-1 max-w-3xl text-sm text-slate-600">{page.description}</p>
+              {page.description ? <p className="mt-1 max-w-3xl text-sm text-slate-600">{page.description}</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <a href="/admin/seo-sales/runs" className="btn-primary"><PlayCircle className="h-4 w-4" />URLを解析</a>
@@ -208,13 +204,13 @@ function SidebarGroup({ label, items, path }: { label: string; items: typeof nav
 }
 
 function routePage(path: string): { title: string; description: string; node: React.ReactNode } {
-  if (path === "/admin/seo-sales") return { title: "SEO営業", description: "URLを解析し、SEO改善ポイントと営業提案の材料をまとめます。まずはURLを入れて実行できます。", node: <SeoSalesHome /> };
-  if (path === "/admin/seo-sales/sites") return { title: "URL別結果", description: "解析したURLごとに、最新スコア・提案書・過去履歴を確認できます。", node: <SitesPage /> };
-  if (path.startsWith("/admin/seo-sales/sites/")) return { title: "URL詳細", description: "このURLの最新結果、提案書、過去の解析履歴をまとめて確認します。", node: <SiteDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
-  if (path === "/admin/seo-sales/runs") return { title: "実行ログ", description: "URL解析を手動で開始したり、過去の実行がどこまで進んだか確認できます。", node: <RunsPage /> };
-  if (path.startsWith("/admin/seo-sales/runs/")) return { title: "実行詳細", description: "処理ステップごとの成否、生成された提案書、再実行ボタンを確認できます。", node: <RunDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
-  if (path === "/admin/seo-sales/settings") return { title: "外部サービス設定", description: "APIキーが入っているか、メール送信や決済リンク作成が許可されているかを確認します。", node: <SettingsPage /> };
-  return { title: "業務アプリ", description: "RevenueAgentで管理する自動業務の入口です。今はSEO営業を中心に整えています。", node: <PortalPage /> };
+  if (path === "/admin/seo-sales") return { title: "SEO営業", description: "URL解析、提案書、実行状況を確認します。", node: <SeoSalesHome /> };
+  if (path === "/admin/seo-sales/sites") return { title: "URL別結果", description: "解析済みURLの最新状態です。", node: <SitesPage /> };
+  if (path.startsWith("/admin/seo-sales/sites/")) return { title: "URL詳細", description: "", node: <SiteDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
+  if (path === "/admin/seo-sales/runs") return { title: "実行ログ", description: "解析の実行履歴です。", node: <RunsPage /> };
+  if (path.startsWith("/admin/seo-sales/runs/")) return { title: "実行詳細", description: "", node: <RunDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
+  if (path === "/admin/seo-sales/settings") return { title: "外部サービス設定", description: "連携設定と実行ポリシーです。", node: <SettingsPage /> };
+  return { title: "業務アプリ", description: "管理対象の業務一覧です。", node: <PortalPage /> };
 }
 
 function PortalPage() {
@@ -223,15 +219,6 @@ function PortalPage() {
   if (error) return <ErrorState message={error} />;
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-black text-emerald-950">今日使うなら、まずSEO営業です</h2>
-            <p className="mt-1 text-sm font-semibold text-emerald-800">URLを入れると、クロール、SEO採点、提案書生成までをまとめて実行します。</p>
-          </div>
-          <a href="/admin/seo-sales/runs" className="btn-primary"><PlayCircle className="h-4 w-4" />URLを解析する</a>
-        </div>
-      </section>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {(data?.apps ?? []).map((app) => (
         <section key={app.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
@@ -247,13 +234,6 @@ function PortalPage() {
             </div>
           </div>
           <p className="mt-4 min-h-12 text-sm text-slate-600">{app.description}</p>
-          {app.id === "seo-sales" ? (
-            <div className="mt-4 grid gap-2 text-sm text-slate-700">
-              <FeatureLine icon={<Search />} text="URL単位でSEOスコアと改善点を確認" />
-              <FeatureLine icon={<FileText />} text="営業提案に使う文章を生成" />
-              <FeatureLine icon={<ShieldCheck />} text="メール・通知・決済は許可設定で制御" />
-            </div>
-          ) : null}
           <div className="mt-5 flex flex-wrap gap-2">
             {app.status === "active" ? (
               <>
@@ -285,16 +265,17 @@ function SeoSalesHome() {
   return (
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="URLを解析する" action={<span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">手動テスト用</span>}>
-          <p className="mb-4 text-sm font-semibold text-slate-600">本番では自動クロールに寄せる予定ですが、今はここから1件ずつ動作確認できます。</p>
+        <Panel title="新規解析">
           <ManualRunForm onDone={reload} />
         </Panel>
-        <Panel title="今の運用状態">
-          <div className="space-y-3">
-            <FeatureLine icon={<Search />} text="SEO採点と提案書生成は実行できます" />
-            <FeatureLine icon={<Mail />} text="メール送信は安全のため現在オフです" />
-            <FeatureLine icon={<CreditCard />} text="決済リンク作成も現在オフです" />
-          </div>
+        <Panel title="連携状態">
+          <table className="data-table">
+            <tbody>
+              <tr><th>SEO採点</th><td><StatusPill status="passed" label="有効" /></td></tr>
+              <tr><th>メール送信</th><td><StatusPill status="skipped" label="無効" /></td></tr>
+              <tr><th>決済リンク</th><td><StatusPill status="skipped" label="無効" /></td></tr>
+            </tbody>
+          </table>
           <a href="/admin/seo-sales/settings" className="mt-4 inline-flex items-center gap-1 text-sm font-black text-blue-700">設定を確認する<ArrowUpRight className="h-4 w-4" /></a>
         </Panel>
       </div>
@@ -320,8 +301,7 @@ function RunsPage() {
   const { data, loading, error, reload } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
   return (
     <div className="space-y-5">
-      <Panel title="URLを解析する">
-        <p className="mb-4 text-sm font-semibold text-slate-600">まず試したいサイトURLを入れてください。実行後は詳細画面に移動します。</p>
+      <Panel title="新規解析">
         <ManualRunForm onDone={reload} />
       </Panel>
       <Panel title="実行ログ">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={data?.runs ?? []} />}</Panel>
@@ -368,15 +348,13 @@ function RunDetailPage({ id }: { id: string }) {
           <tbody>{run.steps.map((step) => <tr key={step.id}><td><StatusPill status={step.status} /></td><td>{formatStepName(step.name)}</td><td>{step.durationMs} ms</td><td>{step.error ?? step.reason ?? ""}</td></tr>)}</tbody>
         </table>
       </Panel>
-      <Panel title="成果物">
+      <Panel title="提案書">
         {run.artifacts.length === 0 ? <Empty title="成果物はありません" /> : run.artifacts.map((artifact) => (
           <ProposalViewer
             key={artifact.id}
             title={artifact.label}
             pathOrUrl={artifact.pathOrUrl}
             contentText={artifact.contentText}
-            storage={artifact.bodyStorage}
-            byteSize={artifact.byteSize}
             createdAt={artifact.createdAt}
           />
         ))}
@@ -420,8 +398,6 @@ function SiteDetailPage({ id }: { id: string }) {
             title={latestProposal.label}
             pathOrUrl={latestProposal.pathOrUrl}
             contentText={latestProposal.contentText}
-            storage={latestProposal.bodyStorage}
-            byteSize={latestProposal.byteSize}
             createdAt={latestProposal.createdAt}
           />
         ) : <Empty title="提案書はまだありません" />}
@@ -451,13 +427,11 @@ function SettingsPage() {
   return (
     <div className="grid gap-5 xl:grid-cols-2">
       <Panel title="外部サービス設定">
-        <p className="mb-4 text-sm font-semibold text-slate-600">値そのものは表示せず、設定されているかだけを確認します。</p>
         <table className="data-table">
           <tbody>{data?.integrations.map((item) => <tr key={item.key}><th>{item.label}</th><td><StatusPill status={item.configured ? "passed" : "skipped"} label={item.configured ? "設定済み" : "未設定"} /></td></tr>)}</tbody>
         </table>
       </Panel>
       <Panel title="副作用の許可設定">
-        <p className="mb-4 text-sm font-semibold text-slate-600">外部に実際のメール・通知・決済リンクを送る操作です。テスト中は無効が安全です。</p>
         <table className="data-table">
           <tbody>{data?.policies.map((item) => <tr key={item.label}><th>{item.label}</th><td><StatusPill status={item.enabled ? "passed" : "skipped"} label={item.enabled ? "有効" : "無効"} /></td></tr>)}</tbody>
         </table>
@@ -470,15 +444,11 @@ function ProposalViewer({
   title,
   pathOrUrl,
   contentText,
-  storage,
-  byteSize,
   createdAt,
 }: {
   title: string;
   pathOrUrl?: string;
   contentText?: string;
-  storage?: "inline" | "object";
-  byteSize?: number;
   createdAt?: string;
 }) {
   const body = contentText?.trim();
@@ -488,11 +458,7 @@ function ProposalViewer({
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h3 className="text-base font-black text-slate-950">{title}</h3>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {storage ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600">{storage === "object" ? "R2保存" : "DB保存"}</span> : null}
-              {byteSize ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600">{formatBytes(byteSize)}</span> : null}
-              {createdAt ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-600">{formatDate(createdAt)}</span> : null}
-            </div>
+            {createdAt ? <div className="mt-1 text-xs font-semibold text-slate-500">{formatDate(createdAt)}</div> : null}
           </div>
           {pathOrUrl ? <div className="max-w-full rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700 md:max-w-xl">{pathOrUrl}</div> : null}
         </div>
@@ -503,7 +469,7 @@ function ProposalViewer({
         </div>
       ) : (
         <div className="p-5">
-          <Empty title="本文は記録されていません" description="保存先パスだけが残っています。今後の実行では本文も管理画面に表示されます。" />
+          <Empty title="本文は記録されていません" />
         </div>
       )}
     </article>
@@ -616,10 +582,6 @@ function Loading() {
 
 function ErrorState({ message }: { message: string }) {
   return <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-800"><div className="flex items-center gap-2"><AlertCircle className="h-4 w-4" />読み込みに失敗しました</div><p className="mt-2 font-semibold">{message}</p></div>;
-}
-
-function FeatureLine({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return <div className="flex items-start gap-2 text-sm font-semibold text-slate-700"><span className="mt-0.5 text-blue-700 [&_svg]:h-4 [&_svg]:w-4">{icon}</span><span>{text}</span></div>;
 }
 
 function ManualRunForm({ onDone }: { onDone?: () => void | Promise<void> }) {
