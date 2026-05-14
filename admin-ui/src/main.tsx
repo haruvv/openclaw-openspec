@@ -1,20 +1,24 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
+  AlertCircle,
   ArrowUpRight,
   Bot,
   BriefcaseBusiness,
   CheckCircle2,
-  CircleDollarSign,
+  ChevronRight,
   Clock3,
-  ExternalLink,
+  CreditCard,
   FileText,
   Globe2,
   LayoutDashboard,
+  Mail,
+  PlayCircle,
   RefreshCw,
   Search,
   Settings,
+  ShieldCheck,
   TrendingUp,
   XCircle,
 } from "lucide-react";
@@ -88,7 +92,7 @@ function App() {
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-black text-slate-950">RA</div>
           <div>
             <div className="text-sm font-black">RevenueAgent</div>
-            <div className="text-xs font-semibold text-slate-400">Business Console</div>
+            <div className="text-xs font-semibold text-slate-400">業務自動化コンソール</div>
           </div>
         </a>
         <nav className="space-y-7 px-4">
@@ -107,13 +111,14 @@ function App() {
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100/90 px-5 py-4 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="text-xs font-bold text-slate-500">管理画面</div>
+              <div className="text-xs font-bold text-slate-500">管理画面 / いま確認している場所</div>
               <h1 className="text-2xl font-black tracking-normal text-slate-950">{page.title}</h1>
               <p className="mt-1 max-w-3xl text-sm text-slate-600">{page.description}</p>
             </div>
-            <a href="/admin" className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 shadow-sm">
-              業務アプリ一覧
-            </a>
+            <div className="flex flex-wrap gap-2">
+              <a href="/admin/seo-sales/runs" className="btn-primary"><PlayCircle className="h-4 w-4" />URLを解析</a>
+              <a href="/admin" className="btn-secondary">業務アプリ一覧</a>
+            </div>
           </div>
           <nav className="mt-4 flex gap-2 overflow-x-auto lg:hidden">
             {navItems.map((item) => (
@@ -149,22 +154,33 @@ function SidebarGroup({ label, items, path }: { label: string; items: typeof nav
 }
 
 function routePage(path: string): { title: string; description: string; node: React.ReactNode } {
-  if (path === "/admin/seo-sales") return { title: "SEO営業", description: "クロール、SEO評価、提案書生成、通知、決済導線をまとめて管理します。", node: <SeoSalesHome /> };
-  if (path === "/admin/seo-sales/sites") return { title: "URL別結果", description: "自動・手動クロールで解析されたURLの最新状態と履歴を確認します。", node: <SitesPage /> };
-  if (path.startsWith("/admin/seo-sales/sites/")) return { title: "URL詳細", description: "最新のSEO結果、提案書、過去の解析履歴を確認します。", node: <SiteDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
-  if (path === "/admin/seo-sales/runs") return { title: "実行ログ", description: "SEO営業ワークフローの実行状況、失敗、成果物を確認します。", node: <RunsPage /> };
-  if (path.startsWith("/admin/seo-sales/runs/")) return { title: "実行詳細", description: "各ステップ、成果物、詳細データを確認し、必要なら再実行します。", node: <RunDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
-  if (path === "/admin/seo-sales/settings") return { title: "外部サービス設定", description: "APIキーの設定状態と副作用ポリシーを確認します。", node: <SettingsPage /> };
-  return { title: "業務アプリ", description: "SEO営業、株自動売買など、複数の自動業務をここから管理します。", node: <PortalPage /> };
+  if (path === "/admin/seo-sales") return { title: "SEO営業", description: "URLを解析し、SEO改善ポイントと営業提案の材料をまとめます。まずはURLを入れて実行できます。", node: <SeoSalesHome /> };
+  if (path === "/admin/seo-sales/sites") return { title: "URL別結果", description: "解析したURLごとに、最新スコア・提案書・過去履歴を確認できます。", node: <SitesPage /> };
+  if (path.startsWith("/admin/seo-sales/sites/")) return { title: "URL詳細", description: "このURLの最新結果、提案書、過去の解析履歴をまとめて確認します。", node: <SiteDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
+  if (path === "/admin/seo-sales/runs") return { title: "実行ログ", description: "URL解析を手動で開始したり、過去の実行がどこまで進んだか確認できます。", node: <RunsPage /> };
+  if (path.startsWith("/admin/seo-sales/runs/")) return { title: "実行詳細", description: "処理ステップごとの成否、生成された提案書、再実行ボタンを確認できます。", node: <RunDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
+  if (path === "/admin/seo-sales/settings") return { title: "外部サービス設定", description: "APIキーが入っているか、メール送信や決済リンク作成が許可されているかを確認します。", node: <SettingsPage /> };
+  return { title: "業務アプリ", description: "RevenueAgentで管理する自動業務の入口です。今はSEO営業を中心に整えています。", node: <PortalPage /> };
 }
 
 function PortalPage() {
-  const { data, loading } = useApi<{ apps: BusinessApp[] }>("/api/admin/apps");
+  const { data, loading, error } = useApi<{ apps: BusinessApp[] }>("/api/admin/apps");
   if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {(data?.apps ?? []).map((app) => (
-        <section key={app.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="space-y-5">
+      <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-emerald-950">今日使うなら、まずSEO営業です</h2>
+            <p className="mt-1 text-sm font-semibold text-emerald-800">URLを入れると、クロール、SEO採点、提案書生成までをまとめて実行します。</p>
+          </div>
+          <a href="/admin/seo-sales/runs" className="btn-primary"><PlayCircle className="h-4 w-4" />URLを解析する</a>
+        </div>
+      </section>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {(data?.apps ?? []).map((app) => (
+        <section key={app.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
@@ -177,10 +193,17 @@ function PortalPage() {
             </div>
           </div>
           <p className="mt-4 min-h-12 text-sm text-slate-600">{app.description}</p>
+          {app.id === "seo-sales" ? (
+            <div className="mt-4 grid gap-2 text-sm text-slate-700">
+              <FeatureLine icon={<Search />} text="URL単位でSEOスコアと改善点を確認" />
+              <FeatureLine icon={<FileText />} text="営業提案に使う文章を生成" />
+              <FeatureLine icon={<ShieldCheck />} text="メール・通知・決済は許可設定で制御" />
+            </div>
+          ) : null}
           <div className="mt-5 flex flex-wrap gap-2">
             {app.status === "active" ? (
               <>
-                <a href={app.entryPath} className="btn-primary">開く</a>
+                <a href={app.entryPath} className="btn-primary">開く<ChevronRight className="h-4 w-4" /></a>
                 {app.primaryLinks.map((link) => (
                   <a key={link.href} href={link.href} className="btn-secondary">{link.label}</a>
                 ))}
@@ -190,21 +213,37 @@ function PortalPage() {
             )}
           </div>
         </section>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
 
 function SeoSalesHome() {
-  const { data, loading } = useApi<{
+  const { data, loading, error, reload } = useApi<{
     totals: { runs: number; sites: number; failedRuns: number; latestScore: number | null };
     recentRuns: AgentRun[];
     recentSites: SiteRecord[];
   }>("/api/admin/seo-sales/overview");
   if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
   const totals = data?.totals;
   return (
     <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <Panel title="URLを解析する" action={<span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">手動テスト用</span>}>
+          <p className="mb-4 text-sm font-semibold text-slate-600">本番では自動クロールに寄せる予定ですが、今はここから1件ずつ動作確認できます。</p>
+          <ManualRunForm onDone={reload} />
+        </Panel>
+        <Panel title="今の運用状態">
+          <div className="space-y-3">
+            <FeatureLine icon={<Search />} text="SEO採点と提案書生成は実行できます" />
+            <FeatureLine icon={<Mail />} text="メール送信は安全のため現在オフです" />
+            <FeatureLine icon={<CreditCard />} text="決済リンク作成も現在オフです" />
+          </div>
+          <a href="/admin/seo-sales/settings" className="mt-4 inline-flex items-center gap-1 text-sm font-black text-blue-700">設定を確認する<ArrowUpRight className="h-4 w-4" /></a>
+        </Panel>
+      </div>
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={<Activity />} label="最近の実行" value={totals?.runs ?? 0} />
         <Metric icon={<Globe2 />} label="解析済みURL" value={totals?.sites ?? 0} />
@@ -224,40 +263,20 @@ function SeoSalesHome() {
 }
 
 function RunsPage() {
-  const { data, loading, reload } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
-  const [url, setUrl] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function runManual(event: React.FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const result = await apiPost<{ location: string }>("/api/admin/seo-sales/runs", { url });
-      window.location.href = result.location;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "実行に失敗しました");
-    } finally {
-      setSubmitting(false);
-      void reload();
-    }
-  }
+  const { data, loading, error, reload } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
   return (
     <div className="space-y-5">
-      <Panel title="手動実行">
-        <form onSubmit={runManual} className="flex flex-col gap-3 md:flex-row">
-          <input value={url} onChange={(event) => setUrl(event.target.value)} className="input flex-1" type="url" placeholder="https://example.com" required />
-          <button className="btn-primary" disabled={submitting}>{submitting ? "実行中..." : "RevenueAgentを実行"}</button>
-        </form>
-        {error ? <p className="mt-3 text-sm font-bold text-red-700">{error}</p> : null}
+      <Panel title="URLを解析する">
+        <p className="mb-4 text-sm font-semibold text-slate-600">まず試したいサイトURLを入れてください。実行後は詳細画面に移動します。</p>
+        <ManualRunForm onDone={reload} />
       </Panel>
-      <Panel title="実行ログ">{loading ? <Loading /> : <RunsTable runs={data?.runs ?? []} />}</Panel>
+      <Panel title="実行ログ">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={data?.runs ?? []} />}</Panel>
     </div>
   );
 }
 
 function RunDetailPage({ id }: { id: string }) {
-  const { data, loading, reload } = useApi<{ run: AgentRunDetail }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}`);
+  const { data, loading, error } = useApi<{ run: AgentRunDetail }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}`);
   const [retrying, setRetrying] = useState(false);
   async function retry() {
     setRetrying(true);
@@ -265,6 +284,7 @@ function RunDetailPage({ id }: { id: string }) {
     window.location.href = result.location;
   }
   if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
   const run = data?.run;
   if (!run) return <Empty title="実行が見つかりません" />;
   return (
@@ -298,13 +318,14 @@ function RunDetailPage({ id }: { id: string }) {
 }
 
 function SitesPage() {
-  const { data, loading } = useApi<{ sites: SiteRecord[] }>("/api/admin/seo-sales/sites");
-  return <Panel title="解析済みURL">{loading ? <Loading /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
+  const { data, loading, error } = useApi<{ sites: SiteRecord[] }>("/api/admin/seo-sales/sites");
+  return <Panel title="解析済みURL">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
 }
 
 function SiteDetailPage({ id }: { id: string }) {
-  const { data, loading } = useApi<{ site: SiteDetail }>(`/api/admin/seo-sales/sites/${encodeURIComponent(id)}`);
+  const { data, loading, error } = useApi<{ site: SiteDetail }>(`/api/admin/seo-sales/sites/${encodeURIComponent(id)}`);
   if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
   const site = data?.site;
   if (!site) return <Empty title="URL結果が見つかりません" />;
   const latestProposal = site.proposals[0];
@@ -337,16 +358,19 @@ function SiteDetailPage({ id }: { id: string }) {
 }
 
 function SettingsPage() {
-  const { data, loading } = useApi<SettingsPayload>("/api/admin/seo-sales/settings");
+  const { data, loading, error } = useApi<SettingsPayload>("/api/admin/seo-sales/settings");
   if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
   return (
     <div className="grid gap-5 xl:grid-cols-2">
       <Panel title="外部サービス設定">
+        <p className="mb-4 text-sm font-semibold text-slate-600">値そのものは表示せず、設定されているかだけを確認します。</p>
         <table className="data-table">
           <tbody>{data?.integrations.map((item) => <tr key={item.key}><th>{item.label}</th><td><StatusPill status={item.configured ? "passed" : "skipped"} label={item.configured ? "設定済み" : "未設定"} /></td></tr>)}</tbody>
         </table>
       </Panel>
       <Panel title="副作用の許可設定">
+        <p className="mb-4 text-sm font-semibold text-slate-600">外部に実際のメール・通知・決済リンクを送る操作です。テスト中は無効が安全です。</p>
         <table className="data-table">
           <tbody>{data?.policies.map((item) => <tr key={item.label}><th>{item.label}</th><td><StatusPill status={item.enabled ? "passed" : "skipped"} label={item.enabled ? "有効" : "無効"} /></td></tr>)}</tbody>
         </table>
@@ -356,21 +380,21 @@ function SettingsPage() {
 }
 
 function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; compact?: boolean }) {
-  if (sites.length === 0) return <Empty title="URL別結果はまだありません" />;
+  if (sites.length === 0) return <Empty title="URL別結果はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<a href="/admin/seo-sales/runs" className="btn-primary">URLを解析する</a>} />;
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>SEOスコア</th>{compact ? null : <th>更新</th>}<th>実行ログ</th></tr></thead>
-      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><a href={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</a></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td>{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td>{site.latestRunId ? <a href={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</a> : "-"}</td></tr>)}</tbody>
+      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><a className="table-link" href={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</a></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td>{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td>{site.latestRunId ? <a className="table-link" href={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</a> : "-"}</td></tr>)}</tbody>
     </table>
   );
 }
 
 function RunsTable({ runs, compact = false }: { runs: AgentRun[]; compact?: boolean }) {
-  if (runs.length === 0) return <Empty title="実行履歴はまだありません" />;
+  if (runs.length === 0) return <Empty title="実行履歴はまだありません" description="URLを解析すると、ここに実行ステータスと詳細ログが表示されます。" action={<a href="/admin/seo-sales/runs" className="btn-primary">URLを解析する</a>} />;
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>対象URL</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
-      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><a href={`/admin/seo-sales/runs/${run.id}`}>{String(run.summary.targetUrl ?? run.input.targetUrl ?? "-")}</a></td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
+      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><a className="table-link" href={`/admin/seo-sales/runs/${run.id}`}>{String(run.summary.targetUrl ?? run.input.targetUrl ?? "-")}</a></td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
     </table>
   );
 }
@@ -387,12 +411,52 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs font-bold text-slate-500">{label}</div><div className="mt-1 text-sm font-black">{value}</div></div>;
 }
 
-function Empty({ title }: { title: string }) {
-  return <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">{title}</div>;
+function Empty({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
+  return <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div className="text-sm font-black text-slate-700">{title}</div>{description ? <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-slate-500">{description}</p> : null}{action ? <div className="mt-4 flex justify-center">{action}</div> : null}</div>;
 }
 
 function Loading() {
   return <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">読み込み中...</div>;
+}
+
+function ErrorState({ message }: { message: string }) {
+  return <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-800"><div className="flex items-center gap-2"><AlertCircle className="h-4 w-4" />読み込みに失敗しました</div><p className="mt-2 font-semibold">{message}</p></div>;
+}
+
+function FeatureLine({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return <div className="flex items-start gap-2 text-sm font-semibold text-slate-700"><span className="mt-0.5 text-blue-700 [&_svg]:h-4 [&_svg]:w-4">{icon}</span><span>{text}</span></div>;
+}
+
+function ManualRunForm({ onDone }: { onDone?: () => void | Promise<void> }) {
+  const [url, setUrl] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function runManual(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await apiPost<{ location: string }>("/api/admin/seo-sales/runs", { url });
+      window.location.href = result.location;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "実行に失敗しました");
+    } finally {
+      setSubmitting(false);
+      await onDone?.();
+    }
+  }
+  return (
+    <form onSubmit={runManual}>
+      <div className="flex flex-col gap-3 md:flex-row">
+        <label className="flex-1">
+          <span className="mb-1 block text-xs font-black text-slate-500">解析したいURL</span>
+          <input value={url} onChange={(event) => setUrl(event.target.value)} className="input w-full" type="url" placeholder="https://example.com" required />
+        </label>
+        <button className="btn-primary md:mt-5" disabled={submitting}>{submitting ? "実行中..." : "解析を開始"}</button>
+      </div>
+      {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+    </form>
+  );
 }
 
 function StatusPill({ status, label }: { status: Status; label?: string }) {
