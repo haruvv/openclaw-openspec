@@ -33,6 +33,14 @@
     @apply min-h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-blue-200 focus:border-blue-700 focus:ring-4;
   }
 
+  .check-row {
+    @apply flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700;
+  }
+
+  .check-row input {
+    @apply h-4 w-4 accent-blue-700;
+  }
+
   .data-table {
     @apply w-full border-collapse text-sm;
   }
