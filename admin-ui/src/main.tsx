@@ -95,6 +95,16 @@ interface SettingsPayload {
   policies: Array<{ label: string; enabled: boolean }>;
 }
 
+interface DiscoveryReport {
+  status: "disabled" | "skipped" | "passed" | "failed";
+  enabled: boolean;
+  quota: number;
+  candidateCount: number;
+  selectedCount: number;
+  skipped: Array<{ url: string; reason: string }>;
+  runs: Array<{ url: string; runId: string; status: Status }>;
+}
+
 const navItems = [
   { label: "業務アプリ", href: "/admin", icon: LayoutDashboard },
   { label: "SEO営業 概要", href: "/admin/seo-sales", icon: BriefcaseBusiness },
@@ -268,16 +278,7 @@ function SeoSalesHome() {
         <Panel title="新規解析">
           <ManualRunForm onDone={reload} />
         </Panel>
-        <Panel title="連携状態">
-          <table className="data-table">
-            <tbody>
-              <tr><th>SEO採点</th><td><StatusPill status="passed" label="有効" /></td></tr>
-              <tr><th>メール送信</th><td><StatusPill status="skipped" label="無効" /></td></tr>
-              <tr><th>決済リンク</th><td><StatusPill status="skipped" label="無効" /></td></tr>
-            </tbody>
-          </table>
-          <a href="/admin/seo-sales/settings" className="mt-4 inline-flex items-center gap-1 text-sm font-black text-blue-700">設定を確認する<ArrowUpRight className="h-4 w-4" /></a>
-        </Panel>
+        <DiscoveryRunPanel onDone={reload} />
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={<Activity />} label="最近の実行" value={totals?.runs ?? 0} />
@@ -294,6 +295,62 @@ function SeoSalesHome() {
         </Panel>
       </div>
     </div>
+  );
+}
+
+function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) {
+  const [running, setRunning] = useState(false);
+  const [report, setReport] = useState<DiscoveryReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function runDiscovery() {
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await apiPost<{ report: DiscoveryReport }>("/api/admin/seo-sales/discovery/run", {});
+      apiCache.delete("/api/admin/seo-sales/overview");
+      apiCache.delete("/api/admin/seo-sales/runs");
+      apiCache.delete("/api/admin/seo-sales/sites");
+      setReport(result.report);
+      await onDone?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "候補発見に失敗しました");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Panel
+      title="自動候補発見"
+      action={<button onClick={runDiscovery} className="btn-primary" disabled={running}><Search className="h-4 w-4" />{running ? "実行中..." : "今すぐ実行"}</button>}
+    >
+      <div className="space-y-4">
+        <p className="text-sm font-semibold leading-6 text-slate-600">検索条件からURL候補を探し、未解析のURLだけを上限件数まで解析します。</p>
+        {report ? (
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Info label="状態" value={<StatusPill status={report.status === "disabled" ? "skipped" : report.status} label={formatDiscoveryStatus(report.status)} />} />
+            <Info label="候補" value={`${report.candidateCount}件`} />
+            <Info label="解析開始" value={`${report.selectedCount}件`} />
+            <Info label="上限" value={`${report.quota}件/日`} />
+          </div>
+        ) : null}
+        {report?.runs.length ? (
+          <table className="data-table">
+            <thead><tr><th>状態</th><th>URL</th><th>実行ログ</th></tr></thead>
+            <tbody>{report.runs.map((run) => <tr key={run.runId}><td><StatusPill status={run.status} /></td><td>{run.url}</td><td><a className="table-link" href={`/admin/seo-sales/runs/${run.runId}`}>開く</a></td></tr>)}</tbody>
+          </table>
+        ) : null}
+        {report?.status === "disabled" ? (
+          <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">自動候補発見は無効です。Cloudflare の環境変数で REVENUE_AGENT_DISCOVERY_ENABLED=true と検索キーワードを設定すると動きます。</p>
+        ) : null}
+        {report?.status === "skipped" ? (
+          <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">解析できる新規候補がありませんでした。</p>
+        ) : null}
+        {error ? <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+        <a href="/admin/seo-sales/settings" className="inline-flex items-center gap-1 text-sm font-black text-blue-700">設定を確認する<ArrowUpRight className="h-4 w-4" /></a>
+      </div>
+    </Panel>
   );
 }
 
@@ -739,7 +796,11 @@ function formatStatus(status: Status): string {
 }
 
 function formatSource(source: string): string {
-  return { api: "API", telegram: "Telegram", manual: "手動" }[source] ?? source;
+  return { api: "API", telegram: "Telegram", manual: "手動", discovery: "自動候補発見" }[source] ?? source;
+}
+
+function formatDiscoveryStatus(status: DiscoveryReport["status"]): string {
+  return { disabled: "無効", skipped: "候補なし", passed: "成功", failed: "失敗" }[status];
 }
 
 function formatStepName(name: string): string {

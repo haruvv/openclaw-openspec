@@ -88,6 +88,22 @@ describe("admin routes", () => {
     expect(body.sites[0]).toMatchObject({ displayUrl: "https://example.com/", latestSeoScore: 81 });
   });
 
+  it("can run discovery from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_DISCOVERY_ENABLED = "false";
+    process.env.REVENUE_AGENT_DISCOVERY_SEED_URLS = "https://example.com";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/discovery/run?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {},
+    });
+
+    expect(response.status).toBe(200);
+    const body = JSON.parse(response.body) as { report: { status: string; selectedCount: number } };
+    expect(body.report).toMatchObject({ status: "disabled", selectedCount: 0 });
+  });
+
   it("redirects legacy run URLs to SEO sales routes", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     const { adminRouter } = await import("../src/admin/routes.js");
@@ -99,7 +115,12 @@ describe("admin routes", () => {
   });
 });
 
-function dispatch(router: { handle: Function }, url: string, mount = "/admin"): Promise<{ status: number; body: string; headers: Record<string, string> }> {
+function dispatch(
+  router: { handle: Function },
+  url: string,
+  mount = "/admin",
+  options: { method?: string; body?: unknown } = {},
+): Promise<{ status: number; body: string; headers: Record<string, string> }> {
   return new Promise((resolve, reject) => {
     const req = new Readable({ read() {} }) as unknown as {
       method: string;
@@ -108,10 +129,11 @@ function dispatch(router: { handle: Function }, url: string, mount = "/admin"): 
       originalUrl?: string;
       query?: Record<string, string>;
     };
-    req.method = "GET";
+    req.method = options.method ?? "GET";
     req.url = url;
     req.originalUrl = `${mount}${url}`;
-    req.headers = {};
+    const bodyText = options.body === undefined ? "" : JSON.stringify(options.body);
+    req.headers = bodyText ? { "content-type": "application/json", "content-length": String(Buffer.byteLength(bodyText)) } : {};
     req.query = Object.fromEntries(new URL(`http://admin.test${url}`).searchParams.entries());
 
     const res = {
@@ -154,6 +176,7 @@ function dispatch(router: { handle: Function }, url: string, mount = "/admin"): 
     };
 
     router.handle(req, res, reject);
-    req.push(null);
+    req.push(bodyText || null);
+    if (bodyText) req.push(null);
   });
 }

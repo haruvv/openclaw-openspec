@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Request, Response } from "express";
 import { getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
+import { runDailyDiscoveryJob } from "../discovery/job.js";
 import { runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
 import { getSiteDetail, listSites } from "../sites/repository.js";
@@ -78,6 +79,11 @@ adminApiRouter.post("/seo-sales/runs/:id/retry", async (req, res) => {
 
   const report = await runManualRevenueAgent(targetUrl, { retryOf: prior?.id });
   res.status(201).json({ runId: report.id, location: `/admin/seo-sales/runs/${encodeURIComponent(report.id)}`, report });
+});
+
+adminApiRouter.post("/seo-sales/discovery/run", async (_req, res) => {
+  const report = await runDailyDiscoveryJob();
+  res.status(report.status === "failed" ? 502 : 200).json({ report });
 });
 
 adminApiRouter.get("/seo-sales/sites", async (_req, res) => {
