@@ -177,10 +177,13 @@ Rate Limiting は Cloudflare 側を第一防衛線にし、アプリ側の `REVE
 | `Dockerfile` | RevenueAgentPlatform production image |
 | `infra/cloudflare/revenue-agent-rate-limit.tf.example` | Cloudflare zone-level Rate Limiting rule の Terraform 例 |
 
-デプロイ時は `wrangler deploy` が Docker image を build/push し、Worker と Container binding を Cloudflare に反映します。
+デプロイ時は `wrangler deploy` が Docker image を build/push し、Worker と Container binding を Cloudflare に反映します。Container application が古い image tag を参照し続ける場合は、Cloudflare registry に push 済みの image reference を `wrangler.jsonc` の `containers[].image` に明示して `--containers-rollout immediate` で反映します。
+
+Container は `max_instances=2` にしています。通常運用は singleton 名で 1 instance に寄せますが、deploy / rollout 直後に旧 instance が停止するまでの間、起動上限で webhook が 500/503 になるのを避けるためです。
 
 ```bash
 npm run deploy:cloudflare
+npm run deploy:cloudflare -- --containers-rollout immediate
 ```
 
 本番 secret は `wrangler secret put` で登録します。

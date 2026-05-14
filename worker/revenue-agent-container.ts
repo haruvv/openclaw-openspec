@@ -6,6 +6,8 @@ type WorkerEnv = {
   REVENUE_AGENT_RUN_LIMITER: RateLimit;
 };
 
+const CONTAINER_INSTANCE_NAME = "production";
+
 const REQUIRED_ENV = [
   "REVENUE_AGENT_INTEGRATION_TOKEN",
   "FIRECRAWL_API_KEY",
@@ -82,14 +84,21 @@ export class RevenueAgentContainer extends Container {
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
-    const container = getContainer(env.REVENUE_AGENT_CONTAINER, "production");
+    const container = getContainer(env.REVENUE_AGENT_CONTAINER, CONTAINER_INSTANCE_NAME);
 
     if (url.pathname === "/telegram/webhook" && request.method === "POST") {
       if (!isTelegramAuthorized(request)) {
         return Response.json({ error: "unauthorized" }, { status: 401 });
       }
 
-      return container.fetch(request);
+      const body = await request.text();
+      return container.fetch(
+        new Request(`${url.origin}/telegram/webhook`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        }),
+      );
     }
 
     if (url.pathname === "/api/revenue-agent/run" && request.method === "POST") {
