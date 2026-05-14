@@ -7,7 +7,7 @@
 ## 2. Production Configuration
 
 - [x] 2.1 Configure RevenueAgentPlatform production secrets and environment variables.
-- [ ] 2.2 Configure Cloudflare rate limiting for `POST /api/revenue-agent/run`.
+- [x] 2.2 Configure Cloudflare rate limiting for `POST /api/revenue-agent/run`.
 - [x] 2.3 Keep `REVENUE_AGENT_ALLOW_EMAIL`, `REVENUE_AGENT_ALLOW_TELEGRAM`, and `REVENUE_AGENT_ALLOW_PAYMENT_LINK` disabled for first deployment.
 - [x] 2.4 Configure OpenClaw Gateway production `REVENUE_AGENT_BASE_URL` and matching integration token.
 

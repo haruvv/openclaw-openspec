@@ -119,11 +119,13 @@ REVENUE_AGENT_INTEGRATION_TOKEN=<same-long-random-secret>
 | Hosting | Cloudflare Containers |
 | Hostname | 初期は `https://revenue-agent-platform.<workers-subdomain>.workers.dev` |
 | TLS | Cloudflare managed HTTPS |
-| Rate Limiting | `POST /api/revenue-agent/run` を対象に設定 |
+| Rate Limiting | Workers Rate Limiting binding で `POST /api/revenue-agent/run` を対象に設定 |
 | Request filtering | 必要に応じて WAF / custom rules を追加 |
 | Logs | Authorization header や API key を出さない |
 
 Rate Limiting は Cloudflare 側を第一防衛線にし、アプリ側の `REVENUE_AGENT_RATE_LIMIT_PER_MINUTE` はローカル fallback として残します。
+
+`wrangler.jsonc` では `REVENUE_AGENT_RUN_LIMITER` binding を設定し、`POST /api/revenue-agent/run` だけを client IP ごとに 60 秒 10 requests へ制限します。この制限は Worker wrapper で container に proxy する前に評価するため、無効 token や不正 request でも高コストな container 実行へ進みにくくなります。
 
 `wrangler.jsonc` では `workers_dev=true` を明示し、初回は Cloudflare の workers.dev hostname を本番候補 URL として使います。独自ドメインを使う場合は、Cloudflare zone が決まった後で `routes` を追加します。
 
@@ -162,7 +164,7 @@ npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
-Rate Limiting を Terraform で管理する場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
+独自ドメイン移行後、zone-level Rate Limiting も追加したい場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
 
 ```bash
 cp infra/cloudflare/revenue-agent-rate-limit.tf.example infra/cloudflare/revenue-agent-rate-limit.tf
@@ -221,6 +223,7 @@ curl -sS https://<production-hostname>/api/revenue-agent/run \
 | --- | --- |
 | RevenueAgentPlatform URL | `https://revenue-agent-platform.haruki-ito0044.workers.dev` |
 | RevenueAgentPlatform version | `786b1c17-e695-4797-8bb2-9cff11df38f3` |
+| Latest RevenueAgentPlatform version | `b1d7f7a8-225d-4ffb-867a-99fd17b19bc2` |
 | OpenClaw Gateway URL | `https://openclaw-gateway.haruki-ito0044.workers.dev` |
 | OpenClaw Gateway version | `189d4057-f2aa-4bf8-a591-16ab39e8cbd7` |
 | Side effects | `REVENUE_AGENT_ALLOW_EMAIL=false`, `REVENUE_AGENT_ALLOW_TELEGRAM=false`, `REVENUE_AGENT_ALLOW_PAYMENT_LINK=false` |
@@ -229,11 +232,11 @@ Verified:
 
 - `GET /health` returned HTTP 200 with `{"status":"ok"}`.
 - Direct `POST /api/revenue-agent/run` returned HTTP 200 for `https://example.com` with `crawl_and_score=passed`, `generate_proposal=passed`, and all side-effect steps skipped.
+- Worker-level Rate Limiting returned HTTP 429 after repeated invalid `POST /api/revenue-agent/run` requests. In the bounded check, 30 requests produced 22 `401` responses and 8 `429` responses.
 - OpenClaw Gateway production secrets were configured for `REVENUE_AGENT_BASE_URL` and `REVENUE_AGENT_INTEGRATION_TOKEN`, then Gateway was redeployed and reached `running`.
 
 Pending:
 
-- Cloudflare zone-level Rate Limiting rule application. The Terraform example is ready, but the actual rule needs a Cloudflare zone/custom hostname or an account-level equivalent.
 - End-to-end OpenClaw conversation/skill invocation against production RevenueAgentPlatform. This depends on OpenClaw's LLM provider being usable; the current Z.ai key previously returned insufficient balance/resource package.
 
 ## ロールバック

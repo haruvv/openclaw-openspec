@@ -3,6 +3,7 @@ import { env as workerEnv } from "cloudflare:workers";
 
 type WorkerEnv = {
   REVENUE_AGENT_CONTAINER: DurableObjectNamespace<RevenueAgentContainer>;
+  REVENUE_AGENT_RUN_LIMITER: RateLimit;
 };
 
 const REQUIRED_ENV = [
@@ -75,6 +76,19 @@ export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     const container = getContainer(env.REVENUE_AGENT_CONTAINER, "production");
+
+    if (url.pathname === "/api/revenue-agent/run" && request.method === "POST") {
+      const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const { success } = await env.REVENUE_AGENT_RUN_LIMITER.limit({
+        key: `run:${clientIp}`,
+      });
+
+      if (!success) {
+        return Response.json({ error: "rate_limited" }, { status: 429 });
+      }
+
+      return container.fetch(request);
+    }
 
     if (url.pathname === "/health" || url.pathname === "/api/revenue-agent/run") {
       return container.fetch(request);
