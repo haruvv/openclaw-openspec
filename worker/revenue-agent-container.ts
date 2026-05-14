@@ -6,7 +6,7 @@ type WorkerEnv = {
   REVENUE_AGENT_RUN_LIMITER: RateLimit;
 };
 
-const CONTAINER_INSTANCE_NAME = "production-sites";
+const CONTAINER_INSTANCE_NAME = "production-admin-ui";
 
 const REQUIRED_ENV = [
   "REVENUE_AGENT_INTEGRATION_TOKEN",
