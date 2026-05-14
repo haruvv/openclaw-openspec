@@ -123,7 +123,13 @@ export default {
       return container.fetch(request);
     }
 
-    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname === "/sites" || url.pathname.startsWith("/sites/")) {
+    if (url.pathname === "/sites" || url.pathname.startsWith("/sites/")) {
+      const suffix = url.pathname === "/sites" ? "" : url.pathname.slice("/sites".length);
+      url.pathname = `/admin/seo-sales/sites${suffix}`;
+      return Response.redirect(url.toString(), 301);
+    }
+
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
       return container.fetch(request);
     }
 
