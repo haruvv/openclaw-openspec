@@ -281,7 +281,7 @@ function SeoSalesHome() {
         <Panel title="新規解析">
           <ManualRunForm onDone={reload} />
         </Panel>
-        <DiscoveryRunPanel onDone={reload} />
+        <DiscoveryRunPanel />
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={<Activity />} label="最近の実行" value={totals?.runs ?? 0} />
@@ -301,15 +301,14 @@ function SeoSalesHome() {
   );
 }
 
-function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) {
+function DiscoveryRunPanel() {
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<DiscoveryReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastCompletedAt, setLastCompletedAt] = useState<string | null>(null);
   const [activity, setActivity] = useState("待機中");
 
-  async function runDiscovery(event?: React.FormEvent) {
-    event?.preventDefault();
+  async function runDiscovery() {
     setRunning(true);
     setReport(null);
     setLastCompletedAt(null);
@@ -335,9 +334,7 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
     <Panel
       title="自動候補発見"
       action={
-        <form method="post" action={withAdminToken("/api/admin/seo-sales/discovery/run")} onSubmit={runDiscovery}>
-          <button type="submit" className="btn-primary" disabled={running}><Search className="h-4 w-4" />{running ? "実行中..." : "今すぐ実行"}</button>
-        </form>
+        <button type="button" className="btn-primary" disabled={running} onClick={runDiscovery}><Search className="h-4 w-4" />{running ? "実行中..." : "今すぐ実行"}</button>
       }
     >
       <div className="space-y-4">
