@@ -1,6 +1,7 @@
 import express, { Router } from "express";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
 import { getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
 import { runDailyDiscoveryJob } from "../discovery/job.js";
@@ -13,13 +14,27 @@ import { isAdminAuthorized, isAdminTokenConfigured } from "./auth.js";
 export const adminRouter = Router();
 export const adminApiRouter = Router();
 
-const adminUiDir = join(process.cwd(), "dist/admin-ui");
-const adminIndexPath = join(adminUiDir, "index.html");
-export const adminAssetsRouter = express.static(join(adminUiDir, "assets"), {
-  immutable: true,
-  index: false,
-  maxAge: "1y",
+const adminUiDirs = uniquePaths([
+  join(process.cwd(), "dist/admin-ui"),
+  join(dirname(fileURLToPath(import.meta.url)), "..", "admin-ui"),
+]);
+
+export const adminAssetsRouter = Router();
+for (const dir of adminUiDirs) {
+  adminAssetsRouter.use(express.static(join(dir, "assets"), {
+    immutable: true,
+    index: false,
+    maxAge: "1y",
+  }));
+}
+adminAssetsRouter.use((_req, res) => {
+  res.status(404).send("Not Found");
 });
+
+const adminUiStaticRouter = Router();
+for (const dir of adminUiDirs) {
+  adminUiStaticRouter.use(express.static(dir, { index: false }));
+}
 
 adminApiRouter.use(express.json());
 adminApiRouter.use(requireAdminApiAuth);
@@ -148,9 +163,10 @@ adminRouter.post("/runs/:id/retry", (req, res) => {
   res.redirect(307, `/api/admin/seo-sales/runs/${encodeURIComponent(req.params.id)}/retry`);
 });
 
-adminRouter.use(express.static(adminUiDir, { index: false }));
+adminRouter.use(adminUiStaticRouter);
 
 adminRouter.get("*", (_req, res) => {
+  const adminIndexPath = findAdminIndexPath();
   if (existsSync(adminIndexPath)) {
     res.sendFile(adminIndexPath);
     return;
@@ -248,4 +264,12 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function findAdminIndexPath(): string {
+  return adminUiDirs.map((dir) => join(dir, "index.html")).find((path) => existsSync(path)) ?? join(adminUiDirs[0], "index.html");
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return Array.from(new Set(paths));
 }
