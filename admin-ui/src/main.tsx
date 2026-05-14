@@ -342,7 +342,7 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
           </table>
         ) : null}
         {report?.status === "disabled" ? (
-          <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">自動候補発見は無効です。Cloudflare の環境変数で REVENUE_AGENT_DISCOVERY_ENABLED=true と検索キーワードを設定すると動きます。</p>
+          <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">手動の候補発見は無効です。Cloudflare の環境変数で REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED=false になっていないか確認してください。</p>
         ) : null}
         {report?.status === "skipped" ? (
           <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">解析できる新規候補がありませんでした。</p>

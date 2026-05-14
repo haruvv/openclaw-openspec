@@ -88,9 +88,26 @@ describe("admin routes", () => {
     expect(body.sites[0]).toMatchObject({ displayUrl: "https://example.com/", latestSeoScore: 81 });
   });
 
-  it("can run discovery from the admin API", async () => {
+  it("can run discovery from the admin API even when cron discovery is disabled", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.REVENUE_AGENT_DISCOVERY_ENABLED = "false";
+    process.env.REVENUE_AGENT_DISCOVERY_SEED_URLS = "";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/discovery/run?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {},
+    });
+
+    expect(response.status).toBe(200);
+    const body = JSON.parse(response.body) as { report: { status: string; enabled: boolean; selectedCount: number } };
+    expect(body.report).toMatchObject({ status: "skipped", enabled: true, selectedCount: 0 });
+  });
+
+  it("can explicitly disable manual discovery from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_DISCOVERY_ENABLED = "true";
+    process.env.REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED = "false";
     process.env.REVENUE_AGENT_DISCOVERY_SEED_URLS = "https://example.com";
     const { adminApiRouter } = await import("../src/admin/routes.js");
 
@@ -100,8 +117,8 @@ describe("admin routes", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = JSON.parse(response.body) as { report: { status: string; selectedCount: number } };
-    expect(body.report).toMatchObject({ status: "disabled", selectedCount: 0 });
+    const body = JSON.parse(response.body) as { report: { status: string; enabled: boolean; selectedCount: number } };
+    expect(body.report).toMatchObject({ status: "disabled", enabled: false, selectedCount: 0 });
   });
 
   it("redirects legacy run URLs to SEO sales routes", async () => {

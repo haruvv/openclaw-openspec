@@ -23,6 +23,7 @@ export interface DailyDiscoveryReport {
 
 interface DailyDiscoveryJobOptions {
   env?: NodeJS.ProcessEnv;
+  enabled?: boolean;
   discoverCandidates?: (env: NodeJS.ProcessEnv) => Promise<DiscoveryCandidate[]>;
   listExistingSites?: () => Promise<SiteRecord[]>;
   runAgent?: (options: RevenueAgentRunOptions) => Promise<RevenueAgentRunReport>;
@@ -31,7 +32,7 @@ interface DailyDiscoveryJobOptions {
 
 export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {}): Promise<DailyDiscoveryReport> {
   const env = options.env ?? process.env;
-  const enabled = env.REVENUE_AGENT_DISCOVERY_ENABLED === "true";
+  const enabled = options.enabled ?? env.REVENUE_AGENT_DISCOVERY_ENABLED === "true";
   const quota = readQuota(env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA);
   const seedCandidates = readSeedCandidates(env.REVENUE_AGENT_DISCOVERY_SEED_URLS);
   const skipped: DailyDiscoveryReport["skipped"] = [];

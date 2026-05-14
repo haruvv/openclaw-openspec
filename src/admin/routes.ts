@@ -97,7 +97,7 @@ adminApiRouter.post("/seo-sales/runs/:id/retry", async (req, res) => {
 });
 
 adminApiRouter.post("/seo-sales/discovery/run", async (_req, res) => {
-  const report = await runDailyDiscoveryJob();
+  const report = await runDailyDiscoveryJob({ enabled: process.env.REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED !== "false" });
   res.status(report.status === "failed" ? 502 : 200).json({ report });
 });
 
