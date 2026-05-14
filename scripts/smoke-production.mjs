@@ -1,13 +1,10 @@
-import { readFile } from "node:fs/promises";
-
 const baseUrl = (process.env.PRODUCTION_BASE_URL ?? "https://revenue-agent-platform.haruki-ito0044.workers.dev").replace(/\/$/, "");
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 60_000);
 
 async function main() {
-  const cssPath = await readBuiltCssPath();
   await checkHealth();
   await check("admin auth boundary", `${baseUrl}/admin`, { expectedStatus: 401, expectedContentType: "text/html" });
-  await check("admin css asset", `${baseUrl}${cssPath}`, { expectedStatus: 200, expectedContentType: "text/css" });
+  await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatus: 401, expectedContentType: "application/json" });
   console.log(`Production smoke checks passed for ${baseUrl}`);
 }
 
@@ -23,13 +20,6 @@ async function checkHealth() {
     throw new Error(`health: expected durable-http storage, got ${JSON.stringify(body?.storage)}`);
   }
   console.log(`health: 200 application/json storage=${body?.storage?.mode ?? "unknown"}`);
-}
-
-async function readBuiltCssPath() {
-  const html = await readFile("dist/admin-ui/index.html", "utf8");
-  const match = html.match(/href="([^"]+\.css)"/);
-  if (!match?.[1]) throw new Error("Could not find built admin CSS asset in dist/admin-ui/index.html");
-  return match[1];
 }
 
 async function check(name, url, expectation) {
