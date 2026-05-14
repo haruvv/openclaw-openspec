@@ -114,8 +114,10 @@ const navItems = [
 ];
 
 const apiCache = new Map<string, unknown>();
+const ADMIN_TOKEN_STORAGE_KEY = "revenue_agent_admin_token";
 
 function App() {
+  rememberAdminTokenFromUrl();
   const [path, setPath] = useState(window.location.pathname);
   const page = routePage(path);
 
@@ -728,7 +730,7 @@ function useApi<T>(path: string) {
     }
     setError(null);
     try {
-      const res = await fetch(targetPath, { credentials: "same-origin" });
+      const res = await fetch(withAdminToken(targetPath), { credentials: "same-origin" });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const json = (await res.json()) as T;
       apiCache.set(targetPath, json);
@@ -755,15 +757,48 @@ function useApi<T>(path: string) {
 }
 
 async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(withAdminToken(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as T & { error?: string };
+  const json = (await readJsonResponse(res)) as T & { error?: string };
   if (!res.ok) throw new Error(json.error ?? `API error: ${res.status}`);
   return json;
+}
+
+async function readJsonResponse(res: Response): Promise<unknown> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) return res.json();
+  const text = await res.text();
+  return { error: text.trim() || `API error: ${res.status}` };
+}
+
+function rememberAdminTokenFromUrl(): void {
+  const token = new URLSearchParams(window.location.search).get("token");
+  if (!token) return;
+  try {
+    window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Session storage can be unavailable in hardened browsers; cookies still cover the normal path.
+  }
+}
+
+function readRememberedAdminToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function withAdminToken(path: string): string {
+  const token = readRememberedAdminToken();
+  if (!token) return path;
+  const url = new URL(path, window.location.origin);
+  if (!url.searchParams.has("token")) url.searchParams.set("token", token);
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function isActive(href: string, path: string): boolean {
