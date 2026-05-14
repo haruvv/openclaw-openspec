@@ -131,6 +131,11 @@ async function runTelegramRevenueAgent(update: TelegramUpdate): Promise<void> {
     const allowed = applySideEffectPolicy(requested);
     const report = await runRevenueAgent({
       targetUrl: safeUrl.url,
+      source: "telegram",
+      metadata: {
+        chatId: String(chatId),
+        messageId: message.message_id,
+      },
       sendEmail: allowed.sendEmail,
       sendTelegram: allowed.sendTelegram,
       createPaymentLink: allowed.createPaymentLink,

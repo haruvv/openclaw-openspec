@@ -9,6 +9,7 @@ import { sendPaymentReminders } from "./stripe-payment-link/payment-link.js";
 import { logger } from "./utils/logger.js";
 import { handleRevenueAgentRun } from "./revenue-agent/http.js";
 import { handleTelegramWebhook } from "./revenue-agent/telegram-webhook.js";
+import { adminRouter } from "./admin/routes.js";
 
 export const app = express();
 
@@ -41,6 +42,8 @@ app.post("/api/revenue-agent/run", async (req, res) => {
 app.post("/telegram/webhook", async (req, res) => {
   await handleTelegramWebhook(req, res);
 });
+
+app.use("/admin", adminRouter);
 
 app.get("/hil/approve", async (req, res) => {
   const { targetId, token } = req.query as Record<string, string>;

@@ -48,6 +48,51 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_outreach_log_domain ON outreach_log(domain);
     CREATE INDEX IF NOT EXISTS idx_outreach_log_sent_at ON outreach_log(sent_at);
     CREATE INDEX IF NOT EXISTS idx_targets_status ON targets(status);
+
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id TEXT PRIMARY KEY,
+      agent_type TEXT NOT NULL,
+      source TEXT NOT NULL,
+      status TEXT NOT NULL,
+      input_json TEXT NOT NULL,
+      summary_json TEXT NOT NULL,
+      error TEXT,
+      metadata_json TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_run_steps (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      reason TEXT,
+      error TEXT,
+      details_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_artifacts (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      label TEXT NOT NULL,
+      path_or_url TEXT,
+      content_text TEXT,
+      metadata_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_started_at ON agent_runs(started_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_id ON agent_run_steps(run_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_artifacts_run_id ON agent_artifacts(run_id);
   `);
   ensureColumn(db, "targets", "payment_link_expires_at", "INTEGER");
   ensureColumn(db, "targets", "payment_reminder_sent_at", "INTEGER");

@@ -54,6 +54,7 @@ export async function handleRevenueAgentRun(req: Request, res: Response): Promis
 
   const report = await runRevenueAgent({
     targetUrl: safeUrl.url,
+    source: "api",
     sendEmail: allowed.sendEmail,
     sendTelegram: allowed.sendTelegram,
     createPaymentLink: allowed.createPaymentLink,

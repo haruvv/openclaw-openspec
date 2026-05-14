@@ -5,6 +5,8 @@ import { crawlBatch } from "../site-crawler/crawler.js";
 import { generateProposal } from "../proposal-generator/generator.js";
 import { saveProposal } from "../proposal-generator/storage.js";
 import type { Target } from "../types/index.js";
+import { completeAgentRun, createAgentRun } from "../agent-runs/repository.js";
+import { logger } from "../utils/logger.js";
 import { sanitizeSecretText } from "./security.js";
 import type { RevenueAgentRunOptions, RevenueAgentRunReport, RevenueAgentStepResult } from "./types.js";
 
@@ -17,7 +19,25 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
   const targetUrl = options.targetUrl;
   const steps: RevenueAgentStepResult[] = [];
   const outputs: Record<string, unknown> = {};
+  const artifacts: Array<{
+    type: string;
+    label: string;
+    pathOrUrl?: string;
+    contentText?: string;
+    metadata?: Record<string, unknown>;
+  }> = [];
   let target: Target | undefined;
+
+  await recordRunStart({
+    id,
+    source: options.source ?? "api",
+    targetUrl,
+    sendEmail: options.sendEmail === true,
+    sendTelegram: options.sendTelegram === true,
+    createPaymentLink: options.createPaymentLink === true,
+    metadata: options.metadata,
+    startedAt: startedAtDate,
+  });
 
   steps.push(
     await runStep("crawl_and_score", async () => {
@@ -60,6 +80,13 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       const markdown = await generateProposal(target);
       const proposalPath = await saveProposal(target.domain, markdown);
       outputs.proposalPath = proposalPath;
+      artifacts.push({
+        type: "proposal",
+        label: `${target.domain} proposal`,
+        pathOrUrl: proposalPath,
+        contentText: markdown,
+        metadata: { domain: target.domain, bytes: markdown.length },
+      });
       return { status: "passed", details: { proposalPath, bytes: markdown.length } };
     })
   );
@@ -81,7 +108,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
   );
 
   const completedAtDate = now();
-  return {
+  const report = {
     id,
     targetUrl,
     startedAt: startedAtDate.toISOString(),
@@ -90,6 +117,8 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
     steps,
     outputs,
   };
+  await recordRunComplete(report, artifacts, completedAtDate);
+  return report;
 }
 
 export function summarizeRunStatus(steps: RevenueAgentRunReport["steps"]): RevenueAgentRunReport["status"] {
@@ -199,4 +228,65 @@ function toRunId(date: Date): string {
 
 function sanitizeError(err: unknown): string {
   return sanitizeSecretText(err);
+}
+
+async function recordRunStart(input: {
+  id: string;
+  source: string;
+  targetUrl: string;
+  sendEmail: boolean;
+  sendTelegram: boolean;
+  createPaymentLink: boolean;
+  metadata?: Record<string, unknown>;
+  startedAt: Date;
+}): Promise<void> {
+  try {
+    await createAgentRun({
+      id: input.id,
+      agentType: "revenue_agent",
+      source: input.source,
+      input: {
+        targetUrl: input.targetUrl,
+        sendEmail: input.sendEmail,
+        sendTelegram: input.sendTelegram,
+        createPaymentLink: input.createPaymentLink,
+      },
+      metadata: input.metadata,
+      startedAt: input.startedAt,
+    });
+  } catch (error) {
+    logger.error("Failed to persist agent run start", { error });
+  }
+}
+
+async function recordRunComplete(
+  report: RevenueAgentRunReport,
+  artifacts: Array<{
+    type: string;
+    label: string;
+    pathOrUrl?: string;
+    contentText?: string;
+    metadata?: Record<string, unknown>;
+  }>,
+  completedAt: Date
+): Promise<void> {
+  try {
+    await completeAgentRun({
+      id: report.id,
+      status: report.status,
+      completedAt,
+      summary: {
+        targetUrl: report.targetUrl,
+        domain: report.outputs.domain,
+        seoScore: report.outputs.seoScore,
+        proposalPath: report.outputs.proposalPath,
+        paymentLinkUrl: report.outputs.paymentLinkUrl,
+      },
+      error: report.steps.find((step) => step.status === "failed")?.error,
+      steps: report.steps,
+      artifacts,
+    });
+  } catch (error) {
+    logger.error("Failed to persist agent run completion", { error });
+  }
 }

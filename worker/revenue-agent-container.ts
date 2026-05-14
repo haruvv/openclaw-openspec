@@ -29,6 +29,7 @@ const OPTIONAL_ENV = [
   "STRIPE_WEBHOOK_SECRET",
   "HIL_APPROVAL_TOKEN_SECRET",
   "HIL_APPROVAL_BASE_URL",
+  "ADMIN_TOKEN",
 ] as const;
 
 function readEnv(name: string): string | undefined {
@@ -119,6 +120,10 @@ export default {
     }
 
     if (url.pathname === "/webhooks/stripe" || url.pathname.startsWith("/hil/") || url.pathname === "/thank-you") {
+      return container.fetch(request);
+    }
+
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
       return container.fetch(request);
     }
 

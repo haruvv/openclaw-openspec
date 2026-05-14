@@ -143,6 +143,7 @@ describe("handleRevenueAgentRun", () => {
     );
     expect(mockRunRevenueAgent).toHaveBeenCalledWith({
       targetUrl: "https://93.184.216.34",
+      source: "api",
       sendEmail: false,
       sendTelegram: false,
       createPaymentLink: false,
@@ -170,6 +171,7 @@ describe("handleRevenueAgentRun", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(mockRunRevenueAgent).toHaveBeenCalledWith({
       targetUrl: "https://93.184.216.34",
+      source: "api",
       sendEmail: false,
       sendTelegram: false,
       createPaymentLink: false,
@@ -200,6 +202,7 @@ describe("handleRevenueAgentRun", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(mockRunRevenueAgent).toHaveBeenCalledWith({
       targetUrl: "https://93.184.216.34",
+      source: "api",
       sendEmail: true,
       sendTelegram: true,
       createPaymentLink: true,

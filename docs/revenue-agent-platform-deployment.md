@@ -202,9 +202,23 @@ npx wrangler secret put SENDGRID_API_KEY
 npx wrangler secret put SENDGRID_FROM_EMAIL
 npx wrangler secret put TELEGRAM_BOT_TOKEN
 npx wrangler secret put TELEGRAM_CHAT_ID
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
+npx wrangler secret put ADMIN_TOKEN
 ```
+
+### Admin dashboard
+
+The operations dashboard is served by the same Container under `/admin`. It is intentionally generic: RevenueAgent is the first `agent_type`, but runs, steps, artifacts, and provider status use the shared agent-run model so later workflows can appear in the same UI.
+
+Production access requires `ADMIN_TOKEN`. Open the dashboard with:
+
+```text
+https://<production-hostname>/admin?token=<ADMIN_TOKEN>
+```
+
+The token is stored in an HTTP-only cookie after the first request. The dashboard shows recent runs, run details, proposal artifacts, integration configuration status, and manual RevenueAgent run/retry actions. It does not display secret values and does not edit secrets.
 
 独自ドメイン移行後、zone-level Rate Limiting も追加したい場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
 
