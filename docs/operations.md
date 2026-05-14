@@ -9,6 +9,7 @@ Production is deployed by GitHub Actions.
 - Checks: `npm ci`, `npm test`, `npm run build`
 - Deploy command: `npm run deploy:cloudflare`
 - Post-deploy smoke: `/health`, `/admin`, and the built admin CSS asset
+- Runtime Node.js: 20, because `better-sqlite3@9.6.0` is currently validated on Node 20 in this project
 
 Manual staging deploy is available from the `Deploy Staging` workflow. Staging uses the same build and tests, then deploys with a different Worker name.
 
