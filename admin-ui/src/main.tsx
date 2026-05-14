@@ -93,6 +93,18 @@ interface ProposalRecord {
 interface SettingsPayload {
   integrations: Array<{ label: string; key: string; configured: boolean }>;
   policies: Array<{ label: string; enabled: boolean }>;
+  discovery: DiscoverySettings;
+}
+
+interface DiscoverySettings {
+  queries: string[];
+  seedUrls: string[];
+  dailyQuota: number;
+  searchLimit: number;
+  country: string;
+  lang: string;
+  location: string;
+  configuredFromAdmin: boolean;
 }
 
 interface DiscoveryReport {
@@ -516,18 +528,107 @@ function SettingsPage() {
   if (loading) return <Loading />;
   if (error) return <ErrorState message={error} />;
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Panel title="外部サービス設定">
-        <table className="data-table">
-          <tbody>{data?.integrations.map((item) => <tr key={item.key}><th>{item.label}</th><td><StatusPill status={item.configured ? "passed" : "skipped"} label={item.configured ? "設定済み" : "未設定"} /></td></tr>)}</tbody>
-        </table>
-      </Panel>
-      <Panel title="副作用の許可設定">
-        <table className="data-table">
-          <tbody>{data?.policies.map((item) => <tr key={item.label}><th>{item.label}</th><td><StatusPill status={item.enabled ? "passed" : "skipped"} label={item.enabled ? "有効" : "無効"} /></td></tr>)}</tbody>
-        </table>
-      </Panel>
+    <div className="space-y-5">
+      {data?.discovery ? <DiscoverySettingsPanel settings={data.discovery} /> : null}
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Panel title="外部サービス設定">
+          <table className="data-table">
+            <tbody>{data?.integrations.map((item) => <tr key={item.key}><th>{item.label}</th><td><StatusPill status={item.configured ? "passed" : "skipped"} label={item.configured ? "設定済み" : "未設定"} /></td></tr>)}</tbody>
+          </table>
+        </Panel>
+        <Panel title="副作用の許可設定">
+          <table className="data-table">
+            <tbody>{data?.policies.map((item) => <tr key={item.label}><th>{item.label}</th><td><StatusPill status={item.enabled ? "passed" : "skipped"} label={item.enabled ? "有効" : "無効"} /></td></tr>)}</tbody>
+          </table>
+        </Panel>
+      </div>
     </div>
+  );
+}
+
+function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
+  const [queries, setQueries] = useState(settings.queries.join("\n"));
+  const [seedUrls, setSeedUrls] = useState(settings.seedUrls.join("\n"));
+  const [dailyQuota, setDailyQuota] = useState(String(settings.dailyQuota));
+  const [searchLimit, setSearchLimit] = useState(String(settings.searchLimit));
+  const [country, setCountry] = useState(settings.country);
+  const [lang, setLang] = useState(settings.lang);
+  const [location, setLocation] = useState(settings.location);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [configuredFromAdmin, setConfiguredFromAdmin] = useState(settings.configuredFromAdmin);
+
+  useEffect(() => {
+    setQueries(settings.queries.join("\n"));
+    setSeedUrls(settings.seedUrls.join("\n"));
+    setDailyQuota(String(settings.dailyQuota));
+    setSearchLimit(String(settings.searchLimit));
+    setCountry(settings.country);
+    setLang(settings.lang);
+    setLocation(settings.location);
+    setConfiguredFromAdmin(settings.configuredFromAdmin);
+  }, [settings]);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await apiPut<{ discovery: DiscoverySettings }>("/api/admin/seo-sales/settings/discovery", {
+        queries,
+        seedUrls,
+        dailyQuota: Number(dailyQuota),
+        searchLimit: Number(searchLimit),
+        country,
+        lang,
+        location,
+      });
+      apiCache.delete("/api/admin/seo-sales/settings");
+      setQueries(result.discovery.queries.join("\n"));
+      setSeedUrls(result.discovery.seedUrls.join("\n"));
+      setDailyQuota(String(result.discovery.dailyQuota));
+      setSearchLimit(String(result.discovery.searchLimit));
+      setCountry(result.discovery.country);
+      setLang(result.discovery.lang);
+      setLocation(result.discovery.location);
+      setConfiguredFromAdmin(result.discovery.configuredFromAdmin);
+      setMessage("自動候補発見の設定を保存しました。次の実行から反映されます。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "設定を保存できませんでした");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel title="自動候補発見設定" action={configuredFromAdmin ? <StatusPill status="passed" label="管理画面設定" /> : <StatusPill status="skipped" label="環境変数設定" />}>
+      <form className="space-y-4" onSubmit={save}>
+        <div>
+          <label className="text-sm font-black text-slate-700" htmlFor="discovery-queries">検索キーワード</label>
+          <textarea id="discovery-queries" className="textarea mt-2" value={queries} onChange={(event) => setQueries(event.target.value)} placeholder={"税理士 ホームページ 改善\n整体院 SEO 集客\n歯科医院 Web集客"} />
+          <p className="mt-2 text-xs font-semibold text-slate-500">1行につき1キーワード。ここが自動で候補URLを見つけるための主設定です。</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setDailyQuota(event.target.value)} /></label>
+          <label className="block text-sm font-black text-slate-700">検索件数/キーワード<input className="input mt-2 w-full" type="number" min="1" max="20" value={searchLimit} onChange={(event) => setSearchLimit(event.target.value)} /></label>
+          <label className="block text-sm font-black text-slate-700">国<input className="input mt-2 w-full" value={country} onChange={(event) => setCountry(event.target.value)} /></label>
+          <label className="block text-sm font-black text-slate-700">言語<input className="input mt-2 w-full" value={lang} onChange={(event) => setLang(event.target.value)} /></label>
+        </div>
+        <label className="block text-sm font-black text-slate-700">地域<input className="input mt-2 w-full" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Tokyo, Japan" /></label>
+        <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-black text-slate-700">固定候補URL（検証用）</summary>
+          <textarea className="textarea mt-3" value={seedUrls} onChange={(event) => setSeedUrls(event.target.value)} placeholder={"https://example.com\nhttps://example.org"} />
+          <p className="mt-2 text-xs font-semibold text-slate-500">本番運用では空で構いません。検索ではなく特定URLを解析したいときだけ使います。</p>
+        </details>
+        {message ? <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{message}</div> : null}
+        {error ? <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-800">{error}</div> : null}
+        <div className="flex justify-end">
+          <button type="submit" className="btn-primary" disabled={saving}>{saving ? "保存中..." : "設定を保存"}</button>
+        </div>
+      </form>
+    </Panel>
   );
 }
 
@@ -777,6 +878,18 @@ async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<
   return json;
 }
 
+async function apiPut<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(withAdminToken(path), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
+  const json = (await readJsonResponse(res)) as T & { error?: string };
+  if (!res.ok) throw new Error(json.error ?? `API error: ${res.status}`);
+  return json;
+}
+
 async function readJsonResponse(res: Response): Promise<unknown> {
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) return res.json();
@@ -881,6 +994,8 @@ function formatDiscoverySummary(report: DiscoveryReport): string {
 function formatSkipReason(reason: string): string {
   return {
     already_analyzed: "解析済み",
+    discovery_sources_empty: "検索条件なし",
+    no_candidates_found: "検索結果なし",
     "REVENUE_AGENT_DISCOVERY_SEED_URLS is empty": "候補設定なし",
   }[reason] ?? reason;
 }

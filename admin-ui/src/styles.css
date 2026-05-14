@@ -29,6 +29,10 @@
     @apply h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none ring-blue-200 focus:border-blue-700 focus:ring-4;
   }
 
+  .textarea {
+    @apply min-h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-blue-200 focus:border-blue-700 focus:ring-4;
+  }
+
   .data-table {
     @apply w-full border-collapse text-sm;
   }

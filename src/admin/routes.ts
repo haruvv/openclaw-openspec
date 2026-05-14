@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
 import { getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
 import { runDailyDiscoveryJob } from "../discovery/job.js";
+import { applyDiscoverySettingsToEnv, getDiscoverySettings, saveDiscoverySettings } from "../discovery/settings.js";
 import { runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
 import { getSiteDetail, listSites } from "../sites/repository.js";
@@ -97,7 +98,11 @@ adminApiRouter.post("/seo-sales/runs/:id/retry", async (req, res) => {
 });
 
 adminApiRouter.post("/seo-sales/discovery/run", async (_req, res) => {
-  const report = await runDailyDiscoveryJob({ enabled: process.env.REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED !== "false" });
+  const settings = await getDiscoverySettings();
+  const report = await runDailyDiscoveryJob({
+    enabled: process.env.REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED !== "false",
+    env: applyDiscoverySettingsToEnv(process.env, settings),
+  });
   res.status(report.status === "failed" ? 502 : 200).json({ report });
 });
 
@@ -115,7 +120,7 @@ adminApiRouter.get("/seo-sales/sites/:id", async (req, res) => {
   res.json({ site });
 });
 
-adminApiRouter.get("/seo-sales/settings", (_req, res) => {
+adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
   const integrations = [
     ["Firecrawl", "FIRECRAWL_API_KEY"],
     ["Gemini", "GEMINI_API_KEY"],
@@ -133,7 +138,12 @@ adminApiRouter.get("/seo-sales/settings", (_req, res) => {
     ["決済リンク作成", process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK === "true"],
   ].map(([label, enabled]) => ({ label, enabled: Boolean(enabled) }));
 
-  res.json({ integrations, policies });
+  res.json({ integrations, policies, discovery: await getDiscoverySettings() });
+});
+
+adminApiRouter.put("/seo-sales/settings/discovery", async (req, res) => {
+  const discovery = await saveDiscoverySettings(req.body ?? {});
+  res.json({ discovery });
 });
 
 adminRouter.use(

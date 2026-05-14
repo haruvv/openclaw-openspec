@@ -1,14 +1,17 @@
 import Database from "better-sqlite3";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("operational storage migration", () => {
   it("initializes the D1-compatible operational schema", async () => {
     const db = new Database(":memory:");
-    const sql = await readFile(join(process.cwd(), "migrations/0001_operational_data.sql"), "utf8");
+    const migrationDir = join(process.cwd(), "migrations");
+    const migrationFiles = (await readdir(migrationDir)).filter((file) => file.endsWith(".sql")).sort();
 
-    db.exec(sql);
+    for (const file of migrationFiles) {
+      db.exec(await readFile(join(migrationDir, file), "utf8"));
+    }
 
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as {
       name: string;
@@ -18,6 +21,7 @@ describe("operational storage migration", () => {
       "agent_run_steps",
       "agent_runs",
       "analyzed_sites",
+      "app_settings",
       "outreach_log",
       "site_proposals",
       "site_snapshots",

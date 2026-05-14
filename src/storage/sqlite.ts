@@ -150,6 +150,12 @@ export function initSqliteSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_site_snapshots_site_created ON site_snapshots(site_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_site_snapshots_run_id ON site_snapshots(run_id);
     CREATE INDEX IF NOT EXISTS idx_site_proposals_site_created ON site_proposals(site_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
   ensureColumn(db, "targets", "payment_link_expires_at", "INTEGER");
   ensureColumn(db, "targets", "payment_reminder_sent_at", "INTEGER");

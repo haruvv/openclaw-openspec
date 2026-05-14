@@ -35,6 +35,7 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
   const enabled = options.enabled ?? env.REVENUE_AGENT_DISCOVERY_ENABLED === "true";
   const quota = readQuota(env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA);
   const seedCandidates = readSeedCandidates(env.REVENUE_AGENT_DISCOVERY_SEED_URLS);
+  const searchQueries = readList(env.REVENUE_AGENT_DISCOVERY_QUERIES);
   const skipped: DailyDiscoveryReport["skipped"] = [];
   const runs: DailyDiscoveryReport["runs"] = [];
 
@@ -60,7 +61,7 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
       quota,
       candidateCount: 0,
       selectedCount: 0,
-      skipped: [{ url: "-", reason: "REVENUE_AGENT_DISCOVERY_SEED_URLS is empty" }],
+      skipped: [{ url: "-", reason: searchQueries.length === 0 && seedCandidates.length === 0 ? "discovery_sources_empty" : "no_candidates_found" }],
       runs,
     };
   }
@@ -120,12 +121,8 @@ function readQuota(value: string | undefined): number {
 }
 
 function readSeedCandidates(value: string | undefined): DiscoveryCandidate[] {
-  if (!value) return [];
   const seen = new Set<string>();
-  const urls = value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const urls = readList(value);
 
   return urls.flatMap((url) => {
     const normalized = normalizeComparableUrl(url);
@@ -133,6 +130,14 @@ function readSeedCandidates(value: string | undefined): DiscoveryCandidate[] {
     seen.add(normalized);
     return [{ url, source: "seed" as const }];
   });
+}
+
+function readList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function mergeCandidates(...groups: DiscoveryCandidate[][]): DiscoveryCandidate[] {

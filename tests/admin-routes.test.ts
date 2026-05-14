@@ -88,6 +88,57 @@ describe("admin routes", () => {
     expect(body.sites[0]).toMatchObject({ displayUrl: "https://example.com/", latestSeoScore: 81 });
   });
 
+  it("returns and updates discovery settings from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_DISCOVERY_QUERIES = "税理士 ホームページ 改善";
+    process.env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA = "2";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const before = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+    expect(before.status).toBe(200);
+    expect(JSON.parse(before.body)).toMatchObject({
+      discovery: {
+        queries: ["税理士 ホームページ 改善"],
+        dailyQuota: 2,
+        configuredFromAdmin: false,
+      },
+    });
+
+    const update = await dispatch(adminApiRouter, "/seo-sales/settings/discovery?token=admin-test", "/api/admin", {
+      method: "PUT",
+      body: {
+        queries: "整体院 SEO 集客\n歯科医院 Web集客",
+        seedUrls: "https://example.com",
+        dailyQuota: 4,
+        searchLimit: 8,
+        country: "JP",
+        lang: "JA",
+        location: "Tokyo",
+      },
+    });
+    expect(update.status).toBe(200);
+    expect(JSON.parse(update.body)).toMatchObject({
+      discovery: {
+        queries: ["整体院 SEO 集客", "歯科医院 Web集客"],
+        seedUrls: ["https://example.com"],
+        dailyQuota: 4,
+        searchLimit: 8,
+        country: "jp",
+        lang: "ja",
+        location: "Tokyo",
+        configuredFromAdmin: true,
+      },
+    });
+
+    const after = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+    expect(JSON.parse(after.body)).toMatchObject({
+      discovery: {
+        queries: ["整体院 SEO 集客", "歯科医院 Web集客"],
+        configuredFromAdmin: true,
+      },
+    });
+  });
+
   it("can run discovery from the admin API even when cron discovery is disabled", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.REVENUE_AGENT_DISCOVERY_ENABLED = "false";
