@@ -110,6 +110,45 @@ REVENUE_AGENT_INTEGRATION_TOKEN=<same-long-random-secret>
 
 `REVENUE_AGENT_INTEGRATION_TOKEN` は RevenueAgentPlatform と OpenClaw Gateway で同じ値にします。値は Git にコミットせず、Cloudflare secrets または hosting platform の secret store に登録します。
 
+### Telegram 直結 Bot
+
+初期運用では OpenClaw を挟まず、Telegram webhook から RevenueAgentPlatform Worker を直接呼びます。
+
+```text
+Telegram Bot
+  -> POST /telegram/webhook
+  -> RevenueAgentPlatform Worker
+  -> POST /api/revenue-agent/run
+  -> Telegram sendMessage
+```
+
+この経路では、Telegram メッセージ本文から最初の `http` / `https` URL を抽出し、`sendEmail=false`、`sendTelegram=false`、`createPaymentLink=false` の副作用なしで RevenueAgentPlatform を実行します。結果は Telegram に要約返信します。
+
+追加 secret:
+
+```bash
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_CHAT_ID
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+```
+
+`TELEGRAM_CHAT_ID` はカンマ区切りで複数指定できます。未設定の場合は Telegram bot に届いた chat を許可します。`TELEGRAM_WEBHOOK_SECRET` は Telegram の `secret_token` として使い、`X-Telegram-Bot-Api-Secret-Token` header を検証します。
+
+Webhook 設定:
+
+```bash
+curl -sS "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://<production-hostname>/telegram/webhook",
+    "secret_token": "<TELEGRAM_WEBHOOK_SECRET>",
+    "allowed_updates": ["message", "edited_message"],
+    "drop_pending_updates": true
+  }'
+```
+
+OpenClaw 連携は将来の拡張として残します。自然文 routing、複数 skill、cron、承認フロー、複数チャネル統合が必要になった段階で、OpenClaw Gateway から同じ `POST /api/revenue-agent/run` を呼ぶ構成に戻せます。
+
 ## Cloudflare 設定
 
 初期本番で必要な Cloudflare 設定:
@@ -211,9 +250,11 @@ curl -sS https://<production-hostname>/api/revenue-agent/run \
   }'
 ```
 
-3. Direct API が通った後に OpenClaw Gateway の `REVENUE_AGENT_BASE_URL` を本番 URL に向けます。
+3. Telegram webhook を `https://<production-hostname>/telegram/webhook` に向けます。
 
-4. OpenClaw から revenue-agent skill を実行し、RevenueAgentPlatform の JSON result を要約できることを確認します。
+4. Telegram bot に URL を含むメッセージを送り、RevenueAgentPlatform の結果が Telegram に要約返信されることを確認します。
+
+5. OpenClaw も併用する場合だけ、OpenClaw Gateway の `REVENUE_AGENT_BASE_URL` を本番 URL に向け、revenue-agent skill から JSON result を要約できることを確認します。
 
 ## 現在の初回デプロイ
 
@@ -223,7 +264,7 @@ curl -sS https://<production-hostname>/api/revenue-agent/run \
 | --- | --- |
 | RevenueAgentPlatform URL | `https://revenue-agent-platform.haruki-ito0044.workers.dev` |
 | RevenueAgentPlatform version | `786b1c17-e695-4797-8bb2-9cff11df38f3` |
-| Latest RevenueAgentPlatform version | `b1d7f7a8-225d-4ffb-867a-99fd17b19bc2` |
+| Latest RevenueAgentPlatform version | `eb41282c-7e68-466f-8e46-05936094c10c` |
 | OpenClaw Gateway URL | `https://openclaw-gateway.haruki-ito0044.workers.dev` |
 | OpenClaw Gateway version | `9313d517-4ab8-4a43-9aba-fb85d79ccce0` |
 | Side effects | `REVENUE_AGENT_ALLOW_EMAIL=false`, `REVENUE_AGENT_ALLOW_TELEGRAM=false`, `REVENUE_AGENT_ALLOW_PAYMENT_LINK=false` |
@@ -235,6 +276,7 @@ Verified:
 - Worker-level Rate Limiting returned HTTP 429 after repeated invalid `POST /api/revenue-agent/run` requests. In the bounded check, 30 requests produced 22 `401` responses and 8 `429` responses.
 - OpenClaw Gateway production secrets were configured for `REVENUE_AGENT_BASE_URL` and `REVENUE_AGENT_INTEGRATION_TOKEN`, then Gateway was redeployed and reached `running`.
 - OpenClaw Gateway `POST /api/revenue-agent/verify` returned HTTP 200. The Gateway container invoked production `POST /api/revenue-agent/run` with the configured Bearer token and received the expected API validation response `HTTP 400 {"error":"url must be a valid URL"}`, confirming the request reached RevenueAgentPlatform past authentication without triggering crawl side effects.
+- Telegram webhook was switched to `https://revenue-agent-platform.haruki-ito0044.workers.dev/telegram/webhook` with `secret_token` protection. A request without `X-Telegram-Bot-Api-Secret-Token` returned HTTP 401.
 
 ## ロールバック
 
