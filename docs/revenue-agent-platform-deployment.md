@@ -213,6 +213,28 @@ curl -sS https://<production-hostname>/api/revenue-agent/run \
 
 4. OpenClaw から revenue-agent skill を実行し、RevenueAgentPlatform の JSON result を要約できることを確認します。
 
+## 現在の初回デプロイ
+
+2026-05-14 に Cloudflare Containers へ初回デプロイしました。
+
+| 項目 | 値 |
+| --- | --- |
+| RevenueAgentPlatform URL | `https://revenue-agent-platform.haruki-ito0044.workers.dev` |
+| RevenueAgentPlatform version | `786b1c17-e695-4797-8bb2-9cff11df38f3` |
+| OpenClaw Gateway URL | `https://openclaw-gateway.haruki-ito0044.workers.dev` |
+| OpenClaw Gateway version | `189d4057-f2aa-4bf8-a591-16ab39e8cbd7` |
+| Side effects | `REVENUE_AGENT_ALLOW_EMAIL=false`, `REVENUE_AGENT_ALLOW_TELEGRAM=false`, `REVENUE_AGENT_ALLOW_PAYMENT_LINK=false` |
+
+Verified:
+
+- `GET /health` returned HTTP 200 with `{"status":"ok"}`.
+- Direct `POST /api/revenue-agent/run` returned HTTP 200 for `https://example.com` with `crawl_and_score=passed`, `generate_proposal=passed`, and all side-effect steps skipped.
+- OpenClaw Gateway production secrets were configured for `REVENUE_AGENT_BASE_URL` and `REVENUE_AGENT_INTEGRATION_TOKEN`, then Gateway was redeployed and reached `running`.
+
+Pending:
+
+- End-to-end OpenClaw conversation/skill invocation against production RevenueAgentPlatform. This depends on OpenClaw's LLM provider being usable; the current Z.ai key previously returned insufficient balance/resource package.
+
 ## ロールバック
 
 デプロイ後に検証が失敗した場合:
