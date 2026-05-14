@@ -115,6 +115,7 @@ const navItems = [
 
 const apiCache = new Map<string, unknown>();
 const ADMIN_TOKEN_STORAGE_KEY = "revenue_agent_admin_token";
+const ADMIN_UI_VERSION = "2026-05-15-discovery-feedback";
 
 function App() {
   rememberAdminTokenFromUrl();
@@ -305,12 +306,15 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
   const [report, setReport] = useState<DiscoveryReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastCompletedAt, setLastCompletedAt] = useState<string | null>(null);
+  const [activity, setActivity] = useState("待機中");
 
-  async function runDiscovery() {
+  async function runDiscovery(event?: React.FormEvent) {
+    event?.preventDefault();
     setRunning(true);
     setReport(null);
     setLastCompletedAt(null);
     setError(null);
+    setActivity(`クリックを受け付けました: ${formatDate(new Date().toISOString())}`);
     try {
       const result = await apiPost<{ report: DiscoveryReport }>("/api/admin/seo-sales/discovery/run", {});
       apiCache.delete("/api/admin/seo-sales/overview");
@@ -318,9 +322,11 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
       apiCache.delete("/api/admin/seo-sales/sites");
       setReport(result.report);
       setLastCompletedAt(new Date().toISOString());
+      setActivity("実行結果を受信しました");
       await onDone?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "候補発見に失敗しました");
+      setActivity("実行に失敗しました");
     } finally {
       setRunning(false);
     }
@@ -329,10 +335,17 @@ function DiscoveryRunPanel({ onDone }: { onDone?: () => void | Promise<void> }) 
   return (
     <Panel
       title="自動候補発見"
-      action={<button onClick={runDiscovery} className="btn-primary" disabled={running}><Search className="h-4 w-4" />{running ? "実行中..." : "今すぐ実行"}</button>}
+      action={
+        <form method="post" action={withAdminToken("/api/admin/seo-sales/discovery/run")} onSubmit={runDiscovery}>
+          <button type="submit" className="btn-primary" disabled={running}><Search className="h-4 w-4" />{running ? "実行中..." : "今すぐ実行"}</button>
+        </form>
+      }
     >
       <div className="space-y-4">
         <p className="text-sm font-semibold leading-6 text-slate-600">検索条件からURL候補を探し、未解析のURLだけを上限件数まで解析します。</p>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">
+          操作状態: {activity} / UI: {ADMIN_UI_VERSION}
+        </div>
         {running ? (
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
             候補発見を実行中です。検索と解析が入る場合は少し時間がかかります。
