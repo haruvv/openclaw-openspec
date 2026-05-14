@@ -49,3 +49,4 @@ jobs:
         run: npm run smoke:production
         env:
           PRODUCTION_BASE_URL: https://revenue-agent-platform.haruki-ito0044.workers.dev
+          SMOKE_TIMEOUT_MS: 600000
