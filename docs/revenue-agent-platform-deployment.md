@@ -233,6 +233,7 @@ Verified:
 
 Pending:
 
+- Cloudflare zone-level Rate Limiting rule application. The Terraform example is ready, but the actual rule needs a Cloudflare zone/custom hostname or an account-level equivalent.
 - End-to-end OpenClaw conversation/skill invocation against production RevenueAgentPlatform. This depends on OpenClaw's LLM provider being usable; the current Z.ai key previously returned insufficient balance/resource package.
 
 ## ロールバック
