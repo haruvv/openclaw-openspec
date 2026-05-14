@@ -12,15 +12,15 @@ export async function generateText(
   try {
     return await callGemini(prompt, systemPrompt);
   } catch (err) {
-    if (!isQuotaError(err)) throw err;
+    if (!isFallbackEligibleGeminiError(err)) throw err;
 
     const zaiKey = process.env.ZAI_API_KEY;
     if (!zaiKey) {
-      logger.warn("Gemini quota exceeded and ZAI_API_KEY is not set — cannot fallback");
+      logger.warn("Gemini failed with a fallback-eligible error and ZAI_API_KEY is not set — cannot fallback");
       throw err;
     }
 
-    logger.info("Gemini quota exceeded, falling back to Z.ai GLM");
+    logger.info("Gemini failed with a fallback-eligible error, falling back to Z.ai GLM");
     return callZai(prompt, systemPrompt, zaiKey);
   }
 }
@@ -66,12 +66,17 @@ async function callZai(
   return content;
 }
 
-function isQuotaError(err: unknown): boolean {
+function isFallbackEligibleGeminiError(err: unknown): boolean {
   if (err instanceof Error) {
     const msg = err.message.toLowerCase();
     return (
       msg.includes("429") ||
+      msg.includes("500") ||
+      msg.includes("502") ||
+      msg.includes("503") ||
+      msg.includes("504") ||
       msg.includes("quota") ||
+      msg.includes("operation failed") ||
       msg.includes("resource_exhausted") ||
       msg.includes("rate limit")
     );

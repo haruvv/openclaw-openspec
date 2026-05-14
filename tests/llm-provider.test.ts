@@ -49,6 +49,21 @@ describe("generateText", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
+  it("5xxフォールバック: Gemini が一時エラーで ZAI_API_KEY があれば Z.ai を呼ぶ", async () => {
+    process.env.ZAI_API_KEY = "test-zai-key";
+    mockGenerateContent.mockRejectedValue(new Error('500 {"error":{"code":"500","message":"Operation failed"}}'));
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: MOCK_RESPONSE } }],
+      }),
+    });
+
+    const result = await generateText("prompt", "system");
+    expect(result).toBe(MOCK_RESPONSE);
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
   it("ZAI_KEY未設定: Gemini が 429 で ZAI_API_KEY がなければ throw する", async () => {
     mockGenerateContent.mockRejectedValue(new Error("429 resource_exhausted"));
 
@@ -56,7 +71,7 @@ describe("generateText", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("429以外のエラーはフォールバックせずに throw する", async () => {
+  it("認証エラーはフォールバックせずに throw する", async () => {
     process.env.ZAI_API_KEY = "test-zai-key";
     mockGenerateContent.mockRejectedValue(new Error("401 unauthorized"));
 
