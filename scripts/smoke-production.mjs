@@ -3,6 +3,7 @@ const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 60_000);
 
 async function main() {
   await checkHealth();
+  await checkAdminUiAssets();
   await check("admin auth boundary", `${baseUrl}/admin`, { expectedStatus: 401, expectedContentType: "text/html" });
   await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatus: 401, expectedContentType: "application/json" });
   console.log(`Production smoke checks passed for ${baseUrl}`);
@@ -20,6 +21,26 @@ async function checkHealth() {
     throw new Error(`health: expected durable-http storage, got ${JSON.stringify(body?.storage)}`);
   }
   console.log(`health: 200 application/json storage=${body?.storage?.mode ?? "unknown"}`);
+}
+
+async function checkAdminUiAssets() {
+  const { readFile } = await import("node:fs/promises");
+  const html = await readFile("dist/admin-ui/index.html", "utf8");
+  const assetPaths = [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((match) => match[1]);
+  if (assetPaths.length === 0) {
+    throw new Error("admin ui assets: no assets found in dist/admin-ui/index.html");
+  }
+
+  for (const assetPath of assetPaths) {
+    const path = assetPath.startsWith("/") ? assetPath : `/admin/${assetPath.replace(/^\.\//, "")}`;
+    await check(`admin ui asset ${path}`, `${baseUrl}${path}`, { expectedStatus: 200, expectedContentType: assetContentType(path) });
+  }
+}
+
+function assetContentType(path) {
+  if (path.endsWith(".css")) return "text/css";
+  if (path.endsWith(".js")) return "javascript";
+  return "";
 }
 
 async function check(name, url, expectation) {
