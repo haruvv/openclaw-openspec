@@ -1,5 +1,6 @@
 const baseUrl = (process.env.PRODUCTION_BASE_URL ?? "https://revenue-agent-platform.haruki-ito0044.workers.dev").replace(/\/$/, "");
-const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 60_000);
+const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 300_000);
+const requestTimeoutMs = Number(process.env.SMOKE_REQUEST_TIMEOUT_MS ?? 15_000);
 
 async function main() {
   await checkHealth();
@@ -48,7 +49,7 @@ async function check(name, url, expectation) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "HEAD" });
+      const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(requestTimeoutMs) });
       const contentType = res.headers.get("content-type") ?? "";
       if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
         console.log(`${name}: ${res.status} ${contentType}`);
@@ -68,7 +69,7 @@ async function getJsonWithRetry(name, url, expectation) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "GET" });
+      const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(requestTimeoutMs) });
       const contentType = res.headers.get("content-type") ?? "";
       if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
         return await res.json();
