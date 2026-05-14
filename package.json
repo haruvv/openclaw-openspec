@@ -11,6 +11,7 @@
     "dev:cloudflare": "wrangler dev",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
+    "storage:export": "node scripts/export-operational-sqlite.mjs",
     "smoke:e2e": "tsx src/smoke/e2e-smoke.ts",
     "smoke:production": "node scripts/smoke-production.mjs",
     "test": "vitest run",

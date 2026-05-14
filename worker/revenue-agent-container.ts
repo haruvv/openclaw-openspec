@@ -1,9 +1,12 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
+import { handleInternalStorage, handleStorageHealth } from "./storage-bridge";
 
 type WorkerEnv = {
   REVENUE_AGENT_CONTAINER: DurableObjectNamespace<RevenueAgentContainer>;
   REVENUE_AGENT_RUN_LIMITER: RateLimit;
+  OPERATIONAL_DB?: D1Database;
+  OPERATIONAL_ARTIFACTS?: R2Bucket;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
 };
 
@@ -31,6 +34,9 @@ const OPTIONAL_ENV = [
   "HIL_APPROVAL_TOKEN_SECRET",
   "HIL_APPROVAL_BASE_URL",
   "ADMIN_TOKEN",
+  "DURABLE_STORAGE_BASE_URL",
+  "DURABLE_STORAGE_TOKEN",
+  "ARTIFACT_INLINE_BYTE_THRESHOLD",
 ] as const;
 
 function readEnv(name: string): string | undefined {
@@ -105,6 +111,15 @@ export class RevenueAgentContainer extends Container {
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/health") {
+      return handleStorageHealth(env);
+    }
+
+    if (url.pathname.startsWith("/internal/storage/")) {
+      return handleInternalStorage(request, env, url, readEnv("DURABLE_STORAGE_TOKEN"));
+    }
+
     const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
 
     if (url.pathname === "/telegram/webhook" && request.method === "POST") {
@@ -135,7 +150,7 @@ export default {
       return container.fetch(request);
     }
 
-    if (url.pathname === "/health" || url.pathname === "/api/revenue-agent/run" || url.pathname === "/api/admin" || url.pathname.startsWith("/api/admin/")) {
+    if (url.pathname === "/api/revenue-agent/run" || url.pathname === "/api/admin" || url.pathname.startsWith("/api/admin/")) {
       return container.fetch(request);
     }
 

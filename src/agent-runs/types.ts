@@ -36,6 +36,10 @@ export interface AgentArtifactRecord {
   label: string;
   pathOrUrl?: string;
   contentText?: string;
+  bodyStorage: "inline" | "object";
+  objectKey?: string;
+  contentType?: string;
+  byteSize?: number;
   metadata: Record<string, unknown>;
   createdAt: string;
 }

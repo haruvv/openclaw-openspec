@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "../utils/db.js";
+import { DurableHttpStorageClient, getStorageConfig } from "../storage/index.js";
 import type { AgentArtifactRecord, AgentRunDetail, AgentRunRecord, AgentRunStatus, AgentRunStepRecord } from "./types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -33,6 +34,10 @@ export interface CompleteAgentRunInput {
     label: string;
     pathOrUrl?: string;
     contentText?: string;
+    bodyStorage?: "inline" | "object";
+    objectKey?: string;
+    contentType?: string;
+    byteSize?: number;
     metadata?: JsonObject;
   }>;
 }
@@ -71,11 +76,40 @@ type AgentArtifactRow = {
   label: string;
   path_or_url: string | null;
   content_text: string | null;
+  body_storage: "inline" | "object";
+  object_key: string | null;
+  content_type: string | null;
+  byte_size: number | null;
   metadata_json: string;
   created_at: number;
 };
 
 export async function createAgentRun(input: CreateAgentRunInput): Promise<void> {
+  const durable = getDurableClient();
+  if (durable) {
+    const now = Date.now();
+    await durable.executeSql([
+      {
+        sql: `INSERT OR REPLACE INTO agent_runs (
+          id, agent_type, source, status, input_json, summary_json, error, metadata_json,
+          started_at, completed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, 'running', ?, ?, NULL, ?, ?, NULL, ?, ?)`,
+        params: [
+          input.id,
+          input.agentType,
+          input.source,
+          json(input.input),
+          json({}),
+          json(input.metadata ?? {}),
+          input.startedAt.getTime(),
+          now,
+          now,
+        ],
+      },
+    ]);
+    return;
+  }
+
   const db = await getDb();
   const now = Date.now();
   db.prepare(
@@ -97,6 +131,59 @@ export async function createAgentRun(input: CreateAgentRunInput): Promise<void> 
 }
 
 export async function completeAgentRun(input: CompleteAgentRunInput): Promise<void> {
+  const durable = getDurableClient();
+  if (durable) {
+    const now = Date.now();
+    const artifacts = await Promise.all((input.artifacts ?? []).map((artifact) => prepareArtifact(durable, input.id, artifact, now)));
+    await durable.executeSql([
+      {
+        sql: `UPDATE agent_runs
+          SET status = ?, summary_json = ?, error = ?, completed_at = ?, updated_at = ?
+          WHERE id = ?`,
+        params: [input.status, json(input.summary ?? {}), input.error ?? null, input.completedAt.getTime(), now, input.id],
+      },
+      { sql: "DELETE FROM agent_run_steps WHERE run_id = ?", params: [input.id] },
+      { sql: "DELETE FROM agent_artifacts WHERE run_id = ?", params: [input.id] },
+      ...input.steps.map((step) => ({
+        sql: `INSERT INTO agent_run_steps (
+          id, run_id, name, status, duration_ms, reason, error, details_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          randomUUID(),
+          input.id,
+          step.name,
+          step.status,
+          step.durationMs,
+          step.reason ?? null,
+          step.error ?? null,
+          json(step.details ?? {}),
+          now,
+        ],
+      })),
+      ...artifacts.map((artifact) => ({
+        sql: `INSERT INTO agent_artifacts (
+          id, run_id, type, label, path_or_url, content_text, body_storage, object_key,
+          content_type, byte_size, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          artifact.id,
+          input.id,
+          artifact.type,
+          artifact.label,
+          artifact.pathOrUrl ?? null,
+          artifact.contentText ?? null,
+          artifact.bodyStorage,
+          artifact.objectKey ?? null,
+          artifact.contentType ?? null,
+          artifact.byteSize ?? null,
+          json(artifact.metadata ?? {}),
+          now,
+        ],
+      })),
+    ]);
+    return;
+  }
+
   const db = await getDb();
   const now = Date.now();
   const tx = db.transaction(() => {
@@ -130,17 +217,23 @@ export async function completeAgentRun(input: CompleteAgentRunInput): Promise<vo
 
     const insertArtifact = db.prepare(
       `INSERT INTO agent_artifacts (
-        id, run_id, type, label, path_or_url, content_text, metadata_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        id, run_id, type, label, path_or_url, content_text, body_storage, object_key,
+        content_type, byte_size, metadata_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const artifact of input.artifacts ?? []) {
+      const contentText = artifact.bodyStorage === "object" ? undefined : artifact.contentText;
       insertArtifact.run(
         randomUUID(),
         input.id,
         artifact.type,
         artifact.label,
         artifact.pathOrUrl ?? null,
-        artifact.contentText ?? null,
+        contentText ?? null,
+        artifact.bodyStorage ?? "inline",
+        artifact.objectKey ?? null,
+        artifact.contentType ?? null,
+        artifact.byteSize ?? byteSize(contentText),
         json(artifact.metadata ?? {}),
         now,
       );
@@ -151,6 +244,17 @@ export async function completeAgentRun(input: CompleteAgentRunInput): Promise<vo
 }
 
 export async function listAgentRuns(limit = 50): Promise<AgentRunRecord[]> {
+  const durable = getDurableClient();
+  if (durable) {
+    const results = await durable.executeSql<AgentRunRow>([
+      {
+        sql: "SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT ?",
+        params: [Math.max(1, Math.min(limit, 200))],
+      },
+    ]);
+    return (results[0]?.results ?? []).map(mapRunRow);
+  }
+
   const db = await getDb();
   const rows = db
     .prepare("SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT ?")
@@ -159,6 +263,24 @@ export async function listAgentRuns(limit = 50): Promise<AgentRunRecord[]> {
 }
 
 export async function getAgentRunDetail(id: string): Promise<AgentRunDetail | null> {
+  const durable = getDurableClient();
+  if (durable) {
+    const results = await durable.executeSql<AgentRunRow | AgentRunStepRow | AgentArtifactRow>([
+      { sql: "SELECT * FROM agent_runs WHERE id = ?", params: [id] },
+      { sql: "SELECT * FROM agent_run_steps WHERE run_id = ? ORDER BY created_at ASC", params: [id] },
+      { sql: "SELECT * FROM agent_artifacts WHERE run_id = ? ORDER BY created_at ASC", params: [id] },
+    ]);
+    const row = (results[0]?.results?.[0] as AgentRunRow | undefined) ?? undefined;
+    if (!row) return null;
+    const steps = (results[1]?.results ?? []) as AgentRunStepRow[];
+    const artifacts = (results[2]?.results ?? []) as AgentArtifactRow[];
+    return {
+      ...mapRunRow(row),
+      steps: steps.map(mapStepRow),
+      artifacts: await Promise.all(artifacts.map((artifact) => mapArtifactRowWithBody(artifact, durable))),
+    };
+  }
+
   const db = await getDb();
   const row = db.prepare("SELECT * FROM agent_runs WHERE id = ?").get(id) as AgentRunRow | undefined;
   if (!row) return null;
@@ -218,8 +340,30 @@ function mapArtifactRow(row: AgentArtifactRow): AgentArtifactRecord {
     label: row.label,
     pathOrUrl: row.path_or_url ?? undefined,
     contentText: row.content_text ?? undefined,
+    bodyStorage: row.body_storage ?? "inline",
+    objectKey: row.object_key ?? undefined,
+    contentType: row.content_type ?? undefined,
+    byteSize: row.byte_size ?? undefined,
     metadata: parseJson(row.metadata_json),
     createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+async function mapArtifactRowWithBody(
+  row: AgentArtifactRow,
+  durable: DurableHttpStorageClient,
+): Promise<AgentArtifactRecord> {
+  const mapped = mapArtifactRow(row);
+  if (mapped.bodyStorage !== "object" || !mapped.objectKey || mapped.contentText) return mapped;
+  const contentText = await durable.getArtifactBody({
+    storage: "object",
+    objectKey: mapped.objectKey,
+    byteSize: mapped.byteSize ?? 0,
+    contentType: mapped.contentType ?? "text/plain; charset=utf-8",
+  });
+  return {
+    ...mapped,
+    contentText: contentText ?? "[artifact body missing from durable object storage]",
   };
 }
 
@@ -234,4 +378,58 @@ function parseJson(value: string): JsonObject {
   } catch {
     return {};
   }
+}
+
+function byteSize(value: string | undefined): number | undefined {
+  return value === undefined ? undefined : Buffer.byteLength(value, "utf8");
+}
+
+function getDurableClient(): DurableHttpStorageClient | null {
+  const config = getStorageConfig();
+  if (config.mode !== "durable-http" || !config.durableHttp) return null;
+  return new DurableHttpStorageClient({ config: config.durableHttp });
+}
+
+async function prepareArtifact(
+  durable: DurableHttpStorageClient,
+  runId: string,
+  artifact: NonNullable<CompleteAgentRunInput["artifacts"]>[number],
+  createdAt: number,
+): Promise<NonNullable<CompleteAgentRunInput["artifacts"]>[number] & { id: string }> {
+  if (!artifact.contentText) {
+    return {
+      ...artifact,
+      id: randomUUID(),
+      bodyStorage: artifact.bodyStorage ?? "inline",
+      byteSize: artifact.byteSize ?? undefined,
+    };
+  }
+
+  const stored = await durable.putArtifactBody({
+    runId,
+    type: artifact.type,
+    label: artifact.label,
+    contentText: artifact.contentText,
+    contentType: artifact.contentType ?? "text/plain; charset=utf-8",
+    createdAt: new Date(createdAt),
+  });
+
+  return stored.storage === "inline"
+    ? {
+        ...artifact,
+        id: randomUUID(),
+        bodyStorage: "inline",
+        contentText: stored.contentText,
+        contentType: stored.contentType,
+        byteSize: stored.byteSize,
+      }
+    : {
+        ...artifact,
+        id: randomUUID(),
+        bodyStorage: "object",
+        contentText: undefined,
+        objectKey: stored.objectKey,
+        contentType: stored.contentType,
+        byteSize: stored.byteSize,
+      };
 }

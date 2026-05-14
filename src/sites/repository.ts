@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "../utils/db.js";
+import { DurableHttpStorageClient, getStorageConfig } from "../storage/index.js";
 import type { AgentRunStatus } from "../agent-runs/types.js";
 import type { SeoDiagnostic, Target } from "../types/index.js";
 import type { SiteDetail, SiteProposalRecord, SiteRecord, SiteSnapshotRecord } from "./types.js";
@@ -17,6 +18,10 @@ export interface PersistSiteResultInput {
     label: string;
     pathOrUrl?: string;
     contentText?: string;
+    bodyStorage?: "inline" | "object";
+    objectKey?: string;
+    contentType?: string;
+    byteSize?: number;
     metadata?: JsonObject;
   }>;
 }
@@ -55,17 +60,99 @@ type ProposalRow = {
   label: string;
   path_or_url: string | null;
   content_text: string | null;
+  body_storage: "inline" | "object";
+  object_key: string | null;
+  content_type: string | null;
+  byte_size: number | null;
   metadata_json: string;
   created_at: number;
 };
 
 export async function persistSiteResult(input: PersistSiteResultInput): Promise<SiteDetail> {
-  const db = await getDb();
+  const durable = getDurableClient();
   const normalizedUrl = normalizeTargetUrl(input.target.url);
   const siteId = toSiteId(normalizedUrl);
   const snapshotId = randomUUID();
   const now = input.createdAt.getTime();
 
+  if (durable) {
+    const proposals = await Promise.all(
+      (input.proposals ?? []).map((proposal) => prepareProposal(durable, siteId, proposal, now)),
+    );
+    await durable.executeSql([
+      {
+        sql: `INSERT INTO analyzed_sites (
+          id, normalized_url, display_url, domain, latest_status, latest_seo_score,
+          latest_run_id, latest_snapshot_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(normalized_url) DO UPDATE SET
+          display_url = excluded.display_url,
+          domain = excluded.domain,
+          latest_status = excluded.latest_status,
+          latest_seo_score = excluded.latest_seo_score,
+          latest_run_id = excluded.latest_run_id,
+          latest_snapshot_id = excluded.latest_snapshot_id,
+          updated_at = excluded.updated_at`,
+        params: [
+          siteId,
+          normalizedUrl,
+          input.target.url,
+          input.target.domain,
+          input.status,
+          input.target.seoScore,
+          input.runId,
+          snapshotId,
+          now,
+          now,
+        ],
+      },
+      {
+        sql: `INSERT INTO site_snapshots (
+          id, site_id, run_id, target_url, domain, status, seo_score,
+          diagnostics_json, summary_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          snapshotId,
+          siteId,
+          input.runId,
+          input.target.url,
+          input.target.domain,
+          input.status,
+          input.target.seoScore,
+          jsonDiagnostics(input.target.diagnostics),
+          json(input.summary ?? {}),
+          now,
+        ],
+      },
+      ...proposals.map((proposal) => ({
+        sql: `INSERT INTO site_proposals (
+          id, site_id, snapshot_id, run_id, label, path_or_url, content_text, body_storage,
+          object_key, content_type, byte_size, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          proposal.id,
+          siteId,
+          snapshotId,
+          input.runId,
+          proposal.label,
+          proposal.pathOrUrl ?? null,
+          proposal.contentText ?? null,
+          proposal.bodyStorage,
+          proposal.objectKey ?? null,
+          proposal.contentType ?? null,
+          proposal.byteSize ?? null,
+          json(proposal.metadata ?? {}),
+          now,
+        ],
+      })),
+    ]);
+
+    const detail = await getSiteDetail(siteId);
+    if (!detail) throw new Error(`Failed to load persisted site result ${siteId}`);
+    return detail;
+  }
+
+  const db = await getDb();
   const tx = db.transaction(() => {
     db.prepare(
       `INSERT INTO analyzed_sites (
@@ -113,10 +200,12 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
 
     const insertProposal = db.prepare(
       `INSERT INTO site_proposals (
-        id, site_id, snapshot_id, run_id, label, path_or_url, content_text, metadata_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        id, site_id, snapshot_id, run_id, label, path_or_url, content_text, body_storage,
+        object_key, content_type, byte_size, metadata_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const proposal of input.proposals ?? []) {
+      const contentText = proposal.bodyStorage === "object" ? undefined : proposal.contentText;
       insertProposal.run(
         randomUUID(),
         siteId,
@@ -124,7 +213,11 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
         input.runId,
         proposal.label,
         proposal.pathOrUrl ?? null,
-        proposal.contentText ?? null,
+        contentText ?? null,
+        proposal.bodyStorage ?? "inline",
+        proposal.objectKey ?? null,
+        proposal.contentType ?? null,
+        proposal.byteSize ?? byteSize(contentText),
         json(proposal.metadata ?? {}),
         now,
       );
@@ -138,6 +231,17 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
 }
 
 export async function listSites(limit = 100): Promise<SiteRecord[]> {
+  const durable = getDurableClient();
+  if (durable) {
+    const results = await durable.executeSql<SiteRow>([
+      {
+        sql: "SELECT * FROM analyzed_sites ORDER BY updated_at DESC LIMIT ?",
+        params: [Math.max(1, Math.min(limit, 500))],
+      },
+    ]);
+    return (results[0]?.results ?? []).map(mapSiteRow);
+  }
+
   const db = await getDb();
   const rows = db
     .prepare("SELECT * FROM analyzed_sites ORDER BY updated_at DESC LIMIT ?")
@@ -146,6 +250,24 @@ export async function listSites(limit = 100): Promise<SiteRecord[]> {
 }
 
 export async function getSiteDetail(id: string): Promise<SiteDetail | null> {
+  const durable = getDurableClient();
+  if (durable) {
+    const results = await durable.executeSql<SiteRow | SnapshotRow | ProposalRow>([
+      { sql: "SELECT * FROM analyzed_sites WHERE id = ?", params: [id] },
+      { sql: "SELECT * FROM site_snapshots WHERE site_id = ? ORDER BY created_at DESC", params: [id] },
+      { sql: "SELECT * FROM site_proposals WHERE site_id = ? ORDER BY created_at DESC", params: [id] },
+    ]);
+    const row = (results[0]?.results?.[0] as SiteRow | undefined) ?? undefined;
+    if (!row) return null;
+    const snapshots = (results[1]?.results ?? []) as SnapshotRow[];
+    const proposals = (results[2]?.results ?? []) as ProposalRow[];
+    return {
+      ...mapSiteRow(row),
+      snapshots: snapshots.map(mapSnapshotRow),
+      proposals: await Promise.all(proposals.map((proposal) => mapProposalRowWithBody(proposal, durable))),
+    };
+  }
+
   const db = await getDb();
   const row = db.prepare("SELECT * FROM analyzed_sites WHERE id = ?").get(id) as SiteRow | undefined;
   if (!row) return null;
@@ -224,8 +346,27 @@ function mapProposalRow(row: ProposalRow): SiteProposalRecord {
     label: row.label,
     pathOrUrl: row.path_or_url ?? undefined,
     contentText: row.content_text ?? undefined,
+    bodyStorage: row.body_storage ?? "inline",
+    objectKey: row.object_key ?? undefined,
+    contentType: row.content_type ?? undefined,
+    byteSize: row.byte_size ?? undefined,
     metadata: parseJson(row.metadata_json),
     createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+async function mapProposalRowWithBody(row: ProposalRow, durable: DurableHttpStorageClient): Promise<SiteProposalRecord> {
+  const mapped = mapProposalRow(row);
+  if (mapped.bodyStorage !== "object" || !mapped.objectKey || mapped.contentText) return mapped;
+  const contentText = await durable.getArtifactBody({
+    storage: "object",
+    objectKey: mapped.objectKey,
+    byteSize: mapped.byteSize ?? 0,
+    contentType: mapped.contentType ?? "text/plain; charset=utf-8",
+  });
+  return {
+    ...mapped,
+    contentText: contentText ?? "[artifact body missing from durable object storage]",
   };
 }
 
@@ -253,4 +394,58 @@ function parseDiagnostics(value: string): SeoDiagnostic[] {
   } catch {
     return [];
   }
+}
+
+function byteSize(value: string | undefined): number | undefined {
+  return value === undefined ? undefined : Buffer.byteLength(value, "utf8");
+}
+
+function getDurableClient(): DurableHttpStorageClient | null {
+  const config = getStorageConfig();
+  if (config.mode !== "durable-http" || !config.durableHttp) return null;
+  return new DurableHttpStorageClient({ config: config.durableHttp });
+}
+
+async function prepareProposal(
+  durable: DurableHttpStorageClient,
+  siteId: string,
+  proposal: NonNullable<PersistSiteResultInput["proposals"]>[number],
+  createdAt: number,
+): Promise<NonNullable<PersistSiteResultInput["proposals"]>[number] & { id: string }> {
+  if (!proposal.contentText) {
+    return {
+      ...proposal,
+      id: randomUUID(),
+      bodyStorage: proposal.bodyStorage ?? "inline",
+      byteSize: proposal.byteSize ?? undefined,
+    };
+  }
+
+  const stored = await durable.putArtifactBody({
+    siteId,
+    type: "proposal",
+    label: proposal.label,
+    contentText: proposal.contentText,
+    contentType: proposal.contentType ?? "text/markdown; charset=utf-8",
+    createdAt: new Date(createdAt),
+  });
+
+  return stored.storage === "inline"
+    ? {
+        ...proposal,
+        id: randomUUID(),
+        bodyStorage: "inline",
+        contentText: stored.contentText,
+        contentType: stored.contentType,
+        byteSize: stored.byteSize,
+      }
+    : {
+        ...proposal,
+        id: randomUUID(),
+        bodyStorage: "object",
+        contentText: undefined,
+        objectKey: stored.objectKey,
+        contentType: stored.contentType,
+        byteSize: stored.byteSize,
+      };
 }

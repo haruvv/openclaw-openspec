@@ -34,6 +34,19 @@
       }
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "OPERATIONAL_DB",
+      "database_name": "revenue-agent-platform-operational",
+      "database_id": "49141976-8515-4541-9bb0-ad8c4a4d1245"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "OPERATIONAL_ARTIFACTS",
+      "bucket_name": "revenue-agent-platform-artifacts"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -60,6 +73,8 @@
     "REVENUE_AGENT_ALLOW_TELEGRAM": "false",
     "REVENUE_AGENT_ALLOW_PAYMENT_LINK": "false",
     "REVENUE_AGENT_CONTAINER_SLEEP_AFTER": "10m",
+    "DURABLE_STORAGE_BASE_URL": "https://revenue-agent-platform.haruki-ito0044.workers.dev",
+    "ARTIFACT_INLINE_BYTE_THRESHOLD": "16384",
     "GEMINI_MODEL": "gemini-2.0-flash",
     "ZAI_BASE_URL": "https://api.z.ai/api/paas/v4",
     "ZAI_MODEL": "glm-4.5-flash",
@@ -70,7 +85,8 @@
       "REVENUE_AGENT_INTEGRATION_TOKEN",
       "FIRECRAWL_API_KEY",
       "GEMINI_API_KEY",
-      "ADMIN_TOKEN"
+      "ADMIN_TOKEN",
+      "DURABLE_STORAGE_TOKEN"
     ]
   }
 }

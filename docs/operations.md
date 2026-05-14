@@ -61,11 +61,57 @@ Do not paste secret values into issue comments, logs, or chat.
 
 ## Persistence
 
-Cloudflare Containers currently use ephemeral disk. The SQLite database at `DB_PATH` is therefore not durable in production. Treat the current database as operational cache only.
+Cloudflare Containers currently use ephemeral disk. The SQLite database at `DB_PATH` is therefore not durable in production. Treat the current database as operational cache only until D1/R2 bindings are enabled.
 
-The durable path should be a separate change:
+Durable storage migration is tracked by OpenSpec change `persist-operational-data`.
 
-1. Move run/site records to an external durable store, preferably Cloudflare D1 for relational data.
-2. Move proposal documents and large artifacts to R2.
-3. Keep container-local SQLite only for transient execution state or local development.
-4. Add an explicit export/import migration from existing SQLite rows before relying on production history.
+### Clean durable start
+
+Use this if current production history can be discarded.
+
+1. Create a production D1 database and R2 bucket.
+2. Add the D1/R2 binding IDs to `wrangler.jsonc`.
+3. Apply migrations:
+
+```bash
+npx wrangler d1 migrations apply <database-name> --remote
+```
+
+4. Set `DURABLE_STORAGE_TOKEN` as a Cloudflare Worker secret.
+5. Deploy production and run smoke checks.
+
+### Preserve existing SQLite data
+
+Use this if current production history must be retained before switching the source of truth.
+
+1. Export the live Container SQLite file before replacing the Container:
+
+```bash
+npm run storage:export -- /tmp/revenue-agent/pipeline.db ./data/operational-export.sql
+```
+
+2. Apply the schema migration to the D1 database:
+
+```bash
+npx wrangler d1 migrations apply <database-name> --remote
+```
+
+3. Import exported rows:
+
+```bash
+npx wrangler d1 execute <database-name> --remote --file ./data/operational-export.sql
+```
+
+4. Deploy production with durable storage enabled.
+5. Confirm the admin dashboard still shows the imported run/site history.
+
+### Rollback
+
+If durable storage rollout fails before data is trusted:
+
+1. Export any D1-only rows that must be preserved with `wrangler d1 execute` queries.
+2. Remove or unset `DURABLE_STORAGE_BASE_URL` and `DURABLE_STORAGE_TOKEN` from production configuration.
+3. Redeploy the previous version or current version in SQLite mode.
+4. Keep the D1/R2 resources intact until the missing rows are either imported back or explicitly discarded.
+
+Rollback to SQLite mode restores service behavior, but it does not automatically copy D1-only writes back into the Container-local database.

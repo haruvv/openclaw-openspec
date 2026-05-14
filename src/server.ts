@@ -10,6 +10,7 @@ import { logger } from "./utils/logger.js";
 import { handleRevenueAgentRun } from "./revenue-agent/http.js";
 import { handleTelegramWebhook } from "./revenue-agent/telegram-webhook.js";
 import { adminApiRouter, adminRouter } from "./admin/routes.js";
+import { getStorageConfig } from "./storage/index.js";
 
 export const app = express();
 
@@ -73,7 +74,16 @@ app.get("/thank-you", (_req, res) => {
   res.send("<h1>お申し込みありがとうございます。</h1>");
 });
 
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/health", (_req, res) => {
+  const storage = getStorageConfig();
+  res.json({
+    status: "ok",
+    storage: {
+      mode: storage.mode,
+      durableConfigured: storage.mode === "durable-http",
+    },
+  });
+});
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const PORT = Number(process.env.PORT ?? 3000);
