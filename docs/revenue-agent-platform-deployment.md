@@ -118,11 +118,11 @@ REVENUE_AGENT_INTEGRATION_TOKEN=<same-long-random-secret>
 Telegram Bot
   -> POST /telegram/webhook
   -> RevenueAgentPlatform Worker
-  -> POST /api/revenue-agent/run
+  -> RevenueAgentPlatform Container
   -> Telegram sendMessage
 ```
 
-この経路では、Telegram メッセージ本文から最初の `http` / `https` URL を抽出し、`sendEmail=false`、`sendTelegram=false`、`createPaymentLink=false` の副作用なしで RevenueAgentPlatform を実行します。結果は Telegram に要約返信します。
+Worker は `secret_token` を検証して webhook request を Container へ転送します。Container は Telegram メッセージ本文から最初の `http` / `https` URL を抽出し、開始メッセージを即時返信したうえで、`sendEmail=false`、`sendTelegram=false`、`createPaymentLink=false` の副作用なしで RevenueAgentPlatform を実行します。結果は Telegram に要約返信します。
 
 追加 secret:
 

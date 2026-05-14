@@ -8,6 +8,7 @@ import { checkHilTimeouts } from "./hil-approval-flow/timeout-watcher.js";
 import { sendPaymentReminders } from "./stripe-payment-link/payment-link.js";
 import { logger } from "./utils/logger.js";
 import { handleRevenueAgentRun } from "./revenue-agent/http.js";
+import { handleTelegramWebhook } from "./revenue-agent/telegram-webhook.js";
 
 export const app = express();
 
@@ -35,6 +36,10 @@ app.use(express.json());
 
 app.post("/api/revenue-agent/run", async (req, res) => {
   await handleRevenueAgentRun(req, res);
+});
+
+app.post("/telegram/webhook", async (req, res) => {
+  await handleTelegramWebhook(req, res);
 });
 
 app.get("/hil/approve", async (req, res) => {
