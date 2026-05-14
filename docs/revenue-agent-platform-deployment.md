@@ -225,7 +225,7 @@ curl -sS https://<production-hostname>/api/revenue-agent/run \
 | RevenueAgentPlatform version | `786b1c17-e695-4797-8bb2-9cff11df38f3` |
 | Latest RevenueAgentPlatform version | `b1d7f7a8-225d-4ffb-867a-99fd17b19bc2` |
 | OpenClaw Gateway URL | `https://openclaw-gateway.haruki-ito0044.workers.dev` |
-| OpenClaw Gateway version | `189d4057-f2aa-4bf8-a591-16ab39e8cbd7` |
+| OpenClaw Gateway version | `9313d517-4ab8-4a43-9aba-fb85d79ccce0` |
 | Side effects | `REVENUE_AGENT_ALLOW_EMAIL=false`, `REVENUE_AGENT_ALLOW_TELEGRAM=false`, `REVENUE_AGENT_ALLOW_PAYMENT_LINK=false` |
 
 Verified:
@@ -234,10 +234,7 @@ Verified:
 - Direct `POST /api/revenue-agent/run` returned HTTP 200 for `https://example.com` with `crawl_and_score=passed`, `generate_proposal=passed`, and all side-effect steps skipped.
 - Worker-level Rate Limiting returned HTTP 429 after repeated invalid `POST /api/revenue-agent/run` requests. In the bounded check, 30 requests produced 22 `401` responses and 8 `429` responses.
 - OpenClaw Gateway production secrets were configured for `REVENUE_AGENT_BASE_URL` and `REVENUE_AGENT_INTEGRATION_TOKEN`, then Gateway was redeployed and reached `running`.
-
-Pending:
-
-- End-to-end OpenClaw conversation/skill invocation against production RevenueAgentPlatform. This depends on OpenClaw's LLM provider being usable; the current Z.ai key previously returned insufficient balance/resource package.
+- OpenClaw Gateway `POST /api/revenue-agent/verify` returned HTTP 200. The Gateway container invoked production `POST /api/revenue-agent/run` with the configured Bearer token and received the expected API validation response `HTTP 400 {"error":"url must be a valid URL"}`, confirming the request reached RevenueAgentPlatform past authentication without triggering crawl side effects.
 
 ## ロールバック
 

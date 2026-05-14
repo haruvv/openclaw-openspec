@@ -15,7 +15,7 @@
 
 - [x] 3.1 Verify production `GET /health`.
 - [x] 3.2 Verify direct production `POST /api/revenue-agent/run` with side effects disabled.
-- [ ] 3.3 Verify OpenClaw Gateway can invoke the production RevenueAgentPlatform API.
+- [x] 3.3 Verify OpenClaw Gateway can invoke the production RevenueAgentPlatform API.
 - [x] 3.4 Document rollback steps and the previous known-good base URL.
 
 ## 4. Final Checks
