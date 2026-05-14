@@ -37,6 +37,9 @@ const OPTIONAL_ENV = [
   "DURABLE_STORAGE_BASE_URL",
   "DURABLE_STORAGE_TOKEN",
   "ARTIFACT_INLINE_BYTE_THRESHOLD",
+  "REVENUE_AGENT_DISCOVERY_ENABLED",
+  "REVENUE_AGENT_DISCOVERY_DAILY_QUOTA",
+  "REVENUE_AGENT_DISCOVERY_SEED_URLS",
 ] as const;
 
 function readEnv(name: string): string | undefined {
@@ -109,6 +112,24 @@ export class RevenueAgentContainer extends Container {
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+    const token = readEnv("REVENUE_AGENT_INTEGRATION_TOKEN");
+    if (!token) {
+      console.error("Skipping daily discovery job because REVENUE_AGENT_INTEGRATION_TOKEN is not set");
+      return;
+    }
+
+    const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
+    ctx.waitUntil(
+      container.fetch(
+        new Request("https://container.internal/internal/jobs/discover-targets", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ),
+    );
+  },
+
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
 
@@ -151,6 +172,10 @@ export default {
     }
 
     if (url.pathname === "/api/revenue-agent/run" || url.pathname === "/api/admin" || url.pathname.startsWith("/api/admin/")) {
+      return container.fetch(request);
+    }
+
+    if (url.pathname === "/internal/jobs/discover-targets" && request.method === "POST") {
       return container.fetch(request);
     }
 

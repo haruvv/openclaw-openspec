@@ -13,6 +13,11 @@
   "build": {
     "command": "npm run build"
   },
+  "triggers": {
+    "crons": [
+      "0 0 * * *"
+    ]
+  },
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
@@ -75,6 +80,8 @@
     "REVENUE_AGENT_CONTAINER_SLEEP_AFTER": "10m",
     "DURABLE_STORAGE_BASE_URL": "https://revenue-agent-platform.haruki-ito0044.workers.dev",
     "ARTIFACT_INLINE_BYTE_THRESHOLD": "16384",
+    "REVENUE_AGENT_DISCOVERY_ENABLED": "false",
+    "REVENUE_AGENT_DISCOVERY_DAILY_QUOTA": "3",
     "GEMINI_MODEL": "gemini-2.0-flash",
     "ZAI_BASE_URL": "https://api.z.ai/api/paas/v4",
     "ZAI_MODEL": "glm-4.5-flash",
