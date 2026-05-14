@@ -9,8 +9,7 @@ import { sendPaymentReminders } from "./stripe-payment-link/payment-link.js";
 import { logger } from "./utils/logger.js";
 import { handleRevenueAgentRun } from "./revenue-agent/http.js";
 import { handleTelegramWebhook } from "./revenue-agent/telegram-webhook.js";
-import { adminRouter } from "./admin/routes.js";
-import { sitesRouter } from "./sites/routes.js";
+import { adminApiRouter, adminRouter } from "./admin/routes.js";
 
 export const app = express();
 
@@ -44,7 +43,7 @@ app.post("/telegram/webhook", async (req, res) => {
   await handleTelegramWebhook(req, res);
 });
 
-app.use("/admin/seo-sales/sites", sitesRouter);
+app.use("/api/admin", adminApiRouter);
 app.use("/admin", adminRouter);
 app.use("/sites", (req, res) => {
   const suffix = req.path === "/" ? "" : req.path;

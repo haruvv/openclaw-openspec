@@ -212,6 +212,8 @@ npx wrangler secret put ADMIN_TOKEN
 
 The management portal is served by the same Container under `/admin`. It lists business apps such as SEO営業 and planned future apps such as 株自動売買.
 
+The admin UI is a React + Tailwind single-page app built into `dist/admin-ui` by `npm run build`. Express serves that static bundle under `/admin`, while operational data is provided by JSON APIs under `/api/admin`.
+
 Production access requires `ADMIN_TOKEN`. Open the portal with:
 
 ```text

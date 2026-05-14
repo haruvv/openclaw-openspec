@@ -115,7 +115,7 @@ export default {
       return container.fetch(request);
     }
 
-    if (url.pathname === "/health" || url.pathname === "/api/revenue-agent/run") {
+    if (url.pathname === "/health" || url.pathname === "/api/revenue-agent/run" || url.pathname === "/api/admin" || url.pathname.startsWith("/api/admin/")) {
       return container.fetch(request);
     }
 
