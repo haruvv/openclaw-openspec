@@ -1,5 +1,5 @@
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: ["./admin-ui/index.html", "./admin-ui/src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {

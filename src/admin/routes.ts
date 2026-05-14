@@ -110,6 +110,15 @@ adminApiRouter.get("/seo-sales/settings", (_req, res) => {
   res.json({ integrations, policies });
 });
 
+adminRouter.use(
+  "/assets",
+  express.static(join(adminUiDir, "assets"), {
+    immutable: true,
+    index: false,
+    maxAge: "1y",
+  }),
+);
+
 adminRouter.use(requireAdminPageAuth);
 
 adminRouter.get("/integrations", (_req, res) => {
