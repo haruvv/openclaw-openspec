@@ -2,10 +2,13 @@ import { validateSafeTargetUrl } from "../revenue-agent/security.js";
 import type { RevenueAgentRunOptions, RevenueAgentRunReport } from "../revenue-agent/types.js";
 import { listSites } from "../sites/repository.js";
 import type { SiteRecord } from "../sites/types.js";
+import { discoverFirecrawlSearchCandidates } from "./firecrawl-search.js";
 
 export interface DiscoveryCandidate {
   url: string;
-  source: "seed";
+  source: "seed" | "firecrawl_search";
+  query?: string;
+  title?: string;
 }
 
 export interface DailyDiscoveryReport {
@@ -20,6 +23,7 @@ export interface DailyDiscoveryReport {
 
 interface DailyDiscoveryJobOptions {
   env?: NodeJS.ProcessEnv;
+  discoverCandidates?: (env: NodeJS.ProcessEnv) => Promise<DiscoveryCandidate[]>;
   listExistingSites?: () => Promise<SiteRecord[]>;
   runAgent?: (options: RevenueAgentRunOptions) => Promise<RevenueAgentRunReport>;
   validateUrl?: typeof validateSafeTargetUrl;
@@ -29,7 +33,7 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
   const env = options.env ?? process.env;
   const enabled = env.REVENUE_AGENT_DISCOVERY_ENABLED === "true";
   const quota = readQuota(env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA);
-  const candidates = readSeedCandidates(env.REVENUE_AGENT_DISCOVERY_SEED_URLS);
+  const seedCandidates = readSeedCandidates(env.REVENUE_AGENT_DISCOVERY_SEED_URLS);
   const skipped: DailyDiscoveryReport["skipped"] = [];
   const runs: DailyDiscoveryReport["runs"] = [];
 
@@ -38,12 +42,15 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
       status: "disabled",
       enabled,
       quota,
-      candidateCount: candidates.length,
+      candidateCount: seedCandidates.length,
       selectedCount: 0,
       skipped,
       runs,
     };
   }
+
+  const discoverCandidates = options.discoverCandidates ?? discoverFirecrawlSearchCandidates;
+  const candidates = mergeCandidates(seedCandidates, await discoverCandidates(env));
 
   if (candidates.length === 0) {
     return {
@@ -60,7 +67,7 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
   const listExistingSites = options.listExistingSites ?? listSites;
   const existingSites = await listExistingSites();
   const seen = new Set(existingSites.map((site) => normalizeComparableUrl(site.normalizedUrl || site.displayUrl)));
-  const selected: string[] = [];
+  const selected: DiscoveryCandidate[] = [];
 
   for (const candidate of candidates) {
     if (selected.length >= quota) break;
@@ -77,21 +84,21 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
       continue;
     }
 
-    selected.push(safeUrl.url);
+    selected.push({ ...candidate, url: safeUrl.url });
     seen.add(normalized);
   }
 
   const runAgent = options.runAgent ?? (await import("../revenue-agent/runner.js")).runRevenueAgent;
-  for (const url of selected) {
+  for (const candidate of selected) {
     const report = await runAgent({
-      targetUrl: url,
+      targetUrl: candidate.url,
       source: "discovery",
       sendEmail: false,
       sendTelegram: false,
       createPaymentLink: false,
-      metadata: { discovery: { source: "seed" } },
+      metadata: { discovery: { source: candidate.source, query: candidate.query, title: candidate.title } },
     });
-    runs.push({ url, runId: report.id, status: report.status });
+    runs.push({ url: candidate.url, runId: report.id, status: report.status });
   }
 
   return {
@@ -127,7 +134,17 @@ function readSeedCandidates(value: string | undefined): DiscoveryCandidate[] {
   });
 }
 
-function normalizeComparableUrl(value: string): string {
+export function mergeCandidates(...groups: DiscoveryCandidate[][]): DiscoveryCandidate[] {
+  const seen = new Set<string>();
+  return groups.flat().flatMap((candidate) => {
+    const normalized = normalizeComparableUrl(candidate.url);
+    if (seen.has(normalized)) return [];
+    seen.add(normalized);
+    return [candidate];
+  });
+}
+
+export function normalizeComparableUrl(value: string): string {
   try {
     const url = new URL(value);
     url.hash = "";

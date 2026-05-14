@@ -34,6 +34,7 @@ describe("runDailyDiscoveryJob", () => {
           "https://new-three.com/",
         ].join(","),
       } as NodeJS.ProcessEnv,
+      discoverCandidates: async () => [],
       listExistingSites: async () => [
         {
           id: "site-1",
@@ -63,6 +64,37 @@ describe("runDailyDiscoveryJob", () => {
       }),
     );
     expect(runAgent).not.toHaveBeenCalledWith(expect.objectContaining({ targetUrl: "https://new-three.com/" }));
+  });
+
+  it("merges search candidates with seed URLs", async () => {
+    const runAgent = vi
+      .fn()
+      .mockResolvedValueOnce(buildRunReport("run-1", "https://seed.com/"))
+      .mockResolvedValueOnce(buildRunReport("run-2", "https://search.com/"));
+
+    const report = await runDailyDiscoveryJob({
+      env: {
+        REVENUE_AGENT_DISCOVERY_ENABLED: "true",
+        REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "5",
+        REVENUE_AGENT_DISCOVERY_SEED_URLS: "https://seed.com/",
+      } as NodeJS.ProcessEnv,
+      discoverCandidates: async () => [
+        { url: "https://seed.com/", source: "firecrawl_search", query: "duplicate" },
+        { url: "https://search.com/", source: "firecrawl_search", query: "tax accountant tokyo", title: "Search Result" },
+      ],
+      listExistingSites: async () => [],
+      validateUrl: async (url) => ({ ok: true, url }),
+      runAgent,
+    });
+
+    expect(report.selectedCount).toBe(2);
+    expect(report.runs.map((run) => run.url)).toEqual(["https://seed.com/", "https://search.com/"]);
+    expect(runAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        targetUrl: "https://search.com/",
+        metadata: { discovery: { source: "firecrawl_search", query: "tax accountant tokyo", title: "Search Result" } },
+      }),
+    );
   });
 });
 
