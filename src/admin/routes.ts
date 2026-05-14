@@ -4,6 +4,7 @@ import { getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
 import { runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
 import { isAdminAuthorized, isAdminTokenConfigured, renderAdminLogin } from "./auth.js";
+import { businessApps, getBusinessApp } from "./business-apps.js";
 
 export const adminRouter = Router();
 
@@ -31,27 +32,38 @@ adminRouter.use((req, res, next) => {
 adminRouter.use(express.urlencoded({ extended: false }));
 
 adminRouter.get("/", async (_req, res) => {
+  res.send(renderPage("管理画面", renderPortal()));
+});
+
+adminRouter.get("/seo-sales", async (_req, res) => {
+  const app = getBusinessApp("seo-sales");
+  res.send(renderPage("SEO営業", renderSeoSalesHome(app)));
+});
+
+adminRouter.get("/seo-sales/runs", async (_req, res) => {
   const runs = await listAgentRuns(50);
-  res.send(renderPage("運用ダッシュボード", renderDashboard(runs)));
+  res.send(renderPage("SEO営業 実行ログ", renderDashboard(runs)));
 });
 
-adminRouter.get("/integrations", (_req, res) => {
-  res.send(renderPage("外部サービス設定", renderIntegrations()));
+adminRouter.get("/seo-sales/settings", (_req, res) => {
+  res.send(renderPage("SEO営業 外部サービス設定", renderIntegrations()));
 });
 
-adminRouter.post("/runs", async (req, res) => {
+adminRouter.post("/seo-sales/runs", async (req, res) => {
   const url = typeof req.body.url === "string" ? req.body.url : "";
   const safeUrl = await validateSafeTargetUrl(url);
   if (!safeUrl.ok) {
-    res.status(400).send(renderPage("URLが無効です", `<p>${escapeHtml(safeUrl.error)}</p><p><a href="/admin">戻る</a></p>`));
+    res
+      .status(400)
+      .send(renderPage("URLが無効です", `<p>${escapeHtml(safeUrl.error)}</p><p><a href="/admin/seo-sales/runs">戻る</a></p>`));
     return;
   }
 
   const report = await runManualRevenueAgent(safeUrl.url, {});
-  res.redirect(`/admin/runs/${encodeURIComponent(report.id)}`);
+  res.redirect(`/admin/seo-sales/runs/${encodeURIComponent(report.id)}`);
 });
 
-adminRouter.post("/runs/:id/retry", async (req, res) => {
+adminRouter.post("/seo-sales/runs/:id/retry", async (req, res) => {
   const prior = await getAgentRunDetail(req.params.id);
   const targetUrl = typeof prior?.input.targetUrl === "string" ? prior.input.targetUrl : undefined;
   if (!targetUrl) {
@@ -60,10 +72,10 @@ adminRouter.post("/runs/:id/retry", async (req, res) => {
   }
 
   const report = await runManualRevenueAgent(targetUrl, { retryOf: prior?.id });
-  res.redirect(`/admin/runs/${encodeURIComponent(report.id)}`);
+  res.redirect(`/admin/seo-sales/runs/${encodeURIComponent(report.id)}`);
 });
 
-adminRouter.get("/runs/:id", async (req, res) => {
+adminRouter.get("/seo-sales/runs/:id", async (req, res) => {
   const run = await getAgentRunDetail(req.params.id);
   if (!run) {
     res.status(404).send(renderPage("実行が見つかりません", "<p>指定された実行は見つかりません。</p>"));
@@ -71,6 +83,27 @@ adminRouter.get("/runs/:id", async (req, res) => {
   }
 
   res.send(renderPage(`実行詳細 ${run.id}`, renderRunDetail(run)));
+});
+
+adminRouter.get("/integrations", (_req, res) => {
+  res.redirect(301, "/admin/seo-sales/settings");
+});
+
+adminRouter.post("/runs", (req, res) => {
+  const query = typeof req.url === "string" && req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  res.redirect(307, `/admin/seo-sales/runs${query}`);
+});
+
+adminRouter.get("/runs", (_req, res) => {
+  res.redirect(301, "/admin/seo-sales/runs");
+});
+
+adminRouter.get("/runs/:id", (req, res) => {
+  res.redirect(301, `/admin/seo-sales/runs/${encodeURIComponent(req.params.id)}`);
+});
+
+adminRouter.post("/runs/:id/retry", (req, res) => {
+  res.redirect(307, `/admin/seo-sales/runs/${encodeURIComponent(req.params.id)}/retry`);
 });
 
 async function runManualRevenueAgent(targetUrl: string, metadata: Record<string, unknown>) {
@@ -91,11 +124,53 @@ async function runManualRevenueAgent(targetUrl: string, metadata: Record<string,
   });
 }
 
-function renderDashboard(runs: Awaited<ReturnType<typeof listAgentRuns>>): string {
+function renderPortal(): string {
   return `
     <section class="panel">
+      <h2>業務アプリ</h2>
+      <div class="app-grid">
+        ${businessApps.map(renderBusinessAppCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderBusinessAppCard(app: (typeof businessApps)[number]): string {
+  const links = app.primaryLinks.map((link) => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join("");
+  return `
+    <article class="app-card">
+      <div class="section-header">
+        <h3>${escapeHtml(app.name)}</h3>
+        <span class="badge ${app.status === "active" ? "passed" : "skipped"}">${app.status === "active" ? "稼働中" : "準備中"}</span>
+      </div>
+      <p>${escapeHtml(app.description)}</p>
+      <nav>${app.status === "active" ? `<a href="${escapeHtml(app.entryPath)}">開く</a>${links}` : "近日追加予定"}</nav>
+    </article>
+  `;
+}
+
+function renderSeoSalesHome(app = getBusinessApp("seo-sales")): string {
+  if (!app) return "<p>SEO営業アプリが見つかりません。</p>";
+  return `
+    <section class="panel">
+      <div class="section-header">
+        <h2>${escapeHtml(app.name)}</h2>
+        <a href="/admin">業務アプリ一覧</a>
+      </div>
+      <p>${escapeHtml(app.description)}</p>
+      <div class="link-grid">
+        ${app.primaryLinks.map((link) => `<a class="link-tile" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboard(runs: Awaited<ReturnType<typeof listAgentRuns>>): string {
+  return `
+    <p><a href="/admin/seo-sales">SEO営業に戻る</a> · <a href="/admin">業務アプリ一覧</a></p>
+    <section class="panel">
       <h2>手動実行</h2>
-      <form method="post" action="/admin/runs" class="inline-form">
+      <form method="post" action="/admin/seo-sales/runs" class="inline-form">
         <input name="url" type="url" placeholder="https://example.com" required />
         <button type="submit">RevenueAgentを実行</button>
       </form>
@@ -103,7 +178,7 @@ function renderDashboard(runs: Awaited<ReturnType<typeof listAgentRuns>>): strin
     <section class="panel">
       <div class="section-header">
         <h2>最近の実行</h2>
-        <nav><a href="/sites">URL別結果</a><a href="/admin/integrations">外部サービス設定</a></nav>
+        <nav><a href="/admin/seo-sales/sites">URL別結果</a><a href="/admin/seo-sales/settings">外部サービス設定</a></nav>
       </div>
       <table>
         <thead>
@@ -131,7 +206,7 @@ function renderRunRow(run: Awaited<ReturnType<typeof listAgentRuns>>[number]): s
       <td><span class="badge ${escapeHtml(run.status)}">${escapeHtml(formatStatus(run.status))}</span></td>
       <td>${escapeHtml(run.agentType)}</td>
       <td>${escapeHtml(run.source)}</td>
-      <td><a href="/admin/runs/${encodeURIComponent(run.id)}">${escapeHtml(target)}</a></td>
+      <td><a href="/admin/seo-sales/runs/${encodeURIComponent(run.id)}">${escapeHtml(target)}</a></td>
       <td>${formatDate(run.startedAt)}</td>
       <td>${formatDuration(run.startedAt, run.completedAt)}</td>
     </tr>
@@ -140,11 +215,11 @@ function renderRunRow(run: Awaited<ReturnType<typeof listAgentRuns>>[number]): s
 
 function renderRunDetail(run: AgentRunDetail) {
   return `
-    <p><a href="/admin">実行一覧に戻る</a></p>
+    <p><a href="/admin/seo-sales/runs">実行一覧に戻る</a> · <a href="/admin/seo-sales">SEO営業に戻る</a></p>
     <section class="panel">
       <div class="section-header">
         <h2>${escapeHtml(stringValue(run.summary.targetUrl) || stringValue(run.input.targetUrl) || run.id)}</h2>
-        <form method="post" action="/admin/runs/${encodeURIComponent(run.id)}/retry">
+        <form method="post" action="/admin/seo-sales/runs/${encodeURIComponent(run.id)}/retry">
           <button type="submit">再実行</button>
         </form>
       </div>
@@ -221,7 +296,7 @@ function renderIntegrations(): string {
     ["決済リンク作成", process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK === "true"],
   ];
   return `
-    <p><a href="/admin">実行一覧に戻る</a></p>
+    <p><a href="/admin/seo-sales">SEO営業に戻る</a> · <a href="/admin/seo-sales/runs">実行一覧に戻る</a></p>
     <section class="panel">
       <h2>外部サービス設定</h2>
       <table>
@@ -265,6 +340,10 @@ function renderPage(title: string, body: string, options: { compact?: boolean } 
           .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin-bottom: 18px; }
           .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
           nav { display: inline-flex; gap: 14px; align-items: center; }
+          .app-grid, .link-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+          .app-card, .link-tile { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fff; }
+          .app-card p { color: var(--muted); margin: 8px 0 14px; }
+          .link-tile { display: block; font-weight: 700; }
           h2 { margin: 0 0 14px; font-size: 16px; letter-spacing: 0; }
           h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }
           table { width: 100%; border-collapse: collapse; }

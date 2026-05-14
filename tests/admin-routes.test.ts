@@ -29,19 +29,41 @@ describe("admin routes", () => {
     expect(response.body).toContain("ADMIN_TOKEN");
   });
 
-  it("renders the run list when token is provided", async () => {
+  it("renders the business app portal when token is provided", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     const { adminRouter } = await import("../src/admin/routes.js");
 
     const response = await dispatch(adminRouter, "/?token=admin-test");
 
     expect(response.status).toBe(200);
-    expect(response.body).toContain("運用ダッシュボード");
+    expect(response.body).toContain("管理画面");
+    expect(response.body).toContain("SEO営業");
+    expect(response.body).toContain("株自動売買");
+  });
+
+  it("renders the SEO sales run list under the app path", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { adminRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminRouter, "/seo-sales/runs?token=admin-test");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toContain("SEO営業 実行ログ");
     expect(response.body).toContain("最近の実行");
+  });
+
+  it("redirects legacy run URLs to SEO sales routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { adminRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminRouter, "/runs/run-1?token=admin-test");
+
+    expect(response.status).toBe(301);
+    expect(response.headers.location).toBe("/admin/seo-sales/runs/run-1");
   });
 });
 
-function dispatch(router: { handle: Function }, url: string): Promise<{ status: number; body: string }> {
+function dispatch(router: { handle: Function }, url: string): Promise<{ status: number; body: string; headers: Record<string, string> }> {
   return new Promise((resolve, reject) => {
     const req = new Readable({ read() {} }) as unknown as {
       method: string;
@@ -58,6 +80,7 @@ function dispatch(router: { handle: Function }, url: string): Promise<{ status: 
 
     const res = {
       statusCode: 200,
+      headers: {} as Record<string, string>,
       status(code: number) {
         this.statusCode = code;
         return this;
@@ -66,17 +89,26 @@ function dispatch(router: { handle: Function }, url: string): Promise<{ status: 
         return this;
       },
       send(body: string) {
-        resolve({ status: this.statusCode, body });
+        resolve({ status: this.statusCode, body, headers: this.headers });
         return this;
       },
-      setHeader() {
+      redirect(codeOrUrl: number | string, maybeUrl?: string) {
+        const code = typeof codeOrUrl === "number" ? codeOrUrl : 302;
+        const location = typeof codeOrUrl === "number" ? maybeUrl ?? "" : codeOrUrl;
+        this.statusCode = code;
+        this.headers.location = location;
+        resolve({ status: this.statusCode, body: "", headers: this.headers });
         return this;
       },
-      getHeader() {
-        return undefined;
+      setHeader(name: string, value: string) {
+        this.headers[name.toLowerCase()] = value;
+        return this;
+      },
+      getHeader(name: string) {
+        return this.headers[name.toLowerCase()];
       },
       end(body?: string) {
-        resolve({ status: this.statusCode, body: body ?? "" });
+        resolve({ status: this.statusCode, body: body ?? "", headers: this.headers });
       },
     };
 

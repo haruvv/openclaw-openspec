@@ -34,7 +34,9 @@ sitesRouter.get("/", async (_req, res) => {
 sitesRouter.get("/:id", async (req, res) => {
   const site = await getSiteDetail(req.params.id);
   if (!site) {
-    res.status(404).send(renderPage("結果が見つかりません", `<p>指定されたURL別結果は見つかりません。</p><p><a href="/sites">一覧に戻る</a></p>`));
+    res
+      .status(404)
+      .send(renderPage("結果が見つかりません", `<p>指定されたURL別結果は見つかりません。</p><p><a href="/admin/seo-sales/sites">一覧に戻る</a></p>`));
     return;
   }
 
@@ -46,7 +48,7 @@ function renderSiteList(sites: SiteRecord[]): string {
     <section class="panel">
       <div class="section-header">
         <h2>解析済みURL</h2>
-        <nav><a href="/admin">運用ログ</a><a href="/admin/integrations">外部サービス設定</a></nav>
+        <nav><a href="/admin/seo-sales">SEO営業</a><a href="/admin/seo-sales/runs">実行ログ</a><a href="/admin/seo-sales/settings">外部サービス設定</a></nav>
       </div>
       <table>
         <thead>
@@ -71,11 +73,11 @@ function renderSiteRow(site: SiteRecord): string {
   return `
     <tr>
       <td><span class="badge ${escapeHtml(site.latestStatus)}">${escapeHtml(formatStatus(site.latestStatus))}</span></td>
-      <td><a href="/sites/${encodeURIComponent(site.id)}">${escapeHtml(site.displayUrl)}</a></td>
+      <td><a href="/admin/seo-sales/sites/${encodeURIComponent(site.id)}">${escapeHtml(site.displayUrl)}</a></td>
       <td>${escapeHtml(site.domain)}</td>
       <td>${formatScore(site.latestSeoScore)}</td>
       <td>${formatDate(site.updatedAt)}</td>
-      <td>${site.latestRunId ? `<a href="/admin/runs/${encodeURIComponent(site.latestRunId)}">開く</a>` : "-"}</td>
+      <td>${site.latestRunId ? `<a href="/admin/seo-sales/runs/${encodeURIComponent(site.latestRunId)}">開く</a>` : "-"}</td>
     </tr>
   `;
 }
@@ -84,11 +86,11 @@ function renderSiteDetail(site: SiteDetail): string {
   const latestSnapshot = site.snapshots[0];
   const latestProposal = site.proposals[0];
   return `
-    <p><a href="/sites">一覧に戻る</a> · <a href="/admin">運用ログ</a></p>
+    <p><a href="/admin/seo-sales/sites">一覧に戻る</a> · <a href="/admin/seo-sales">SEO営業</a></p>
     <section class="panel">
       <div class="section-header">
         <h2>${escapeHtml(site.displayUrl)}</h2>
-        ${site.latestRunId ? `<a href="/admin/runs/${encodeURIComponent(site.latestRunId)}">最新の実行ログを開く</a>` : ""}
+        ${site.latestRunId ? `<a href="/admin/seo-sales/runs/${encodeURIComponent(site.latestRunId)}">最新の実行ログを開く</a>` : ""}
       </div>
       <dl class="grid">
         <dt>状態</dt><dd><span class="badge ${escapeHtml(site.latestStatus)}">${escapeHtml(formatStatus(site.latestStatus))}</span></dd>
@@ -144,7 +146,7 @@ function renderSnapshotRow(snapshot: SiteSnapshotRecord): string {
       <td>${formatScore(snapshot.seoScore)}</td>
       <td>${formatDate(snapshot.createdAt)}</td>
       <td>${snapshot.diagnostics.length}</td>
-      <td>${snapshot.runId ? `<a href="/admin/runs/${encodeURIComponent(snapshot.runId)}">開く</a>` : "-"}</td>
+      <td>${snapshot.runId ? `<a href="/admin/seo-sales/runs/${encodeURIComponent(snapshot.runId)}">開く</a>` : "-"}</td>
     </tr>
   `;
 }

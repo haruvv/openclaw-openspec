@@ -44,8 +44,13 @@ app.post("/telegram/webhook", async (req, res) => {
   await handleTelegramWebhook(req, res);
 });
 
+app.use("/admin/seo-sales/sites", sitesRouter);
 app.use("/admin", adminRouter);
-app.use("/sites", sitesRouter);
+app.use("/sites", (req, res) => {
+  const suffix = req.path === "/" ? "" : req.path;
+  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  res.redirect(301, `/admin/seo-sales/sites${suffix}${query}`);
+});
 
 app.get("/hil/approve", async (req, res) => {
   const { targetId, token } = req.query as Record<string, string>;

@@ -65,6 +65,7 @@ describe("site result routes", () => {
     expect(listResponse.status).toBe(200);
     expect(listResponse.body).toContain("URL別結果");
     expect(listResponse.body).toContain("https://example.com/");
+    expect(listResponse.body).toContain("/admin/seo-sales/sites/");
     expect(detailResponse.status).toBe(200);
     expect(detailResponse.body).toContain("最新の提案書");
     expect(detailResponse.body).toContain("# Proposal");
@@ -83,7 +84,7 @@ function dispatch(router: { handle: Function }, url: string): Promise<{ status: 
     };
     req.method = "GET";
     req.url = url;
-    req.originalUrl = `/sites${url}`;
+    req.originalUrl = `/admin/seo-sales/sites${url}`;
     req.headers = {};
     req.query = Object.fromEntries(new URL(`http://sites.test${url}`).searchParams.entries());
 

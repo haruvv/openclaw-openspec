@@ -208,29 +208,38 @@ npx wrangler secret put STRIPE_WEBHOOK_SECRET
 npx wrangler secret put ADMIN_TOKEN
 ```
 
-### Admin dashboard
+### Admin portal
 
-The operations dashboard is served by the same Container under `/admin`. It is intentionally generic: RevenueAgent is the first `agent_type`, but runs, steps, artifacts, and provider status use the shared agent-run model so later workflows can appear in the same UI.
+The management portal is served by the same Container under `/admin`. It lists business apps such as SEO営業 and planned future apps such as 株自動売買.
 
-Production access requires `ADMIN_TOKEN`. Open the dashboard with:
+Production access requires `ADMIN_TOKEN`. Open the portal with:
 
 ```text
 https://<production-hostname>/admin?token=<ADMIN_TOKEN>
 ```
 
-The token is stored in an HTTP-only cookie after the first request. The dashboard shows recent runs, run details, proposal artifacts, integration configuration status, and manual RevenueAgent run/retry actions. It does not display secret values and does not edit secrets.
+The token is stored in an HTTP-only cookie after the first request. The portal does not display secret values and does not edit secrets.
 
-### Site results dashboard
+### SEO sales app
 
-The site-centric results dashboard is served under `/sites` and uses the same `ADMIN_TOKEN` protection as `/admin`.
-
-Use `/admin` for operations work: failures, retries, integration status, raw steps, and artifacts. Use `/sites` for product-facing review of analyzed URLs: latest status, latest SEO score, latest proposal, snapshot history, and links back to the related run detail.
+SEO営業 is the first active business app. Its canonical paths are:
 
 ```text
-https://<production-hostname>/sites?token=<ADMIN_TOKEN>
+https://<production-hostname>/admin/seo-sales?token=<ADMIN_TOKEN>
+https://<production-hostname>/admin/seo-sales/sites?token=<ADMIN_TOKEN>
+https://<production-hostname>/admin/seo-sales/runs?token=<ADMIN_TOKEN>
+https://<production-hostname>/admin/seo-sales/settings?token=<ADMIN_TOKEN>
 ```
 
-Each successful RevenueAgent run that produces a crawled target writes both the generic run log and the site result state. Runs that do not produce a target remain visible in `/admin` but do not create a `/sites` record.
+Use `/admin/seo-sales/sites` for product-facing review of analyzed URLs: latest status, latest SEO score, latest proposal, snapshot history, and links back to related run details.
+
+Use `/admin/seo-sales/runs` for operations work: failures, retries, raw steps, artifacts, and manual RevenueAgent run/retry actions.
+
+```text
+Legacy `/sites`, `/admin/runs`, and `/admin/integrations` URLs redirect to the SEO営業 canonical paths.
+```
+
+Each successful RevenueAgent run that produces a crawled target writes both the generic run log and the site result state. Runs that do not produce a target remain visible in `/admin/seo-sales/runs` but do not create a URL result record.
 
 独自ドメイン移行後、zone-level Rate Limiting も追加したい場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
 
