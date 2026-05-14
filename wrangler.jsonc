@@ -16,7 +16,7 @@
   "containers": [
     {
       "class_name": "RevenueAgentContainer",
-      "image": "registry.cloudflare.com/bbcaddbc9938b5f98b25475a69589baf/revenue-agent-platform-revenueagentcontainer:c36ca1d9",
+      "image": "registry.cloudflare.com/bbcaddbc9938b5f98b25475a69589baf/revenue-agent-platform-revenueagentcontainer:9c41a914",
       "instance_type": "standard-1",
       "max_instances": 2
     }
