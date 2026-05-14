@@ -129,7 +129,6 @@ const apiCache = new Map<string, unknown>();
 const ADMIN_TOKEN_STORAGE_KEY = "revenue_agent_admin_token";
 const ADMIN_UI_VERSION = "2026-05-15-discovery-feedback";
 const DISCOVERY_INDUSTRIES = ["税理士事務所", "歯科医院", "整体院", "美容室", "工務店", "不動産会社", "行政書士事務所", "クリニック"];
-const DISCOVERY_REGIONS = ["東京都", "神奈川県", "埼玉県", "千葉県", "大阪府", "愛知県", "福岡県", "全国"];
 
 function App() {
   rememberAdminTokenFromUrl();
@@ -551,7 +550,6 @@ function SettingsPage() {
 function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
   const initialSelection = parseDiscoveryQuerySelection(settings.queries);
   const [selectedIndustries, setSelectedIndustries] = useState(initialSelection.industries);
-  const [selectedRegions, setSelectedRegions] = useState(initialSelection.regions);
   const [customQueries, setCustomQueries] = useState(initialSelection.customQueries.join("\n"));
   const [seedUrls, setSeedUrls] = useState(settings.seedUrls.join("\n"));
   const [dailyQuota, setDailyQuota] = useState(String(settings.dailyQuota));
@@ -560,13 +558,12 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [configuredFromAdmin, setConfiguredFromAdmin] = useState(settings.configuredFromAdmin);
-  const generatedQueries = buildDiscoveryQueries(selectedIndustries, selectedRegions);
+  const generatedQueries = buildDiscoveryQueries(selectedIndustries);
   const allQueries = [...generatedQueries, ...splitLines(customQueries)];
 
   useEffect(() => {
     const selection = parseDiscoveryQuerySelection(settings.queries);
     setSelectedIndustries(selection.industries);
-    setSelectedRegions(selection.regions);
     setCustomQueries(selection.customQueries.join("\n"));
     setSeedUrls(settings.seedUrls.join("\n"));
     setDailyQuota(String(settings.dailyQuota));
@@ -591,12 +588,11 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
         searchLimit: Number(searchLimit),
         country: "jp",
         lang: "ja",
-        location: selectedRegions.includes("全国") ? "" : selectedRegions.join(", "),
+        location: "",
       });
       apiCache.delete("/api/admin/seo-sales/settings");
       const selection = parseDiscoveryQuerySelection(result.discovery.queries);
       setSelectedIndustries(selection.industries);
-      setSelectedRegions(selection.regions);
       setCustomQueries(selection.customQueries.join("\n"));
       setSeedUrls(result.discovery.seedUrls.join("\n"));
       setDailyQuota(String(result.discovery.dailyQuota));
@@ -613,25 +609,14 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
   return (
     <Panel title="自動候補発見設定" action={configuredFromAdmin ? <StatusPill status="passed" label="管理画面設定" /> : <StatusPill status="skipped" label="環境変数設定" />}>
       <form className="space-y-4" onSubmit={save}>
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div>
           <fieldset>
             <legend className="text-sm font-black text-slate-700">営業対象の業種</legend>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {DISCOVERY_INDUSTRIES.map((industry) => (
                 <label key={industry} className="check-row">
                   <input type="checkbox" checked={selectedIndustries.includes(industry)} onChange={() => toggleSelection(industry, selectedIndustries, setSelectedIndustries)} />
                   <span>{industry}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset>
-            <legend className="text-sm font-black text-slate-700">営業対象エリア</legend>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {DISCOVERY_REGIONS.map((region) => (
-                <label key={region} className="check-row">
-                  <input type="checkbox" checked={selectedRegions.includes(region)} onChange={() => toggleSelection(region, selectedRegions, setSelectedRegions)} />
-                  <span>{region}</span>
                 </label>
               ))}
             </div>
@@ -643,7 +628,7 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
             {allQueries.length > 0 ? allQueries.slice(0, 12).map((query) => <span key={query} className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{query}</span>) : <span className="text-sm font-bold text-slate-500">業種とエリアを選択してください</span>}
             {allQueries.length > 12 ? <span className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">他 {allQueries.length - 12}件</span> : null}
           </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">ここで探すのは営業対象のホームページです。SEO集客などの悩みキーワードではなく、見つけたサイトを解析して改善余地を判定します。</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">ここで探すのは営業対象のホームページです。地域では絞らず、見つけたサイトを解析して改善余地を判定します。</p>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
           <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setDailyQuota(event.target.value)} /></label>
@@ -675,33 +660,29 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
   );
 }
 
-function buildDiscoveryQueries(industries: string[], regions: string[]): string[] {
-  if (industries.length === 0) return [];
-  const targetRegions = regions.length > 0 ? regions : ["全国"];
-  return targetRegions.flatMap((region) =>
-    industries.map((industry) => (region === "全国" ? `${industry} 公式サイト` : `${region} ${industry} 公式サイト`)),
-  );
+function buildDiscoveryQueries(industries: string[]): string[] {
+  return industries.map((industry) => `${industry} 公式サイト`);
 }
 
-function parseDiscoveryQuerySelection(queries: string[]): { industries: string[]; regions: string[]; customQueries: string[] } {
+function parseDiscoveryQuerySelection(queries: string[]): { industries: string[]; customQueries: string[] } {
   const industries = new Set<string>();
-  const regions = new Set<string>();
   const generated = new Set<string>();
 
-  for (const region of DISCOVERY_REGIONS) {
-    for (const industry of DISCOVERY_INDUSTRIES) {
-      const query = region === "全国" ? `${industry} 公式サイト` : `${region} ${industry} 公式サイト`;
-      generated.add(query);
-      if (queries.includes(query)) {
+  for (const industry of DISCOVERY_INDUSTRIES) {
+    const currentQuery = `${industry} 公式サイト`;
+    generated.add(currentQuery);
+    if (queries.includes(currentQuery)) industries.add(industry);
+
+    for (const query of queries) {
+      if (query.endsWith(` ${industry} 公式サイト`)) {
         industries.add(industry);
-        regions.add(region);
+        generated.add(query);
       }
     }
   }
 
   return {
     industries: [...industries],
-    regions: [...regions],
     customQueries: queries.filter((query) => !generated.has(query)),
   };
 }
