@@ -7,7 +7,7 @@
     "build": "npm run build:server && npm run build:admin",
     "build:server": "tsc",
     "build:admin": "vite build --config admin-ui/vite.config.ts",
-    "deploy:cloudflare": "wrangler deploy",
+    "deploy:cloudflare": "wrangler deploy --containers-rollout immediate",
     "dev:cloudflare": "wrangler dev",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",

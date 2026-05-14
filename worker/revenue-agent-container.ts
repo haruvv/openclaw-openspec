@@ -4,9 +4,10 @@ import { env as workerEnv } from "cloudflare:workers";
 type WorkerEnv = {
   REVENUE_AGENT_CONTAINER: DurableObjectNamespace<RevenueAgentContainer>;
   REVENUE_AGENT_RUN_LIMITER: RateLimit;
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
 };
 
-const CONTAINER_INSTANCE_NAME = "production-admin-ui";
+const DEFAULT_CONTAINER_INSTANCE_NAME = "production-local";
 
 const REQUIRED_ENV = [
   "REVENUE_AGENT_INTEGRATION_TOKEN",
@@ -64,6 +65,25 @@ function isTelegramAuthorized(request: Request): boolean {
   return request.headers.get("X-Telegram-Bot-Api-Secret-Token") === secret;
 }
 
+function resolveContainerInstanceName(env: WorkerEnv): string {
+  const explicitName = readEnv("REVENUE_AGENT_CONTAINER_INSTANCE_NAME");
+  if (explicitName) return sanitizeContainerInstanceName(explicitName);
+
+  const versionId = env.CF_VERSION_METADATA?.id;
+  if (!versionId) return DEFAULT_CONTAINER_INSTANCE_NAME;
+
+  return sanitizeContainerInstanceName(`production-${versionId.slice(0, 12)}`);
+}
+
+function sanitizeContainerInstanceName(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized || DEFAULT_CONTAINER_INSTANCE_NAME;
+}
+
 export class RevenueAgentContainer extends Container {
   defaultPort = 3000;
   sleepAfter = readEnv("REVENUE_AGENT_CONTAINER_SLEEP_AFTER") ?? "10m";
@@ -85,7 +105,7 @@ export class RevenueAgentContainer extends Container {
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
-    const container = getContainer(env.REVENUE_AGENT_CONTAINER, CONTAINER_INSTANCE_NAME);
+    const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
 
     if (url.pathname === "/telegram/webhook" && request.method === "POST") {
       if (!isTelegramAuthorized(request)) {

@@ -177,13 +177,37 @@ Rate Limiting は Cloudflare 側を第一防衛線にし、アプリ側の `REVE
 | `Dockerfile` | RevenueAgentPlatform production image |
 | `infra/cloudflare/revenue-agent-rate-limit.tf.example` | Cloudflare zone-level Rate Limiting rule の Terraform 例 |
 
-デプロイ時は `wrangler deploy` が Docker image を build/push し、Worker と Container binding を Cloudflare に反映します。Container application が古い image tag を参照し続ける場合は、Cloudflare registry に push 済みの image reference を `wrangler.jsonc` の `containers[].image` に明示して `--containers-rollout immediate` で反映します。
+`main` ブランチへ push すると、GitHub Actions の `Deploy Production` workflow が本番へ反映します。
 
-Container は `max_instances=2` にしています。通常運用は singleton 名で 1 instance に寄せますが、deploy / rollout 直後に旧 instance が停止するまでの間、起動上限で webhook が 500/503 になるのを避けるためです。
+Workflow は次の順で実行します。
+
+1. `npm ci`
+2. `npm test`
+3. `npm run build`
+4. `npm run deploy:cloudflare`
+
+`npm run deploy:cloudflare` は `wrangler deploy --containers-rollout immediate` を実行します。デプロイ時は Wrangler が `Dockerfile` から image を build/push し、Worker と Container binding を Cloudflare に反映します。
+
+GitHub repository secrets には以下が必要です。
+
+```text
+CLOUDFLARE_API_TOKEN
+```
+
+`CLOUDFLARE_ACCOUNT_ID` は workflow に固定値として入れています。`CLOUDFLARE_API_TOKEN` には、この Worker と Container application を deploy できる権限を付与します。RevenueAgentPlatform の実行時 secret は GitHub Actions には置かず、Cloudflare 側の Worker secrets として管理します。
+
+Container は `max_instances=2` にしています。通常運用は Worker version ごとの singleton 名に寄せますが、deploy / rollout 直後に旧 instance が停止するまでの間、起動上限で webhook が 500/503 になるのを避けるためです。
+
+Worker には `version_metadata` binding を設定しています。Worker は version ID を使って Container instance 名を作るため、push deploy ごとに新しい container instance が起動します。これにより、古い container instance が前回の `dist/admin-ui` を持ち続けて CSS/JS が更新されない問題を避けます。
+
+```bash
+git push origin main
+```
+
+手元から緊急デプロイする場合だけ、以下を実行します。
 
 ```bash
 npm run deploy:cloudflare
-npm run deploy:cloudflare -- --containers-rollout immediate
 ```
 
 本番 secret は `wrangler secret put` で登録します。
