@@ -44,6 +44,24 @@ describe("worker admin UI assets", () => {
     expect(assets.fetch).toHaveBeenLastCalledWith(expect.objectContaining({ url: "https://example.com/admin/index.html" }));
   });
 
+  it("falls back nested admin SPA detail routes to /admin/index.html", async () => {
+    const assets = createAssetBinding({
+      "/admin/index.html": new Response("<div id=\"root\"></div>", {
+        headers: { "content-type": "text/html" },
+      }),
+    });
+
+    const response = await maybeServeAdminUiAsset(
+      new Request("https://example.com/admin/seo-sales/runs/run-1", {
+        headers: { accept: "text/html" },
+      }),
+      { ASSETS: assets },
+    );
+
+    expect(response?.status).toBe(200);
+    expect(assets.fetch).toHaveBeenLastCalledWith(expect.objectContaining({ url: "https://example.com/admin/index.html" }));
+  });
+
   it("does not intercept admin API or non-idempotent admin requests", async () => {
     const assets = createAssetBinding({});
 
