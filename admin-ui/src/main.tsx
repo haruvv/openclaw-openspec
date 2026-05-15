@@ -369,12 +369,7 @@ function DiscoveryRunPanel() {
     { label: "候補", value: `${report.candidateCount}件` },
     { label: "解析開始", value: `${report.selectedCount}件` },
     { label: "上限", value: `${report.quota}件/日` },
-  ] : [
-    { label: "探索方法", value: "業種から自動検索" },
-    { label: "重複", value: "解析済みURLを除外" },
-    { label: "実行ログ", value: "自動保存" },
-    { label: "操作", value: "手動実行" },
-  ];
+  ] : [];
 
   return (
     <section className="rounded-lg border border-blue-200 bg-white shadow-sm">
@@ -394,11 +389,13 @@ function DiscoveryRunPanel() {
             </button>
             <a href="/admin/seo-sales/settings" className="btn-secondary h-12 px-5"><Settings className="h-4 w-4" />検索条件を確認</a>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-4">
-            {summaryItems.map((item) => (
-              <Info key={item.label} label={item.label} value={item.value} />
-            ))}
-          </div>
+          {summaryItems.length > 0 ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              {summaryItems.map((item) => (
+                <Info key={item.label} label={item.label} value={item.value} />
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="border-t border-blue-100 bg-slate-50 p-5 lg:border-l lg:border-t-0">
           <div className="text-xs font-black text-slate-500">実行状況</div>
