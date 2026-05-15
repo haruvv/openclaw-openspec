@@ -623,12 +623,12 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
           </fieldset>
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="text-xs font-black text-slate-500">実際に使う検索条件</div>
+          <div className="text-xs font-black text-slate-500">検索キーワードのプレビュー</div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {allQueries.length > 0 ? allQueries.slice(0, 12).map((query) => <span key={query} className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{query}</span>) : <span className="text-sm font-bold text-slate-500">業種とエリアを選択してください</span>}
+            {allQueries.length > 0 ? allQueries.slice(0, 12).map((query) => <span key={query} className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{query}</span>) : <span className="text-sm font-bold text-slate-500">営業対象の業種を選択してください</span>}
             {allQueries.length > 12 ? <span className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">他 {allQueries.length - 12}件</span> : null}
           </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">ここで探すのは営業対象のホームページです。地域では絞らず、見つけたサイトを解析して改善余地を判定します。</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">選んだ業種の公式サイトを探し、解析結果から改善余地が大きいサイトを営業候補にします。</p>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
           <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setDailyQuota(event.target.value)} /></label>
@@ -1055,7 +1055,7 @@ function formatDiscoveryStatus(status: DiscoveryReport["status"]): string {
 function formatDiscoverySummary(report: DiscoveryReport): string {
   if (report.status === "disabled") return "手動の候補発見は無効です。";
   if (report.runs.length > 0) return `${report.runs.length}件の解析を開始しました。`;
-  if (report.candidateCount === 0) return "候補URLが見つかりませんでした。営業対象の業種とエリアを設定してください。";
+  if (report.candidateCount === 0) return "候補URLが見つかりませんでした。営業対象の業種を設定してください。";
   if (report.selectedCount === 0) return "新しく解析するURLはありませんでした。既に解析済み、またはURL検証で除外されています。";
   return "候補発見は完了しました。";
 }
