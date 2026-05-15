@@ -8,7 +8,7 @@ import { formatBytes, formatDate } from "../utils";
 
 export function SitesPage() {
   const { data, loading, error } = useApi<{ sites: SiteRecord[] }>("/api/admin/seo-sales/sites");
-  return <Panel title="URL別の最新結果">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
+  return <Panel title="最新結果">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
 }
 
 export function SiteDetailPage() {

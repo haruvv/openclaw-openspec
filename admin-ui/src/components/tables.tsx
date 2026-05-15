@@ -105,7 +105,7 @@ function MarkdownPreview({ text }: { text: string }) {
 }
 
 export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; compact?: boolean }) {
-  if (sites.length === 0) return <Empty title="URL別結果はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<Link to="/admin/seo-sales/runs" className="btn-secondary">URLを解析する</Link>} />;
+  if (sites.length === 0) return <Empty title="最新結果はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<Link to="/admin/seo-sales/runs" className="btn-secondary">URLを解析する</Link>} />;
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>最新実行</th></tr></thead>
