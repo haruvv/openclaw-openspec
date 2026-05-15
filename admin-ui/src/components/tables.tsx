@@ -105,7 +105,7 @@ function MarkdownPreview({ text }: { text: string }) {
 }
 
 export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; compact?: boolean }) {
-  if (sites.length === 0) return <Empty title="URL一覧はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<Link to="/admin/seo-sales/runs" className="btn-secondary">URLを解析する</Link>} />;
+  if (sites.length === 0) return <Empty title="URL一覧はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<Link to="/admin/seo-sales" className="btn-secondary">候補発見を開く</Link>} />;
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>実行ログ</th></tr></thead>
@@ -118,7 +118,7 @@ export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; com
 }
 
 export function RunsTable({ runs, compact = false, detailSearch = "" }: { runs: AgentRun[]; compact?: boolean; detailSearch?: string }) {
-  if (runs.length === 0) return <Empty title="実行履歴はまだありません" description="URLを解析すると、ここに実行ステータスと詳細ログが表示されます。" action={<Link to="/admin/seo-sales/runs" className="btn-secondary">URLを解析する</Link>} />;
+  if (runs.length === 0) return <Empty title="実行履歴はまだありません" description="URLを解析すると、ここに実行ステータスと詳細ログが表示されます。" action={<Link to="/admin/seo-sales" className="btn-secondary">候補発見を開く</Link>} />;
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>対象URL</th><th>Lighthouse SEO</th><th>改善余地</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
