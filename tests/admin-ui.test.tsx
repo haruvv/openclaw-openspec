@@ -38,7 +38,7 @@ describe("admin UI routing", () => {
     })));
 
     render(
-      <MemoryRouter initialEntries={["/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F&returnTo=%2Fadmin%2Fseo-sales%2Fsites%2Fsite-1"]}>
+      <MemoryRouter initialEntries={["/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F"]}>
         <App />
       </MemoryRouter>,
     );
@@ -47,23 +47,23 @@ describe("admin UI routing", () => {
     expect(await screen.findByRole("link", { name: "https://example.com/" })).toBeInTheDocument();
     expect(screen.queryByText("https://other.example.com/")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "すべてのログ" })).toHaveAttribute("href", "/admin/seo-sales/runs");
-    expect(screen.getByRole("link", { name: "URL詳細へ戻る" })).toHaveAttribute("href", "/admin/seo-sales/sites/site-1");
-    expect(screen.getByRole("link", { name: "https://example.com/" })).toHaveAttribute("href", "/admin/seo-sales/runs/run-1?returnTo=%2Fadmin%2Fseo-sales%2Fsites%2Fsite-1&logList=%2Fadmin%2Fseo-sales%2Fruns%3Furl%3Dhttps%253A%252F%252Fexample.com%252F%26returnTo%3D%252Fadmin%252Fseo-sales%252Fsites%252Fsite-1");
+    expect(screen.queryByRole("link", { name: "URL詳細へ戻る" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "https://example.com/" })).toHaveAttribute("href", "/admin/seo-sales/runs/run-1?url=https%3A%2F%2Fexample.com%2F");
   });
 
-  it("shows a URL detail return link on a run detail page when returnTo is safe", async () => {
+  it("shows a filtered run-list return link on a run detail page", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
       run: createRunDetail(),
     })));
 
     render(
-      <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1?returnTo=%2Fadmin%2Fseo-sales%2Fsites%2Fsite-1&logList=%2Fadmin%2Fseo-sales%2Fruns%3Furl%3Dhttps%253A%252F%252Fexample.com%252F%26returnTo%3D%252Fadmin%252Fseo-sales%252Fsites%252Fsite-1"]}>
+      <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1?url=https%3A%2F%2Fexample.com%2F"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "URL詳細へ戻る" })).toHaveAttribute("href", "/admin/seo-sales/sites/site-1");
-    expect(screen.getByRole("link", { name: "このURLのログ一覧へ戻る" })).toHaveAttribute("href", "/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F&returnTo=%2Fadmin%2Fseo-sales%2Fsites%2Fsite-1");
+    expect(await screen.findByRole("link", { name: "このURLの実行ログへ戻る" })).toHaveAttribute("href", "/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F");
+    expect(screen.queryByRole("link", { name: "URL詳細へ戻る" })).not.toBeInTheDocument();
   });
 });
 

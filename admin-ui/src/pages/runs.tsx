@@ -6,15 +6,13 @@ import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../componen
 import { FindingsList, ProposalViewer, RunningRunsList, RunsTable } from "../components/tables";
 import { useApi, useRunningRunsPoll } from "../hooks";
 import type { AgentRun, AgentRunDetail } from "../types";
-import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl, safeAdminReturnPath, urlsMatch } from "../utils";
+import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
   const { data, loading, error, reload } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
   const [searchParams] = useSearchParams();
   const urlFilter = searchParams.get("url") ?? "";
-  const returnTo = safeAdminReturnPath(searchParams.get("returnTo") ?? "");
-  const listPath = urlFilter ? `/admin/seo-sales/runs?url=${encodeURIComponent(urlFilter)}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ""}` : "/admin/seo-sales/runs";
-  const detailSearch = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}&logList=${encodeURIComponent(listPath)}` : "";
+  const detailSearch = urlFilter ? `?url=${encodeURIComponent(urlFilter)}` : "";
   const runs = data?.runs ?? [];
   const visibleRuns = urlFilter ? runs.filter((run) => urlsMatch(getTargetUrl(run), urlFilter)) : runs;
   return (
@@ -26,7 +24,6 @@ export function RunsPage() {
         title={urlFilter ? "このURLの実行ログ" : "実行ログ"}
         action={urlFilter ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {returnTo ? <Link to={returnTo} className="btn-secondary">URL詳細へ戻る</Link> : null}
             <Link to="/admin/seo-sales/runs" className="btn-secondary">すべてのログ</Link>
           </div>
         ) : null}
@@ -42,8 +39,8 @@ export function RunDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnTo = safeAdminReturnPath(searchParams.get("returnTo") ?? "");
-  const logList = safeAdminReturnPath(searchParams.get("logList") ?? "");
+  const urlFilter = searchParams.get("url") ?? "";
+  const runListPath = urlFilter ? `/admin/seo-sales/runs?url=${encodeURIComponent(urlFilter)}` : "";
   const { data, loading, error, reload } = useApi<{ run: AgentRunDetail }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}`);
   const [retrying, setRetrying] = useState(false);
   const isRunning = data?.run?.status === "running";
@@ -73,8 +70,7 @@ export function RunDetailPage() {
         title={targetUrl}
         action={(
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {logList ? <Link to={logList} className="btn-secondary">このURLのログ一覧へ戻る</Link> : null}
-            {returnTo ? <Link to={returnTo} className="btn-secondary">URL詳細へ戻る</Link> : null}
+            {runListPath ? <Link to={runListPath} className="btn-secondary">このURLの実行ログへ戻る</Link> : null}
             <button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>
           </div>
         )}

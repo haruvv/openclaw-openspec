@@ -22,12 +22,6 @@ export function urlsMatch(left: string, right: string): boolean {
   return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
 }
 
-export function safeAdminReturnPath(value: string): string {
-  if (!value.startsWith("/admin/")) return "";
-  if (value.startsWith("//") || value.includes("://")) return "";
-  return value;
-}
-
 function normalizeComparableUrl(value: string): string {
   try {
     const url = new URL(value);
