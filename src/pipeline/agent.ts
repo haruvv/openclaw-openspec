@@ -40,11 +40,11 @@ export async function runOutreachStep(): Promise<void> {
   }
 }
 
-export async function runSendStep(): Promise<void> {
+export async function runSendStep(options: { humanApproved?: boolean } = {}): Promise<void> {
   const targets = await getTargetsByStatus("outreach_queued");
   logger.info("Pipeline: sending outreach emails", { count: targets.length });
   for (const target of targets) {
-    const result = await sendOutreachEmail(target);
+    const result = await sendOutreachEmail(target, { humanApproved: options.humanApproved === true });
     if (result.status === "sent") {
       const token = generateHilToken(target.id);
       await runHilStep({
@@ -53,6 +53,8 @@ export async function runSendStep(): Promise<void> {
         hilToken: token,
         updatedAt: Date.now(),
       });
+    } else if (result.status === "skipped" && result.reason === "pending_human_approval") {
+      logger.info("Outreach remains queued until human approval", { domain: target.domain });
     } else if (result.status === "skipped") {
       await saveTarget({
         ...target,

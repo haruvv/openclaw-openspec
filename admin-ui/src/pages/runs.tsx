@@ -5,8 +5,8 @@ import { apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../components/common";
 import { FindingsList, ProposalViewer, RunsTable } from "../components/tables";
 import { useApi } from "../hooks";
-import type { AgentRun, AgentRunDetail, SeoDiagnostic } from "../types";
-import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
+import type { AgentRun, AgentRunDetail, LlmRevenueAudit, SeoDiagnostic } from "../types";
+import { formatDate, formatDuration, formatRevenueAuditConfidence, formatRevenueAuditPriority, formatSource, formatStepName, getLlmRevenueAudit, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
   const { data, loading, error } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
@@ -58,6 +58,7 @@ export function RunDetailPage() {
   const opportunityScore = getOpportunityScore(run);
   const opportunityFindings = getOpportunityFindings(run);
   const diagnostics = getSeoDiagnostics(run);
+  const revenueAudit = getLlmRevenueAudit(run);
   const domain = typeof run.summary.domain === "string" ? run.summary.domain : "-";
   const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal");
   return (
@@ -92,6 +93,9 @@ export function RunDetailPage() {
         {opportunityFindings.length > 0 ? <FindingsList findings={opportunityFindings} /> : <Empty title="改善余地の詳細は記録されていません" />}
         {diagnostics.length > 0 ? <DiagnosticsTable diagnostics={diagnostics} /> : null}
       </Panel>
+      <Panel title="営業評価">
+        {revenueAudit ? <RevenueAuditView audit={revenueAudit} /> : <Empty title="営業評価はまだ生成されていません" description="既存の実行、またはLLM営業評価がスキップされた実行では、調査結果と営業提案書のみ表示されます。" />}
+      </Panel>
       <Panel title="処理ステップ">
         {run.steps.length === 0 ? <Empty title="ステップ開始待ちです" description="サーバーが処理を開始すると、ここにステップ単位の進捗が表示されます。" /> : (
           <table className="data-table">
@@ -111,6 +115,59 @@ export function RunDetailPage() {
           />
         ))}
       </Panel>
+    </div>
+  );
+}
+
+function RevenueAuditView({ audit }: { audit: LlmRevenueAudit }) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        <Info label="営業優先度" value={formatRevenueAuditPriority(audit.salesPriority)} />
+        <Info label="信頼度" value={formatRevenueAuditConfidence(audit.confidence)} />
+        <Info label="推奨オファー" value={`${audit.recommendedOffer.name} / ${audit.recommendedOffer.estimatedPriceRange}`} />
+      </div>
+      <div className="border border-slate-200 bg-slate-50 p-4">
+        <div className="text-xs font-black text-slate-500">総評</div>
+        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{audit.overallAssessment}</p>
+        <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{audit.businessImpactSummary}</p>
+      </div>
+      <div className="border border-slate-200 bg-white p-4">
+        <div className="text-xs font-black text-slate-500">推奨理由</div>
+        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{audit.recommendedOffer.description}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{audit.recommendedOffer.reason}</p>
+      </div>
+      {audit.prioritizedFindings.length > 0 ? (
+        <div className="space-y-2">
+          <div className="text-xs font-black text-slate-500">優先指摘</div>
+          {audit.prioritizedFindings.map((finding) => (
+            <div key={`${finding.title}-${finding.salesAngle}`} className="border border-slate-200 bg-white p-3 text-sm">
+              <div className="font-black text-slate-800">{finding.title}</div>
+              <div className="mt-1 text-xs font-bold text-slate-500">信頼度: {formatRevenueAuditConfidence(finding.confidence)}</div>
+              <p className="mt-2 font-semibold leading-6 text-slate-700">{finding.businessImpact}</p>
+              <p className="mt-1 font-semibold leading-6 text-slate-700">{finding.suggestedFix}</p>
+              <p className="mt-1 font-semibold leading-6 text-slate-700">営業角度: {finding.salesAngle}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="border border-blue-100 bg-blue-50 p-4">
+        <div className="text-xs font-black text-blue-800">初回接触案</div>
+        <div className="mt-2 text-sm font-black text-slate-900">{audit.outreach.subject}</div>
+        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{audit.outreach.firstEmail}</p>
+      </div>
+      <div className="border border-slate-200 bg-white p-4">
+        <div className="text-xs font-black text-slate-500">追撃文面案</div>
+        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700">{audit.outreach.followUpEmail}</p>
+      </div>
+      {audit.caveats.length > 0 ? (
+        <div className="border border-amber-100 bg-amber-50 p-4">
+          <div className="text-xs font-black text-amber-800">注意事項</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-slate-700">
+            {audit.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

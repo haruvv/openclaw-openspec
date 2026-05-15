@@ -267,6 +267,20 @@ The platform now keeps two SEO-related scores:
 - `seoScore`: Lighthouse SEO category score. Higher is technically better and mostly reflects crawlability and basic SEO hygiene.
 - `opportunityScore`: sales-oriented improvement opportunity score. Higher means stronger outreach potential, even when Lighthouse SEO is already high.
 
+Run details separate three layers:
+
+- `調査結果`: deterministic research from Firecrawl, Lighthouse, and local opportunity scoring. This is the factual basis.
+- `営業評価`: optional LLM interpretation stored as `summary.llmRevenueAudit`. It converts the factual research into sales priority, business impact, recommended offer, outreach draft, confidence, and caveats. It must not recalculate scores or invent unsupported facts.
+- `営業提案書`: the longer proposal artifact generated from the research and, when available, the LLM営業評価.
+
+Initial outreach policy:
+
+- Prefer public email addresses for first contact.
+- Keep inquiry-form content as a human-reviewed draft only; do not submit forms automatically.
+- Require human approval before sending outreach.
+- Optimize first contact for reply acquisition and free-diagnosis sharing, not immediate payment or contract pressure.
+- Avoid insulting, accusatory, or guaranteed-results language.
+
 Use `/admin/seo-sales/runs` for operations work: failures, retries, raw steps, artifacts, and manual RevenueAgent run/retry actions.
 
 ```text

@@ -27,7 +27,10 @@ describe("admin UI routing", () => {
     expect(screen.getByRole("heading", { name: "実行詳細" })).toBeInTheDocument();
     expect(await screen.findByText("https://example.com")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "調査結果" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "営業評価" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "営業提案書" })).toBeInTheDocument();
+    expect(screen.getByText(/CTA改善/)).toBeInTheDocument();
+    expect(screen.getByText("ホームページの簡易診断について")).toBeInTheDocument();
     expect(screen.getByText("Document lacks title")).toBeInTheDocument();
     expect(screen.getAllByText("メール提案文").length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith("/api/admin/seo-sales/runs/run-1", { credentials: "same-origin" });
@@ -68,6 +71,21 @@ describe("admin UI routing", () => {
 
     expect(await screen.findByRole("link", { name: "このURLの実行ログへ戻る" })).toHaveAttribute("href", "/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F");
     expect(screen.queryByRole("link", { name: "URL詳細へ戻る" })).not.toBeInTheDocument();
+  });
+
+  it("shows an empty sales assessment state for older run details", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
+      run: createRunDetail({ withAudit: false }),
+    })));
+
+    render(
+      <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "営業評価" })).toBeInTheDocument();
+    expect(screen.getByText("営業評価はまだ生成されていません")).toBeInTheDocument();
   });
 });
 
@@ -119,7 +137,32 @@ function createJsonResponse(body: unknown): Response {
   });
 }
 
-function createRunDetail(): AgentRunDetail {
+function createRunDetail(options: { withAudit?: boolean } = {}): AgentRunDetail {
+  const llmRevenueAudit = options.withAudit === false ? undefined : {
+    overallAssessment: "問い合わせ導線に改善余地があります。",
+    salesPriority: "medium",
+    confidence: "high",
+    businessImpactSummary: "相談前に離脱している可能性があります。",
+    recommendedOffer: {
+      name: "CTA改善",
+      description: "問い合わせ導線を整えます。",
+      estimatedPriceRange: "3万〜5万円",
+      reason: "検出された課題に合っています。",
+    },
+    prioritizedFindings: [{
+      title: "問い合わせ導線が弱い",
+      businessImpact: "相談機会を逃している可能性があります。",
+      suggestedFix: "ファーストビューに相談CTAを追加します。",
+      salesAngle: "無料診断の共有から会話を始めます。",
+      confidence: "high",
+    }],
+    outreach: {
+      subject: "ホームページの簡易診断について",
+      firstEmail: "確認した範囲で気になった点がありました。必要でしたら共有します。",
+      followUpEmail: "先日の簡易診断の件で、必要でしたら要点だけお送りします。",
+    },
+    caveats: ["アクセス数は確認していません。"],
+  };
   return {
     id: "run-1",
     agentType: "seo",
@@ -131,6 +174,7 @@ function createRunDetail(): AgentRunDetail {
       domain: "example.com",
       seoScore: 90,
       opportunityScore: 40,
+      llmRevenueAudit,
       opportunityFindings: [{
         category: "content",
         severity: "high",

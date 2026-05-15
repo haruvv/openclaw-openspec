@@ -47,6 +47,35 @@ export interface SeoOpportunityFinding {
   scoreImpact: number;
 }
 
+export type RevenueAuditPriority = "low" | "medium" | "high";
+export type RevenueAuditConfidence = "low" | "medium" | "high";
+
+export interface LlmRevenueAudit {
+  overallAssessment: string;
+  salesPriority: RevenueAuditPriority;
+  confidence: RevenueAuditConfidence;
+  businessImpactSummary: string;
+  recommendedOffer: {
+    name: string;
+    description: string;
+    estimatedPriceRange: string;
+    reason: string;
+  };
+  prioritizedFindings: Array<{
+    title: string;
+    businessImpact: string;
+    suggestedFix: string;
+    salesAngle: string;
+    confidence: RevenueAuditConfidence;
+  }>;
+  outreach: {
+    subject: string;
+    firstEmail: string;
+    followUpEmail: string;
+  };
+  caveats: string[];
+}
+
 export interface SeoOpportunityResult {
   opportunityScore: number;
   findings: SeoOpportunityFinding[];
@@ -62,6 +91,7 @@ export interface Target {
   diagnostics: SeoDiagnostic[];
   opportunityScore?: number;
   opportunityFindings?: SeoOpportunityFinding[];
+  llmRevenueAudit?: LlmRevenueAudit;
   status: TargetStatus;
   proposalPath?: string;
   hilToken?: string;

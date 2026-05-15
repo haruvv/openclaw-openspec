@@ -12,13 +12,21 @@ const COOLDOWN_DAYS = Number(process.env.OUTREACH_COOLDOWN_DAYS ?? 30);
 
 export type OutreachSendResult =
   | { status: "sent" }
-  | { status: "skipped"; reason: "missing_contact" | "duplicate" }
+  | { status: "skipped"; reason: "missing_contact" | "duplicate" | "pending_human_approval" }
   | { status: "queued"; reason: "daily_limit" };
 
-export async function sendOutreachEmail(target: Target): Promise<OutreachSendResult> {
+export async function sendOutreachEmail(
+  target: Target,
+  options: { humanApproved?: boolean } = {}
+): Promise<OutreachSendResult> {
   if (!target.contactEmail) {
     logger.warn("No contact email, skipping", { domain: target.domain });
     return { status: "skipped", reason: "missing_contact" };
+  }
+
+  if (options.humanApproved !== true) {
+    logger.info("Outreach email awaiting human approval", { domain: target.domain });
+    return { status: "skipped", reason: "pending_human_approval" };
   }
 
   const db = await getDb();
@@ -44,7 +52,7 @@ export async function sendOutreachEmail(target: Target): Promise<OutreachSendRes
         email: process.env.SENDGRID_FROM_EMAIL!,
         name: process.env.SENDGRID_FROM_NAME ?? "SEO Consultant",
       },
-      subject: `【無料診断結果】${target.domain} のSEO改善提案`,
+      subject: target.llmRevenueAudit?.outreach.subject ?? `【簡易診断のご共有】${target.domain} のホームページについて`,
       text: buildEmailText(target, proposalMd),
       html: buildEmailHtml(target, proposalMd),
     })
@@ -79,28 +87,41 @@ function isDailyLimitReached(db: Database.Database): boolean {
 }
 
 function buildEmailText(target: Target, proposal: string): string {
+  const firstContact = target.llmRevenueAudit?.outreach.firstEmail;
+  if (firstContact) return firstContact;
+
   return `${target.domain} 様
 
-貴社ウェブサイトのSEO診断を行いましたところ、改善の余地が大きいことがわかりました。
-診断スコア: ${target.seoScore}/100
+突然のご連絡失礼いたします。
+公開されているホームページを確認した範囲で、検索結果での見え方や問い合わせ導線について、いくつか簡単に共有できそうな点がありました。
 
-${proposal}
+もしご迷惑でなければ、無料の簡易診断として要点だけお送りします。
+ご希望でしたら、このメールにご返信ください。
 
-ご興味をお持ちいただけましたら、お気軽にご返信ください。
+${proposal ? `\n参考メモ:\n${proposal}` : ""}
 `;
 }
 
 function buildEmailHtml(target: Target, proposal: string): string {
+  const firstContact = target.llmRevenueAudit?.outreach.firstEmail;
+  if (firstContact) {
+    return firstContact
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+  }
+
   const escapedProposal = proposal
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
   return `<p><strong>${target.domain}</strong> 様</p>
-<p>貴社ウェブサイトのSEO診断を行いましたところ、改善の余地が大きいことがわかりました。</p>
-<p>診断スコア: <strong>${target.seoScore}/100</strong></p>
-<pre style="background:#f5f5f5;padding:16px;border-radius:4px">${escapedProposal}</pre>
-<p>ご興味をお持ちいただけましたら、お気軽にご返信ください。</p>`;
+<p>突然のご連絡失礼いたします。</p>
+<p>公開されているホームページを確認した範囲で、検索結果での見え方や問い合わせ導線について、いくつか簡単に共有できそうな点がありました。</p>
+<p>もしご迷惑でなければ、無料の簡易診断として要点だけお送りします。ご希望でしたら、このメールにご返信ください。</p>
+${escapedProposal ? `<pre style="background:#f5f5f5;padding:16px;border-radius:4px">${escapedProposal}</pre>` : ""}`;
 }
 
 import type Database from "better-sqlite3";

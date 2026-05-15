@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { crawlBatch } from "../site-crawler/crawler.js";
 import { generateProposal } from "../proposal-generator/generator.js";
 import { saveProposal } from "../proposal-generator/storage.js";
+import { assessRevenueAudit } from "../revenue-audit/assessor.js";
 import type { Target } from "../types/index.js";
 import { completeAgentRun, createAgentRun, upsertAgentRunStep } from "../agent-runs/repository.js";
 import { persistSiteResult } from "../sites/repository.js";
@@ -74,6 +75,38 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
           diagnostics: target.diagnostics.length,
         },
       };
+    })
+  );
+
+  steps.push(
+    await runStep(id, "llm_revenue_audit", async () => {
+      if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
+      if (!process.env.GEMINI_API_KEY) {
+        return { status: "skipped", reason: "GEMINI_API_KEY is not set" };
+      }
+      try {
+        const audit = await assessRevenueAudit({ target, targetUrl });
+        target = { ...target, llmRevenueAudit: audit };
+        outputs.llmRevenueAudit = audit;
+        return {
+          status: "passed",
+          details: {
+            salesPriority: audit.salesPriority,
+            confidence: audit.confidence,
+            recommendedOffer: audit.recommendedOffer.name,
+          },
+        };
+      } catch (err) {
+        logger.warn("LLM revenue audit failed, continuing with deterministic research", {
+          domain: target.domain,
+          error: sanitizeError(err),
+        });
+        return {
+          status: "skipped",
+          reason: "LLM revenue audit failed",
+          details: { error: sanitizeError(err) },
+        };
+      }
     })
   );
 
@@ -334,6 +367,7 @@ async function recordRunComplete(
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
         diagnostics: report.outputs.diagnostics,
+        llmRevenueAudit: report.outputs.llmRevenueAudit,
         proposalPath: report.outputs.proposalPath,
         paymentLinkUrl: report.outputs.paymentLinkUrl,
       },
@@ -372,6 +406,7 @@ async function recordSiteResult(
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
         diagnostics: report.outputs.diagnostics,
+        llmRevenueAudit: report.outputs.llmRevenueAudit,
         proposalPath: report.outputs.proposalPath,
         paymentLinkUrl: report.outputs.paymentLinkUrl,
       },

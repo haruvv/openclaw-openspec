@@ -28,6 +28,28 @@ vi.mock("../src/proposal-generator/storage.js", () => ({
   saveProposal: vi.fn().mockResolvedValue("./output/proposals/example.com.md"),
 }));
 
+vi.mock("../src/revenue-audit/assessor.js", () => ({
+  assessRevenueAudit: vi.fn().mockResolvedValue({
+    overallAssessment: "問い合わせ導線に改善余地があります。",
+    salesPriority: "medium",
+    confidence: "high",
+    businessImpactSummary: "相談前に離脱している可能性があります。",
+    recommendedOffer: {
+      name: "CTA改善",
+      description: "問い合わせ導線を整えます。",
+      estimatedPriceRange: "3万〜5万円",
+      reason: "小さく始めやすいためです。",
+    },
+    prioritizedFindings: [],
+    outreach: {
+      subject: "簡易診断のご共有について",
+      firstEmail: "もし必要であれば要点だけ共有します。",
+      followUpEmail: "先日の件で必要でしたらお送りします。",
+    },
+    caveats: [],
+  }),
+}));
+
 vi.mock("@sendgrid/mail", () => ({
   default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }, {}]) },
 }));
@@ -81,7 +103,9 @@ describe("runE2eSmoke", () => {
 
     const saved = JSON.parse(await readFile(report.reportPath!, "utf-8")) as typeof report;
     expect(saved.targetUrl).toBe("https://example.com");
-    expect(saved.steps).toHaveLength(5);
+    expect(saved.steps).toHaveLength(6);
+    expect(saved.steps.find((step) => step.name === "llm_revenue_audit")?.status).toBe("passed");
+    expect(saved.outputs.llmRevenueAudit).toMatchObject({ salesPriority: "medium", confidence: "high" });
   });
 
   it("marks missing credentials as skipped before provider calls", async () => {

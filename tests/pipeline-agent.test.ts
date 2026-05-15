@@ -52,7 +52,7 @@ describe("runSendStep", () => {
     vi.mocked(notifyHil).mockClear();
   });
 
-  it("moves successfully sent outreach into HIL pending state", async () => {
+  it("keeps outreach queued until a human approves sending", async () => {
     const db = await getDb();
     db.prepare(`INSERT INTO targets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
@@ -77,6 +77,40 @@ describe("runSendStep", () => {
       );
 
     await runSendStep();
+
+    const row = db
+      .prepare("SELECT status, hil_token FROM targets WHERE id = ?")
+      .get("t1") as { status: string; hil_token: string };
+    expect(row.status).toBe("outreach_queued");
+    expect(row.hil_token).toBeNull();
+    expect(notifyHil).not.toHaveBeenCalled();
+  });
+
+  it("moves approved outreach into HIL pending state after sending", async () => {
+    const db = await getDb();
+    db.prepare(`INSERT INTO targets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        "t1",
+        "example.com",
+        "https://example.com",
+        "info@example.com",
+        null,
+        30,
+        "[]",
+        null,
+        null,
+        "outreach_queued",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        Date.now(),
+        Date.now()
+      );
+
+    await runSendStep({ humanApproved: true });
 
     const row = db
       .prepare("SELECT status, hil_token FROM targets WHERE id = ?")

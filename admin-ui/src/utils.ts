@@ -1,4 +1,4 @@
-import type { AgentRun, DiscoveryReport, OpportunityFinding, SeoDiagnostic } from "./types";
+import type { AgentRun, DiscoveryReport, LlmRevenueAudit, OpportunityFinding, RevenueAuditConfidence, RevenueAuditPriority, SeoDiagnostic } from "./types";
 
 export function isActive(href: string, path: string): boolean {
   if (href === "/admin") return isAdminHome(path);
@@ -62,6 +62,21 @@ export function getSeoDiagnostics(run: AgentRun): SeoDiagnostic[] {
   return value.filter(isSeoDiagnostic);
 }
 
+export function getLlmRevenueAudit(run: AgentRun): LlmRevenueAudit | null {
+  const value = run.summary.llmRevenueAudit;
+  return isLlmRevenueAudit(value) ? value : null;
+}
+
+export function formatRevenueAuditPriority(value: RevenueAuditPriority): string {
+  const labels = { low: "低", medium: "中", high: "高" };
+  return labels[value];
+}
+
+export function formatRevenueAuditConfidence(value: RevenueAuditConfidence): string {
+  const labels = { low: "低", medium: "中", high: "高" };
+  return labels[value];
+}
+
 function isOpportunityFinding(value: unknown): value is OpportunityFinding {
   return Boolean(value)
     && typeof value === "object"
@@ -77,6 +92,36 @@ function isSeoDiagnostic(value: unknown): value is SeoDiagnostic {
     && typeof (value as SeoDiagnostic).title === "string"
     && (typeof (value as SeoDiagnostic).score === "number" || (value as SeoDiagnostic).score === null)
     && typeof (value as SeoDiagnostic).description === "string";
+}
+
+function isLlmRevenueAudit(value: unknown): value is LlmRevenueAudit {
+  if (!value || typeof value !== "object") return false;
+  const audit = value as LlmRevenueAudit;
+  return typeof audit.overallAssessment === "string"
+    && isRevenueAuditPriority(audit.salesPriority)
+    && isRevenueAuditConfidence(audit.confidence)
+    && typeof audit.businessImpactSummary === "string"
+    && Boolean(audit.recommendedOffer)
+    && typeof audit.recommendedOffer === "object"
+    && typeof audit.recommendedOffer.name === "string"
+    && typeof audit.recommendedOffer.description === "string"
+    && typeof audit.recommendedOffer.estimatedPriceRange === "string"
+    && typeof audit.recommendedOffer.reason === "string"
+    && Array.isArray(audit.prioritizedFindings)
+    && Boolean(audit.outreach)
+    && typeof audit.outreach === "object"
+    && typeof audit.outreach.subject === "string"
+    && typeof audit.outreach.firstEmail === "string"
+    && typeof audit.outreach.followUpEmail === "string"
+    && Array.isArray(audit.caveats);
+}
+
+function isRevenueAuditPriority(value: unknown): value is RevenueAuditPriority {
+  return value === "low" || value === "medium" || value === "high";
+}
+
+function isRevenueAuditConfidence(value: unknown): value is RevenueAuditConfidence {
+  return value === "low" || value === "medium" || value === "high";
 }
 
 export function formatDate(value?: string): string {

@@ -77,7 +77,9 @@ Revenue Agent Platform は、リード獲得から提案、アウトリーチ、
 | 同一企業への重複営業 | 30日間の重複送信防止 |
 | API失敗 | リトライ、スキップ、ログ記録 |
 | 承認漏れ | 48時間未承認で保留化・再通知 |
-| 無承認の営業・請求 | HIL承認をステータス遷移に組み込む |
+| 無承認の営業・請求 | 初回アウトリーチ前の人間確認と、HIL承認をステータス遷移に組み込む |
+
+初回接触は公開メールアドレスを優先し、問い合わせフォームは自動投稿せず人間が確認して使う下書きとして扱う。初回文面の目的は即時受注ではなく、無料の簡易診断を共有してよいかを確認し、返信を得ることである。
 
 ## 4. どこまで出来たか
 
@@ -87,6 +89,7 @@ Revenue Agent Platform は、リード獲得から提案、アウトリーチ、
 | --- | --- | --- |
 | site-crawler | URLをクロールし、Lighthouse SEOスコアで低スコアサイトを抽出 | `src/site-crawler/*` |
 | proposal-generator | SEO診断結果からMarkdown提案書を生成し、PDF変換も試行 | `src/proposal-generator/*` |
+| revenue-audit | ルールベース調査結果をLLMで営業優先度、事業影響、推奨オファー、初回接触案に変換 | `src/revenue-audit/*` |
 | llm-provider | Geminiをプライマリにし、429時のみZ.aiへフォールバック | `src/utils/llm-provider.ts` |
 | outreach-sender | SendGrid送信、重複防止、日次送信上限、送信ログ | `src/outreach-sender/sender.ts` |
 | hil-approval-flow | 承認・却下URL、トークン検証、自動返信判定、タイムアウト監視 | `src/hil-approval-flow/*` |
