@@ -35,6 +35,23 @@ export interface SeoDiagnostic {
   description: string;
 }
 
+export type SeoOpportunityCategory = "technical" | "content" | "intent" | "conversion" | "trust";
+export type SeoOpportunitySeverity = "low" | "medium" | "high";
+
+export interface SeoOpportunityFinding {
+  category: SeoOpportunityCategory;
+  severity: SeoOpportunitySeverity;
+  title: string;
+  evidence: string;
+  recommendation: string;
+  scoreImpact: number;
+}
+
+export interface SeoOpportunityResult {
+  opportunityScore: number;
+  findings: SeoOpportunityFinding[];
+}
+
 export interface Target {
   id: string;
   url: string;
@@ -43,6 +60,8 @@ export interface Target {
   industry?: string;
   seoScore: number;
   diagnostics: SeoDiagnostic[];
+  opportunityScore?: number;
+  opportunityFindings?: SeoOpportunityFinding[];
   status: TargetStatus;
   proposalPath?: string;
   hilToken?: string;

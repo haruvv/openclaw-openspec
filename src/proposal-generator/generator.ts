@@ -11,6 +11,9 @@ const SYSTEM_PROMPT = `あなたはSEOコンサルタントです。クライア
 専門的かつ親切な口調で、クライアントが自社の課題を理解しやすいよう記述してください。`;
 
 export async function generateProposal(target: Target): Promise<string> {
+  const opportunityLines = (target.opportunityFindings ?? [])
+    .map((finding) => `- [${finding.severity}/${finding.category}] ${finding.title}: ${finding.evidence} → ${finding.recommendation}`)
+    .join("\n");
   const diagnosticLines = target.diagnostics
     .map((d) => `- ${d.title}: ${d.score === null ? "未計測" : Math.round((d.score ?? 0) * 100) + "点"}（${d.description}）`)
     .join("\n");
@@ -19,9 +22,13 @@ export async function generateProposal(target: Target): Promise<string> {
 
 企業名/ドメイン: ${target.domain}
 業種: ${target.industry ?? "不明"}
-SEO総合スコア: ${target.seoScore}/100
+Lighthouse SEOスコア: ${target.seoScore}/100
+改善余地スコア: ${target.opportunityScore ?? "未計測"}/100
 
-診断項目:
+営業上の改善余地:
+${opportunityLines || "- 改善余地 findings はありません。Lighthouse診断項目を中心に提案してください。"}
+
+Lighthouse診断項目:
 ${diagnosticLines}`;
 
   const proposal = await generateText(userMessage, SYSTEM_PROMPT);

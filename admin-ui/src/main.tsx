@@ -43,7 +43,7 @@ interface AgentRun {
 }
 
 interface AgentRunDetail extends AgentRun {
-  steps: Array<{ id: string; name: string; status: Status; durationMs: number; reason?: string; error?: string }>;
+  steps: Array<{ id: string; name: string; status: Status; durationMs: number; reason?: string; error?: string; details?: Record<string, unknown> }>;
   artifacts: Array<ArtifactRecord>;
 }
 
@@ -54,13 +54,23 @@ interface SiteRecord {
   domain: string;
   latestStatus: Status;
   latestSeoScore?: number;
+  latestOpportunityScore?: number;
   latestRunId?: string;
   updatedAt: string;
 }
 
 interface SiteDetail extends SiteRecord {
-  snapshots: Array<{ id: string; status: Status; seoScore?: number; diagnostics: unknown[]; createdAt: string; runId?: string; summary: Record<string, unknown> }>;
+  snapshots: Array<{ id: string; status: Status; seoScore?: number; opportunityScore?: number; opportunityFindings: OpportunityFinding[]; diagnostics: unknown[]; createdAt: string; runId?: string; summary: Record<string, unknown> }>;
   proposals: Array<ProposalRecord>;
+}
+
+interface OpportunityFinding {
+  category: string;
+  severity: "low" | "medium" | "high";
+  title: string;
+  evidence: string;
+  recommendation: string;
+  scoreImpact: number;
 }
 
 interface ArtifactRecord {
@@ -478,6 +488,8 @@ function RunDetailPage({ id }: { id: string }) {
   if (!run) return <Empty title="実行が見つかりません" />;
   const targetUrl = getTargetUrl(run);
   const seoScore = getSeoScore(run);
+  const opportunityScore = getOpportunityScore(run);
+  const opportunityFindings = getOpportunityFindings(run);
   const domain = typeof run.summary.domain === "string" ? run.summary.domain : "-";
   const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal" || artifact.contentType === "text/markdown");
   return (
@@ -494,10 +506,11 @@ function RunDetailPage({ id }: { id: string }) {
         ) : null}
         <div className="mt-3 grid gap-3 md:grid-cols-4">
           <Info label="ドメイン" value={domain} />
-          <Info label="SEOスコア" value={seoScore ?? "-"} />
+          <Info label="Lighthouse SEO" value={seoScore ?? "-"} />
+          <Info label="改善余地スコア" value={opportunityScore ?? "-"} />
           <Info label="提案書" value={`${proposalArtifacts.length}件`} />
-          <Info label="成果物" value={`${run.artifacts.length}件`} />
         </div>
+        {opportunityFindings.length > 0 ? <FindingsList findings={opportunityFindings.slice(0, 3)} /> : null}
         {run.error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{run.error}</p> : null}
       </Panel>
       <Panel title="処理ステップ">
@@ -535,6 +548,7 @@ function SiteDetailPage({ id }: { id: string }) {
   const site = data?.site;
   if (!site) return <Empty title="URL結果が見つかりません" />;
   const latestProposal = site.proposals[0];
+  const latestSnapshot = site.snapshots[0];
   const passedSnapshots = site.snapshots.filter((snapshot) => snapshot.status === "passed").length;
   return (
     <div className="space-y-5">
@@ -542,9 +556,10 @@ function SiteDetailPage({ id }: { id: string }) {
         <div className="grid gap-3 md:grid-cols-4">
           <Info label="状態" value={<StatusPill status={site.latestStatus} />} />
           <Info label="ドメイン" value={site.domain} />
-          <Info label="SEOスコア" value={site.latestSeoScore ?? "-"} />
-          <Info label="更新" value={formatDate(site.updatedAt)} />
+          <Info label="Lighthouse SEO" value={site.latestSeoScore ?? "-"} />
+          <Info label="改善余地スコア" value={site.latestOpportunityScore ?? "-"} />
         </div>
+        {latestSnapshot?.opportunityFindings.length ? <FindingsList findings={latestSnapshot.opportunityFindings.slice(0, 3)} /> : null}
         <div className="mt-3 grid gap-3 md:grid-cols-4">
           <Info label="解析回数" value={`${site.snapshots.length}回`} />
           <Info label="成功回数" value={`${passedSnapshots}回`} />
@@ -572,8 +587,8 @@ function SiteDetailPage({ id }: { id: string }) {
       </Panel>
       <Panel title="解析履歴">
         <table className="data-table">
-          <thead><tr><th>状態</th><th>SEOスコア</th><th>診断項目</th><th>作成</th><th>実行ログ</th></tr></thead>
-          <tbody>{site.snapshots.map((snapshot) => <tr key={snapshot.id}><td><StatusPill status={snapshot.status} /></td><td>{snapshot.seoScore ?? "-"}</td><td>{snapshot.diagnostics.length}</td><td>{formatDate(snapshot.createdAt)}</td><td>{snapshot.runId ? <a href={`/admin/seo-sales/runs/${snapshot.runId}`}>開く</a> : "-"}</td></tr>)}</tbody>
+          <thead><tr><th>状態</th><th>Lighthouse SEO</th><th>改善余地</th><th>診断項目</th><th>作成</th><th>実行ログ</th></tr></thead>
+          <tbody>{site.snapshots.map((snapshot) => <tr key={snapshot.id}><td><StatusPill status={snapshot.status} /></td><td>{snapshot.seoScore ?? "-"}</td><td>{snapshot.opportunityScore ?? "-"}</td><td>{snapshot.diagnostics.length + snapshot.opportunityFindings.length}</td><td>{formatDate(snapshot.createdAt)}</td><td>{snapshot.runId ? <a href={`/admin/seo-sales/runs/${snapshot.runId}`}>開く</a> : "-"}</td></tr>)}</tbody>
         </table>
       </Panel>
     </div>
@@ -861,8 +876,8 @@ function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; compact?: 
   if (sites.length === 0) return <Empty title="URL別結果はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<a href="/admin/seo-sales/runs" className="btn-primary">URLを解析する</a>} />;
   return (
     <table className="data-table">
-      <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>SEOスコア</th>{compact ? null : <th>更新</th>}<th>実行ログ</th></tr></thead>
-      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><a className="table-link" href={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</a></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td>{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td>{site.latestRunId ? <a className="table-link" href={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</a> : "-"}</td></tr>)}</tbody>
+      <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>更新</th>}<th>実行ログ</th></tr></thead>
+      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><a className="table-link" href={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</a></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td>{site.latestRunId ? <a className="table-link" href={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</a> : "-"}</td></tr>)}</tbody>
     </table>
   );
 }
@@ -871,9 +886,29 @@ function RunsTable({ runs, compact = false }: { runs: AgentRun[]; compact?: bool
   if (runs.length === 0) return <Empty title="実行履歴はまだありません" description="URLを解析すると、ここに実行ステータスと詳細ログが表示されます。" action={<a href="/admin/seo-sales/runs" className="btn-primary">URLを解析する</a>} />;
   return (
     <table className="data-table">
-      <thead><tr><th>状態</th><th>対象URL</th><th>SEOスコア</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
-      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><a className="table-link" href={`/admin/seo-sales/runs/${run.id}`}>{getTargetUrl(run)}</a></td><td>{getSeoScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
+      <thead><tr><th>状態</th><th>対象URL</th><th>Lighthouse SEO</th><th>改善余地</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
+      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><a className="table-link" href={`/admin/seo-sales/runs/${run.id}`}>{getTargetUrl(run)}</a></td><td>{getSeoScore(run) ?? "-"}</td><td>{getOpportunityScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
     </table>
+  );
+}
+
+function FindingsList({ findings }: { findings: OpportunityFinding[] }) {
+  return (
+    <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-3">
+      <div className="text-xs font-black text-amber-800">主な改善余地</div>
+      <div className="mt-2 space-y-2">
+        {findings.map((finding) => (
+          <div key={`${finding.category}-${finding.title}`} className="rounded-md bg-white p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-800">{formatFindingCategory(finding.category)}</span>
+              <span className="text-xs font-bold text-slate-500">{formatFindingSeverity(finding.severity)} / +{finding.scoreImpact}</span>
+            </div>
+            <div className="mt-1 font-black text-slate-800">{finding.title}</div>
+            <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">{finding.recommendation}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1142,6 +1177,25 @@ function getSeoScore(run: AgentRun): number | null {
   return typeof value === "number" ? value : null;
 }
 
+function getOpportunityScore(run: AgentRun): number | null {
+  const value = run.summary.opportunityScore;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getOpportunityFindings(run: AgentRun): OpportunityFinding[] {
+  const value = run.summary.opportunityFindings;
+  if (!Array.isArray(value)) return [];
+  return value.filter(isOpportunityFinding);
+}
+
+function isOpportunityFinding(value: unknown): value is OpportunityFinding {
+  return Boolean(value)
+    && typeof value === "object"
+    && typeof (value as OpportunityFinding).title === "string"
+    && typeof (value as OpportunityFinding).recommendation === "string"
+    && typeof (value as OpportunityFinding).scoreImpact === "number";
+}
+
 function formatDate(value?: string): string {
   if (!value) return "-";
   return new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
@@ -1199,6 +1253,20 @@ function formatStepName(name: string): string {
     telegram_notification: "Telegram通知",
     stripe_payment_link: "決済リンク作成",
   }[name] ?? name;
+}
+
+function formatFindingCategory(category: string): string {
+  return {
+    technical: "技術SEO",
+    content: "コンテンツ",
+    intent: "検索意図",
+    conversion: "CV導線",
+    trust: "信頼材料",
+  }[category] ?? category;
+}
+
+function formatFindingSeverity(severity: string): string {
+  return { high: "高", medium: "中", low: "低" }[severity] ?? severity;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

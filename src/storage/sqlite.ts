@@ -29,6 +29,8 @@ export function initSqliteSchema(db: Database.Database): void {
       industry TEXT,
       seo_score INTEGER NOT NULL,
       diagnostics TEXT NOT NULL,
+      opportunity_score INTEGER,
+      opportunity_findings TEXT,
       status TEXT NOT NULL,
       proposal_path TEXT,
       hil_token TEXT,
@@ -105,6 +107,7 @@ export function initSqliteSchema(db: Database.Database): void {
       domain TEXT NOT NULL,
       latest_status TEXT NOT NULL,
       latest_seo_score INTEGER,
+      latest_opportunity_score INTEGER,
       latest_run_id TEXT,
       latest_snapshot_id TEXT,
       created_at INTEGER NOT NULL,
@@ -119,6 +122,8 @@ export function initSqliteSchema(db: Database.Database): void {
       domain TEXT NOT NULL,
       status TEXT NOT NULL,
       seo_score INTEGER,
+      opportunity_score INTEGER,
+      opportunity_findings_json TEXT NOT NULL DEFAULT '[]',
       diagnostics_json TEXT NOT NULL,
       summary_json TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -159,6 +164,11 @@ export function initSqliteSchema(db: Database.Database): void {
   `);
   ensureColumn(db, "targets", "payment_link_expires_at", "INTEGER");
   ensureColumn(db, "targets", "payment_reminder_sent_at", "INTEGER");
+  ensureColumn(db, "targets", "opportunity_score", "INTEGER");
+  ensureColumn(db, "targets", "opportunity_findings", "TEXT");
+  ensureColumn(db, "analyzed_sites", "latest_opportunity_score", "INTEGER");
+  ensureColumn(db, "site_snapshots", "opportunity_score", "INTEGER");
+  ensureColumn(db, "site_snapshots", "opportunity_findings_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "agent_artifacts", "body_storage", "TEXT NOT NULL DEFAULT 'inline'");
   ensureColumn(db, "agent_artifacts", "object_key", "TEXT");
   ensureColumn(db, "agent_artifacts", "content_type", "TEXT");

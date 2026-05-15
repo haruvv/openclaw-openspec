@@ -1,5 +1,5 @@
 import type { AgentRunStatus } from "../agent-runs/types.js";
-import type { SeoDiagnostic } from "../types/index.js";
+import type { SeoDiagnostic, SeoOpportunityFinding } from "../types/index.js";
 
 export interface SiteRecord {
   id: string;
@@ -8,6 +8,7 @@ export interface SiteRecord {
   domain: string;
   latestStatus: AgentRunStatus;
   latestSeoScore?: number;
+  latestOpportunityScore?: number;
   latestRunId?: string;
   latestSnapshotId?: string;
   createdAt: string;
@@ -22,6 +23,8 @@ export interface SiteSnapshotRecord {
   domain: string;
   status: AgentRunStatus;
   seoScore?: number;
+  opportunityScore?: number;
+  opportunityFindings: SeoOpportunityFinding[];
   diagnostics: SeoDiagnostic[];
   summary: Record<string, unknown>;
   createdAt: string;

@@ -31,7 +31,8 @@ vi.mock("../src/utils/db.js", () => {
     CREATE TABLE outreach_log (domain TEXT, sent_at INTEGER);
     CREATE TABLE targets (
       id TEXT PRIMARY KEY, domain TEXT, url TEXT, contact_email TEXT, industry TEXT,
-      seo_score INTEGER, diagnostics TEXT, status TEXT, proposal_path TEXT,
+      seo_score INTEGER, diagnostics TEXT, opportunity_score INTEGER, opportunity_findings TEXT,
+      status TEXT, proposal_path TEXT,
       hil_token TEXT, payment_link_url TEXT, payment_link_id TEXT,
       payment_link_expires_at INTEGER, payment_reminder_sent_at INTEGER,
       created_at INTEGER, updated_at INTEGER
@@ -53,7 +54,7 @@ describe("runSendStep", () => {
 
   it("moves successfully sent outreach into HIL pending state", async () => {
     const db = await getDb();
-    db.prepare(`INSERT INTO targets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO targets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         "t1",
         "example.com",
@@ -62,6 +63,8 @@ describe("runSendStep", () => {
         null,
         30,
         "[]",
+        null,
+        null,
         "outreach_queued",
         null,
         null,

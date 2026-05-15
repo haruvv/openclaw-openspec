@@ -60,12 +60,16 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
         };
       }
       outputs.seoScore = target.seoScore;
+      outputs.opportunityScore = target.opportunityScore;
+      outputs.opportunityFindings = target.opportunityFindings ?? [];
       outputs.domain = target.domain;
       return {
         status: "passed",
         details: {
           domain: target.domain,
           seoScore: target.seoScore,
+          opportunityScore: target.opportunityScore,
+          opportunityFindings: target.opportunityFindings?.length ?? 0,
           diagnostics: target.diagnostics.length,
         },
       };
@@ -326,6 +330,8 @@ async function recordRunComplete(
         targetUrl: report.targetUrl,
         domain: report.outputs.domain,
         seoScore: report.outputs.seoScore,
+        opportunityScore: report.outputs.opportunityScore,
+        opportunityFindings: report.outputs.opportunityFindings,
         proposalPath: report.outputs.proposalPath,
         paymentLinkUrl: report.outputs.paymentLinkUrl,
       },
@@ -361,6 +367,8 @@ async function recordSiteResult(
         targetUrl: report.targetUrl,
         domain: report.outputs.domain,
         seoScore: report.outputs.seoScore,
+        opportunityScore: report.outputs.opportunityScore,
+        opportunityFindings: report.outputs.opportunityFindings,
         proposalPath: report.outputs.proposalPath,
         paymentLinkUrl: report.outputs.paymentLinkUrl,
       },

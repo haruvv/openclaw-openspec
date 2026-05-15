@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { getDb } from "../utils/db.js";
 import { DurableHttpStorageClient, getStorageConfig } from "../storage/index.js";
 import type { AgentRunStatus } from "../agent-runs/types.js";
-import type { SeoDiagnostic, Target } from "../types/index.js";
+import type { SeoDiagnostic, SeoOpportunityFinding, Target } from "../types/index.js";
 import type { SiteDetail, SiteProposalRecord, SiteRecord, SiteSnapshotRecord } from "./types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -33,6 +33,7 @@ type SiteRow = {
   domain: string;
   latest_status: AgentRunStatus;
   latest_seo_score: number | null;
+  latest_opportunity_score: number | null;
   latest_run_id: string | null;
   latest_snapshot_id: string | null;
   created_at: number;
@@ -47,6 +48,8 @@ type SnapshotRow = {
   domain: string;
   status: AgentRunStatus;
   seo_score: number | null;
+  opportunity_score: number | null;
+  opportunity_findings_json: string | null;
   diagnostics_json: string;
   summary_json: string;
   created_at: number;
@@ -83,13 +86,14 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
       {
         sql: `INSERT INTO analyzed_sites (
           id, normalized_url, display_url, domain, latest_status, latest_seo_score,
-          latest_run_id, latest_snapshot_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          latest_opportunity_score, latest_run_id, latest_snapshot_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(normalized_url) DO UPDATE SET
           display_url = excluded.display_url,
           domain = excluded.domain,
           latest_status = excluded.latest_status,
           latest_seo_score = excluded.latest_seo_score,
+          latest_opportunity_score = excluded.latest_opportunity_score,
           latest_run_id = excluded.latest_run_id,
           latest_snapshot_id = excluded.latest_snapshot_id,
           updated_at = excluded.updated_at`,
@@ -100,6 +104,7 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
           input.target.domain,
           input.status,
           input.target.seoScore,
+          input.target.opportunityScore ?? null,
           input.runId,
           snapshotId,
           now,
@@ -108,9 +113,9 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
       },
       {
         sql: `INSERT INTO site_snapshots (
-          id, site_id, run_id, target_url, domain, status, seo_score,
-          diagnostics_json, summary_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, site_id, run_id, target_url, domain, status, seo_score, opportunity_score,
+          opportunity_findings_json, diagnostics_json, summary_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           snapshotId,
           siteId,
@@ -119,6 +124,8 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
           input.target.domain,
           input.status,
           input.target.seoScore,
+          input.target.opportunityScore ?? null,
+          jsonOpportunityFindings(input.target.opportunityFindings ?? []),
           jsonDiagnostics(input.target.diagnostics),
           json(input.summary ?? {}),
           now,
@@ -157,13 +164,14 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
     db.prepare(
       `INSERT INTO analyzed_sites (
         id, normalized_url, display_url, domain, latest_status, latest_seo_score,
-        latest_run_id, latest_snapshot_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        latest_opportunity_score, latest_run_id, latest_snapshot_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(normalized_url) DO UPDATE SET
         display_url = excluded.display_url,
         domain = excluded.domain,
         latest_status = excluded.latest_status,
         latest_seo_score = excluded.latest_seo_score,
+        latest_opportunity_score = excluded.latest_opportunity_score,
         latest_run_id = excluded.latest_run_id,
         latest_snapshot_id = excluded.latest_snapshot_id,
         updated_at = excluded.updated_at`
@@ -174,6 +182,7 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
       input.target.domain,
       input.status,
       input.target.seoScore,
+      input.target.opportunityScore ?? null,
       input.runId,
       snapshotId,
       now,
@@ -182,9 +191,9 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
 
     db.prepare(
       `INSERT INTO site_snapshots (
-        id, site_id, run_id, target_url, domain, status, seo_score,
-        diagnostics_json, summary_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        id, site_id, run_id, target_url, domain, status, seo_score, opportunity_score,
+        opportunity_findings_json, diagnostics_json, summary_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       snapshotId,
       siteId,
@@ -193,6 +202,8 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
       input.target.domain,
       input.status,
       input.target.seoScore,
+      input.target.opportunityScore ?? null,
+      jsonOpportunityFindings(input.target.opportunityFindings ?? []),
       jsonDiagnostics(input.target.diagnostics),
       json(input.summary ?? {}),
       now,
@@ -315,6 +326,7 @@ function mapSiteRow(row: SiteRow): SiteRecord {
     domain: row.domain,
     latestStatus: row.latest_status,
     latestSeoScore: row.latest_seo_score ?? undefined,
+    latestOpportunityScore: row.latest_opportunity_score ?? undefined,
     latestRunId: row.latest_run_id ?? undefined,
     latestSnapshotId: row.latest_snapshot_id ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
@@ -331,6 +343,8 @@ function mapSnapshotRow(row: SnapshotRow): SiteSnapshotRecord {
     domain: row.domain,
     status: row.status,
     seoScore: row.seo_score ?? undefined,
+    opportunityScore: row.opportunity_score ?? undefined,
+    opportunityFindings: parseOpportunityFindings(row.opportunity_findings_json),
     diagnostics: parseDiagnostics(row.diagnostics_json),
     summary: parseJson(row.summary_json),
     createdAt: new Date(row.created_at).toISOString(),
@@ -378,6 +392,10 @@ function jsonDiagnostics(value: SeoDiagnostic[]): string {
   return JSON.stringify(value);
 }
 
+function jsonOpportunityFindings(value: SeoOpportunityFinding[]): string {
+  return JSON.stringify(value);
+}
+
 function parseJson(value: string): JsonObject {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -391,6 +409,16 @@ function parseDiagnostics(value: string): SeoDiagnostic[] {
   try {
     const parsed = JSON.parse(value) as unknown;
     return Array.isArray(parsed) ? (parsed as SeoDiagnostic[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseOpportunityFindings(value?: string | null): SeoOpportunityFinding[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? (parsed as SeoOpportunityFinding[]) : [];
   } catch {
     return [];
   }

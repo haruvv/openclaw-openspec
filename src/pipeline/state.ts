@@ -9,6 +9,8 @@ interface TargetRow {
   industry?: string;
   seo_score: number;
   diagnostics: string;
+  opportunity_score?: number | null;
+  opportunity_findings?: string | null;
   status: string;
   proposal_path?: string;
   hil_token?: string;
@@ -24,10 +26,11 @@ export async function saveTarget(target: Target): Promise<void> {
   const db = await getDb();
   db.prepare(`
     INSERT OR REPLACE INTO targets
-      (id, domain, url, contact_email, industry, seo_score, diagnostics, status,
+      (id, domain, url, contact_email, industry, seo_score, diagnostics, opportunity_score,
+       opportunity_findings, status,
        proposal_path, hil_token, payment_link_url, payment_link_id,
        payment_link_expires_at, payment_reminder_sent_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     target.id,
     target.domain,
@@ -36,6 +39,8 @@ export async function saveTarget(target: Target): Promise<void> {
     target.industry ?? null,
     target.seoScore,
     JSON.stringify(target.diagnostics),
+    target.opportunityScore ?? null,
+    target.opportunityFindings ? JSON.stringify(target.opportunityFindings) : null,
     target.status,
     target.proposalPath ?? null,
     target.hilToken ?? null,
@@ -69,6 +74,8 @@ function rowToTarget(row: TargetRow): Target {
     industry: row.industry,
     seoScore: row.seo_score,
     diagnostics: JSON.parse(row.diagnostics),
+    opportunityScore: row.opportunity_score ?? undefined,
+    opportunityFindings: row.opportunity_findings ? JSON.parse(row.opportunity_findings) : undefined,
     status: row.status as Target["status"],
     proposalPath: row.proposal_path,
     hilToken: row.hil_token,

@@ -260,7 +260,12 @@ https://<production-hostname>/admin/seo-sales/runs?token=<ADMIN_TOKEN>
 https://<production-hostname>/admin/seo-sales/settings?token=<ADMIN_TOKEN>
 ```
 
-Use `/admin/seo-sales/sites` for product-facing review of analyzed URLs: latest status, latest SEO score, latest proposal, snapshot history, and links back to related run details.
+Use `/admin/seo-sales/sites` for product-facing review of analyzed URLs: latest status, latest Lighthouse SEO score, 改善余地スコア, latest proposal, snapshot history, and links back to related run details.
+
+The platform now keeps two SEO-related scores:
+
+- `seoScore`: Lighthouse SEO category score. Higher is technically better and mostly reflects crawlability and basic SEO hygiene.
+- `opportunityScore`: sales-oriented improvement opportunity score. Higher means stronger outreach potential, even when Lighthouse SEO is already high.
 
 Use `/admin/seo-sales/runs` for operations work: failures, retries, raw steps, artifacts, and manual RevenueAgent run/retry actions.
 

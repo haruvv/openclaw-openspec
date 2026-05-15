@@ -1,10 +1,12 @@
 import { scrapeUrl } from "./firecrawl-client.js";
 import { measureSeo } from "./lighthouse-runner.js";
+import { scoreSeoOpportunity } from "./opportunity-scorer.js";
 import { logger } from "../utils/logger.js";
 import type { Target } from "../types/index.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_THRESHOLD = Number(process.env.SEO_SCORE_THRESHOLD ?? 50);
+const DEFAULT_OPPORTUNITY_THRESHOLD = Number(process.env.SEO_OPPORTUNITY_SCORE_THRESHOLD ?? 60);
 const MAX_BATCH_SIZE = Number(process.env.MAX_BATCH_SIZE ?? 50);
 
 export interface CrawlBatchResult {
@@ -15,9 +17,10 @@ export interface CrawlBatchResult {
 
 export async function crawlBatch(
   urls: string[],
-  options: { threshold?: number } = {}
+  options: { threshold?: number; opportunityThreshold?: number } = {}
 ): Promise<CrawlBatchResult> {
   const threshold = options.threshold ?? DEFAULT_THRESHOLD;
+  const opportunityThreshold = options.opportunityThreshold ?? DEFAULT_OPPORTUNITY_THRESHOLD;
   const batch = urls.slice(0, MAX_BATCH_SIZE);
   const queued = urls.slice(MAX_BATCH_SIZE);
 
@@ -39,8 +42,15 @@ export async function crawlBatch(
       continue;
     }
 
-    if (lhResult.seoScore > threshold) {
-      logger.info("URL above threshold, skipping", { url, score: lhResult.seoScore, threshold });
+    const opportunity = scoreSeoOpportunity(crawled, lhResult);
+    if (lhResult.seoScore > threshold && opportunity.opportunityScore < opportunityThreshold) {
+      logger.info("URL below opportunity threshold, skipping", {
+        url,
+        score: lhResult.seoScore,
+        threshold,
+        opportunityScore: opportunity.opportunityScore,
+        opportunityThreshold,
+      });
       continue;
     }
 
@@ -53,6 +63,8 @@ export async function crawlBatch(
       industry: crawled.industry,
       seoScore: lhResult.seoScore,
       diagnostics: lhResult.diagnostics,
+      opportunityScore: opportunity.opportunityScore,
+      opportunityFindings: opportunity.findings,
       status: "crawled",
       createdAt: now,
       updatedAt: now,

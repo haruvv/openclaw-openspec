@@ -49,6 +49,8 @@ Default behavior is dry-run style: crawl, score, and proposal generation only. S
       "details": {
         "domain": "example.com",
         "seoScore": 80,
+        "opportunityScore": 64,
+        "opportunityFindings": 4,
         "diagnostics": 11
       }
     }
@@ -56,6 +58,17 @@ Default behavior is dry-run style: crawl, score, and proposal generation only. S
   "outputs": {
     "domain": "example.com",
     "seoScore": 80,
+    "opportunityScore": 64,
+    "opportunityFindings": [
+      {
+        "category": "conversion",
+        "severity": "medium",
+        "title": "CTAに改善余地があります",
+        "evidence": "フォームまたは明確なCTA文言を検出できませんでした。",
+        "recommendation": "無料相談、資料請求、予約など次の行動が明確なCTAを追加します。",
+        "scoreImpact": 12
+      }
+    ],
     "proposalPath": "output/proposals/example.com.md",
     "paymentLinkUrl": "https://buy.stripe.com/test_..."
   }
@@ -197,7 +210,7 @@ curl -sS "$REVENUE_AGENT_BASE_URL/api/revenue-agent/run" \
 
 ## Response handling
 
-- Summarize `status`, `outputs.seoScore`, `outputs.proposalPath`, and each step status.
+- Summarize `status`, `outputs.seoScore`, `outputs.opportunityScore`, `outputs.proposalPath`, and each step status.
 - If `outputs.paymentLinkUrl` exists, show it only after confirming the user intended to create a Stripe link.
 - If a step failed, report the sanitized `error` from that step.
 ````
