@@ -12,5 +12,5 @@
 ## 3. Verification
 
 - [x] 3.1 Add or update tests covering Worker admin asset routing and Container-backed API routing.
-- [ ] 3.2 Run lint, tests, build, and production smoke.
-- [ ] 3.3 Deploy and confirm the latest admin UI asset is served without Container rollout delay.
+- [x] 3.2 Run lint, tests, build, and production smoke.
+- [x] 3.3 Deploy and confirm the latest admin UI asset is served without Container rollout delay.
