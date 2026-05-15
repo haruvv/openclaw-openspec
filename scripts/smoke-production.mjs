@@ -1,6 +1,7 @@
 const baseUrl = (process.env.PRODUCTION_BASE_URL ?? "https://revenue-agent-platform.haruki-ito0044.workers.dev").replace(/\/$/, "");
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 300_000);
 const requestTimeoutMs = Number(process.env.SMOKE_REQUEST_TIMEOUT_MS ?? 15_000);
+const jobRequestTimeoutMs = Number(process.env.SMOKE_JOB_REQUEST_TIMEOUT_MS ?? 300_000);
 
 async function main() {
   await checkHealth();
@@ -9,6 +10,11 @@ async function main() {
   await check("admin ui settings deep link", `${baseUrl}/admin/seo-sales/settings`, { expectedStatus: 200, expectedContentType: "text/html" });
   await check("admin ui run detail deep link", `${baseUrl}/admin/seo-sales/runs/smoke-deep-link`, { expectedStatus: 200, expectedContentType: "text/html" });
   await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatus: 401, expectedContentType: "application/json" });
+  if (process.env.SMOKE_RUN_CRAWL_JOB === "true") {
+    await checkManualCrawlJob();
+  } else {
+    console.log("manual crawl job: skipped (set SMOKE_RUN_CRAWL_JOB=true to enable)");
+  }
   console.log(`Production smoke checks passed for ${baseUrl}`);
 }
 
@@ -38,6 +44,66 @@ async function checkAdminUiAssets() {
     const path = assetPath.startsWith("/") ? assetPath : `/admin/${assetPath.replace(/^\.\//, "")}`;
     await check(`admin ui asset ${path}`, `${baseUrl}${path}`, { expectedStatus: 200, expectedContentType: assetContentType(path) });
   }
+}
+
+async function checkManualCrawlJob() {
+  const adminToken = process.env.SMOKE_ADMIN_TOKEN || process.env.ADMIN_TOKEN;
+  if (!adminToken) {
+    throw new Error("manual crawl job: SMOKE_ADMIN_TOKEN or ADMIN_TOKEN is required when SMOKE_RUN_CRAWL_JOB=true");
+  }
+
+  const targetUrl = process.env.SMOKE_CRAWL_TARGET_URL || "https://example.com";
+  const response = await postJson("manual crawl job", adminUrl("/api/admin/seo-sales/runs", adminToken), {
+    url: targetUrl,
+  });
+
+  assertRunPassed("manual crawl job", response.report);
+
+  const detail = await getJsonWithRetry("manual crawl job detail", adminUrl(`/api/admin/seo-sales/runs/${encodeURIComponent(response.runId)}`, adminToken), {
+    expectedStatus: 200,
+    expectedContentType: "application/json",
+  });
+  assertRunPassed("manual crawl job detail", detail.run);
+  console.log(`manual crawl job: passed runId=${response.runId} target=${targetUrl}`);
+}
+
+function assertRunPassed(name, run) {
+  if (!run || run.status !== "passed") {
+    throw new Error(`${name}: expected run status passed, got ${JSON.stringify(run?.status ?? null)}`);
+  }
+
+  const crawlStep = run.steps?.find((step) => step.name === "crawl_and_score");
+  if (crawlStep?.status !== "passed") {
+    throw new Error(`${name}: expected crawl_and_score passed, got ${JSON.stringify(crawlStep ?? null)}`);
+  }
+}
+
+async function postJson(name, url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(jobRequestTimeoutMs),
+  });
+  const contentType = res.headers.get("content-type") ?? "";
+  const text = await res.text();
+  let json;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`${name}: expected JSON response, got ${res.status} ${contentType} ${text.slice(0, 500)}`);
+  }
+
+  if (res.status !== 201 || !contentType.includes("application/json")) {
+    throw new Error(`${name}: expected 201 application/json, got ${res.status} ${contentType} ${JSON.stringify(json)}`);
+  }
+  return json;
+}
+
+function adminUrl(path, token) {
+  const url = new URL(path, `${baseUrl}/`);
+  url.searchParams.set("token", token);
+  return url.toString();
 }
 
 function assetContentType(path) {

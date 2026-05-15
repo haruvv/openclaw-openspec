@@ -8,8 +8,10 @@ Production is deployed by GitHub Actions.
 - Workflow: `.github/workflows/deploy-production.yml`
 - Checks: `npm ci`, `npm test`, `npm run build`
 - Deploy command: `npm run deploy:cloudflare`
-- Post-deploy smoke: `/health`, `/admin`, and the built admin CSS asset
+- Post-deploy smoke: `/health`, `/admin`, built admin assets, admin SPA deep links, and the admin API auth boundary
 - Runtime Node.js: 20, because `better-sqlite3@9.6.0` is currently validated on Node 20 in this project
+
+Production smoke can also run one real manual crawl job. This is disabled by default to avoid external API cost and production history noise. Enable it by setting GitHub variable `SMOKE_RUN_CRAWL_JOB=true`, GitHub secret `SMOKE_ADMIN_TOKEN`, and optionally GitHub variable `SMOKE_CRAWL_TARGET_URL`. The manual admin job disables email, Telegram, and Stripe side effects, then checks that the run and its `crawl_and_score` step both pass.
 
 Manual staging deploy is available from the `Deploy Staging` workflow. Staging uses the same build and tests, then deploys with a different Worker name.
 
@@ -18,6 +20,7 @@ Manual staging deploy is available from the `Deploy Staging` workflow. Staging u
 | Secret | Purpose |
 | --- | --- |
 | `CLOUDFLARE_API_TOKEN` | Allows GitHub Actions to run `wrangler deploy` |
+| `SMOKE_ADMIN_TOKEN` | Optional. Enables the production smoke test to start one manual crawl job through the admin API |
 
 The Cloudflare account ID is fixed in the workflow. Runtime application secrets are not stored in GitHub; keep them in Cloudflare Worker secrets.
 

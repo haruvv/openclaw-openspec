@@ -53,3 +53,7 @@ jobs:
         env:
           PRODUCTION_BASE_URL: https://revenue-agent-platform.haruki-ito0044.workers.dev
           SMOKE_TIMEOUT_MS: 600000
+          SMOKE_RUN_CRAWL_JOB: ${{ vars.SMOKE_RUN_CRAWL_JOB }}
+          SMOKE_CRAWL_TARGET_URL: ${{ vars.SMOKE_CRAWL_TARGET_URL }}
+          SMOKE_ADMIN_TOKEN: ${{ secrets.SMOKE_ADMIN_TOKEN }}
+          SMOKE_JOB_REQUEST_TIMEOUT_MS: 300000
