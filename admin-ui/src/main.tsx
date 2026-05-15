@@ -10,7 +10,6 @@ import {
   Clock3,
   Globe2,
   LayoutDashboard,
-  PlayCircle,
   RefreshCw,
   Search,
   Settings,
@@ -204,7 +203,6 @@ function App() {
               <h1 className="text-2xl font-black tracking-normal text-slate-950 md:text-3xl">{page.title}</h1>
             </div>
             <div className="flex flex-wrap gap-2">
-              <a href="/admin/seo-sales" className="btn-primary"><PlayCircle className="h-4 w-4" />候補発見を開く</a>
               <a href="/admin" className="btn-secondary">業務アプリ一覧</a>
             </div>
           </div>
@@ -622,14 +620,7 @@ function SettingsPage() {
       {data?.discovery ? <DiscoverySettingsPanel settings={data.discovery} /> : null}
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="外部サービス設定">
-          <SettingsList
-            items={(data?.integrations ?? []).map((item) => ({
-              key: item.key,
-              label: item.label,
-              status: item.configured ? "passed" : "skipped",
-              statusLabel: item.configured ? "設定済み" : "未設定",
-            }))}
-          />
+          <IntegrationSettingsList items={data?.integrations ?? []} />
         </Panel>
         <Panel title="副作用の許可設定">
           <SideEffectPolicyControls policies={data?.policies ?? []} />
@@ -639,66 +630,106 @@ function SettingsPage() {
   );
 }
 
-function SettingsList({ items }: { items: Array<{ key: string; label: string; status: Status; statusLabel: string }> }) {
+function IntegrationSettingsList({ items }: { items: SettingsPayload["integrations"] }) {
+  const configuredCount = items.filter((item) => item.configured).length;
+  const missingCount = items.length - configuredCount;
+
   return (
-    <div className="grid gap-2">
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Info label="設定済み" value={`${configuredCount}/${items.length}`} />
+        <Info label="未設定" value={`${missingCount}`} />
+      </div>
+      <div className="grid gap-2">
       {items.map((item) => (
-        <div key={item.key} className="flex min-h-14 items-center justify-between gap-4 border border-slate-200 bg-white px-4 py-3">
+        <div key={item.key} className={`flex min-h-16 items-center justify-between gap-4 border px-4 py-3 ${item.configured ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50"}`}>
           <span className="min-w-0">
             <span className="block text-sm font-black text-slate-950">{item.label}</span>
-            <span className="mt-0.5 block text-xs font-semibold text-slate-500">{item.key}</span>
+            <span className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500">{item.key}</span>
+              <span className="border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-black text-slate-500">{formatIntegrationRole(item.key)}</span>
+            </span>
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            <span className={`status-dot ${item.status === "passed" ? "status-dot-on" : ""}`} aria-hidden="true" />
-            <span className={`w-14 text-right text-xs font-black ${item.status === "passed" ? "text-blue-700" : "text-slate-500"}`}>
-              {item.statusLabel}
+            <span className={`status-dot ${item.configured ? "status-dot-on" : ""}`} aria-hidden="true" />
+            <span className={`w-14 text-right text-xs font-black ${item.configured ? "text-blue-700" : "text-slate-500"}`}>
+              {item.configured ? "接続済み" : "未接続"}
             </span>
           </span>
         </div>
       ))}
+      </div>
     </div>
   );
 }
 
+function formatIntegrationRole(key: string): string {
+  if (key.includes("FIRECRAWL")) return "候補発見";
+  if (key.includes("GEMINI") || key.includes("ZAI")) return "AI生成";
+  if (key.includes("SENDGRID")) return "メール";
+  if (key.includes("TELEGRAM")) return "通知";
+  if (key.includes("STRIPE")) return "決済";
+  if (key.includes("ADMIN")) return "管理";
+  return "連携";
+}
+
 function SideEffectPolicyControls({ policies }: { policies: SettingsPayload["policies"] }) {
   const [items, setItems] = useState(policies);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savedItems, setSavedItems] = useState(policies);
+  const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setItems(policies);
+    setSavedItems(policies);
+    setConfirmOpen(false);
+    setMessage(null);
+    setError(null);
   }, [policies]);
 
-  async function togglePolicy(key: SettingsPayload["policies"][number]["key"]) {
-    const nextItems = items.map((item) => item.key === key ? { ...item, enabled: !item.enabled } : item);
-    setItems(nextItems);
-    setSavingKey(key);
+  const hasChanges = items.some((item) => savedItems.find((saved) => saved.key === item.key)?.enabled !== item.enabled);
+  const enabledItems = items.filter((item) => item.enabled);
+
+  function togglePolicy(key: SettingsPayload["policies"][number]["key"]) {
+    setItems((current) => current.map((item) => item.key === key ? { ...item, enabled: !item.enabled } : item));
+    setMessage(null);
+    setError(null);
+  }
+
+  async function savePolicies() {
+    if (!hasChanges) return;
+    setSaving(true);
+    setMessage(null);
     setError(null);
     try {
       await apiPut<{ policies: { sendEmail: boolean; sendTelegram: boolean; createPaymentLink: boolean } }>("/api/admin/seo-sales/settings/policies", {
-        sendEmail: nextItems.find((item) => item.key === "sendEmail")?.enabled === true,
-        sendTelegram: nextItems.find((item) => item.key === "sendTelegram")?.enabled === true,
-        createPaymentLink: nextItems.find((item) => item.key === "createPaymentLink")?.enabled === true,
+        sendEmail: items.find((item) => item.key === "sendEmail")?.enabled === true,
+        sendTelegram: items.find((item) => item.key === "sendTelegram")?.enabled === true,
+        createPaymentLink: items.find((item) => item.key === "createPaymentLink")?.enabled === true,
       });
+      setSavedItems(items);
+      setConfirmOpen(false);
       apiCache.delete("/api/admin/seo-sales/settings");
+      setMessage("副作用の許可設定を保存しました。");
     } catch (err) {
-      setItems(items);
       setError(err instanceof Error ? err.message : "設定を保存できませんでした");
     } finally {
-      setSavingKey(null);
+      setSaving(false);
     }
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="grid gap-2">
         {items.map((item) => (
           <button
             key={item.key}
             type="button"
             className="flex min-h-14 items-center justify-between gap-4 border border-slate-200 bg-white px-4 py-3 text-left disabled:opacity-70"
-            disabled={savingKey !== null}
-            onClick={() => void togglePolicy(item.key)}
+            disabled={saving}
+            onClick={() => togglePolicy(item.key)}
             aria-pressed={item.enabled}
           >
             <span className="min-w-0">
@@ -710,13 +741,71 @@ function SideEffectPolicyControls({ policies }: { policies: SettingsPayload["pol
                 <span className="toggle-knob" />
               </span>
               <span className={`w-10 text-right text-xs font-black ${item.enabled ? "text-blue-700" : "text-slate-500"}`}>
-                {savingKey === item.key ? "保存中" : item.enabled ? "ON" : "OFF"}
+                {item.enabled ? "ON" : "OFF"}
               </span>
             </span>
           </button>
         ))}
       </div>
+      {hasChanges ? <div className="border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">未保存の変更があります。</div> : null}
+      {message ? <div className="border border-emerald-100 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{message}</div> : null}
       {error ? <div className="border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-800">{error}</div> : null}
+      <div className="flex justify-end">
+        <button type="button" className="btn-primary" disabled={!hasChanges || saving} onClick={() => setConfirmOpen(true)}>
+          {saving ? "保存中..." : "設定を保存"}
+        </button>
+      </div>
+      {confirmOpen ? (
+        <SideEffectConfirmModal
+          enabledItems={enabledItems}
+          saving={saving}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={() => void savePolicies()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SideEffectConfirmModal({
+  enabledItems,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  enabledItems: SettingsPayload["policies"];
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
+      <div className="w-full max-w-lg border border-slate-200 bg-white p-5 shadow-md" role="dialog" aria-modal="true" aria-labelledby="side-effect-confirm-title">
+        <div className="border-b border-slate-200 pb-3">
+          <h3 id="side-effect-confirm-title" className="text-lg font-black text-slate-950">副作用の許可設定を保存</h3>
+        </div>
+        <div className="mt-4 space-y-3">
+          {enabledItems.length > 0 ? (
+            <>
+              <p className="text-sm font-semibold leading-6 text-slate-600">以下の副作用を許可します。</p>
+              <div className="grid gap-2">
+                {enabledItems.map((item) => (
+                  <div key={item.key} className="flex min-h-11 items-center justify-between border border-blue-100 bg-blue-50 px-3 py-2">
+                    <span className="text-sm font-black text-slate-950">{item.label}</span>
+                    <span className="text-xs font-black text-blue-700">ON</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-600">すべての副作用を無効にします。</p>
+          )}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" disabled={saving} onClick={onCancel}>キャンセル</button>
+          <button type="button" className="btn-primary" disabled={saving} onClick={onConfirm}>{saving ? "保存中..." : "保存"}</button>
+        </div>
+      </div>
     </div>
   );
 }
