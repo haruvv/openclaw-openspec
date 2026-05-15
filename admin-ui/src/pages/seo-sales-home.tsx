@@ -1,17 +1,16 @@
-import React from "react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Activity, Globe2, Search, Settings, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { apiCache, apiPost } from "../api";
-import { Info, ErrorState, Loading, Metric, Panel, StatusPill } from "../components/common";
-import { RunningRunsList, RunsTable, SiteTable } from "../components/tables";
+import { Empty, ErrorState, Info, Loading, Metric, Panel, StatusPill } from "../components/common";
+import { RunningRunsList } from "../components/tables";
 import { useApi, useRunningRunsPoll } from "../hooks";
 import type { AgentRun, DiscoveryReport, SiteRecord } from "../types";
-import { formatDate, formatDiscoveryStatus, formatDiscoverySummary, formatSkipReason } from "../utils";
+import { formatDate, formatDiscoveryStatus, formatDiscoverySummary, formatDuration, formatSkipReason, formatSource, getOpportunityScore, getSeoScore, getTargetUrl } from "../utils";
 
 export function SeoSalesHome() {
   const { data, loading, error } = useApi<{
-    totals: { runs: number; sites: number; failedRuns: number; latestScore: number | null };
+    totals: { runs: number; sites: number; failedRuns: number };
     recentRuns: AgentRun[];
     recentSites: SiteRecord[];
   }>("/api/admin/seo-sales/overview");
@@ -21,20 +20,88 @@ export function SeoSalesHome() {
   return (
     <div className="space-y-5">
       <DiscoveryRunPanel />
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-3">
         <Metric icon={<Activity />} label="最近の実行" value={totals?.runs ?? 0} />
         <Metric icon={<Globe2 />} label="解析済みURL" value={totals?.sites ?? 0} />
         <Metric icon={<XCircle />} label="失敗" value={totals?.failedRuns ?? 0} />
-        <Metric icon={<Search />} label="最新SEOスコア" value={totals?.latestScore ?? "-"} />
       </section>
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+      <section className="space-y-5">
         <Panel title="URL一覧" action={<Link to="/admin/seo-sales/sites" className="link-action">すべて見る</Link>}>
-          <SiteTable sites={data?.recentSites ?? []} compact />
+          <RecentSitesList sites={data?.recentSites ?? []} />
         </Panel>
         <Panel title="最近の実行" action={<Link to="/admin/seo-sales/runs" className="link-action">すべて見る</Link>}>
-          <RunsTable runs={data?.recentRuns ?? []} compact />
+          <RecentRunsList runs={data?.recentRuns ?? []} />
         </Panel>
       </section>
+    </div>
+  );
+}
+
+function RecentSitesList({ sites }: { sites: SiteRecord[] }) {
+  if (sites.length === 0) {
+    return <Empty title="URL一覧はまだありません" description="URLを解析すると、サイトごとの最新状態がここに表示されます。" />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {sites.map((site) => {
+        const runListPath = `/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}`;
+        return (
+          <article key={site.id} className="border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0 flex-1">
+                <Link className="table-link break-all text-base" to={runListPath}>{site.displayUrl}</Link>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                  <span>{site.domain}</span>
+                  <span>{site.snapshotCount}回解析</span>
+                  <span>最終解析: {formatDate(site.updatedAt)}</span>
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3 xl:w-[420px]">
+                <Info label="状態" value={<StatusPill status={site.latestStatus} />} />
+                <Info label="SEO" value={site.latestSeoScore ?? "-"} />
+                <Info label="改善余地" value={site.latestOpportunityScore ?? "-"} />
+              </div>
+              <div className="flex shrink-0">
+                <Link className="btn-secondary" to={runListPath}>実行ログを見る</Link>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function RecentRunsList({ runs }: { runs: AgentRun[] }) {
+  if (runs.length === 0) {
+    return <Empty title="実行履歴はまだありません" description="URLを解析すると、直近の実行状況がここに表示されます。" />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {runs.map((run) => (
+        <article key={run.id} className="border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <Link className="table-link break-all text-base" to={`/admin/seo-sales/runs/${run.id}`}>{getTargetUrl(run)}</Link>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                <span>開始: {formatDate(run.startedAt)}</span>
+                <span>起点: {formatSource(run.source)}</span>
+                <span>所要時間: {formatDuration(run.startedAt, run.completedAt)}</span>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3 xl:w-[420px]">
+              <Info label="状態" value={<StatusPill status={run.status} />} />
+              <Info label="SEO" value={getSeoScore(run) ?? "-"} />
+              <Info label="改善余地" value={getOpportunityScore(run) ?? "-"} />
+            </div>
+            <div className="flex shrink-0">
+              <Link className="btn-secondary" to={`/admin/seo-sales/runs/${run.id}`}>詳細を見る</Link>
+            </div>
+          </div>
+        </article>
+      ))}
     </div>
   );
 }

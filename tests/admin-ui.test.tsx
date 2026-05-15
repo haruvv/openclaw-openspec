@@ -5,11 +5,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../admin-ui/src/App";
+import { apiCache } from "../admin-ui/src/api";
 import { DiscoverySettingsPanel } from "../admin-ui/src/components/settings";
 import type { AgentRun, AgentRunDetail, DiscoverySettings } from "../admin-ui/src/types";
 
 describe("admin UI routing", () => {
   afterEach(() => {
+    apiCache.clear();
     vi.unstubAllGlobals();
   });
 
@@ -71,6 +73,42 @@ describe("admin UI routing", () => {
 
     expect(await screen.findByRole("link", { name: "このURLの実行ログへ戻る" })).toHaveAttribute("href", "/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F");
     expect(screen.queryByRole("link", { name: "URL詳細へ戻る" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "再実行" })).not.toBeInTheDocument();
+  });
+
+  it("starts a URL-level rerun from the filtered run list", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (init?.method === "POST") {
+        expect(path).toBe("/api/admin/seo-sales/runs");
+        expect(JSON.parse(String(init.body))).toEqual({ url: "https://example.com/" });
+        return createJsonResponse({ runId: "run-new", location: "/admin/seo-sales/runs/run-new" });
+      }
+      if (path === "/api/admin/seo-sales/runs/run-new") {
+        return createJsonResponse({ run: createRunDetail({ id: "run-new" }) });
+      }
+      return createJsonResponse({
+        runs: [createRun({ id: "run-1", summary: { targetUrl: "https://example.com/", seoScore: 90 } })],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "このURLを再解析" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/seo-sales/runs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ url: "https://example.com/" }),
+      }),
+    ));
+    expect(await screen.findByRole("link", { name: "このURLの実行ログへ戻る" })).toHaveAttribute("href", "/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F");
   });
 
   it("shows an empty sales assessment state for older run details", async () => {
@@ -91,6 +129,7 @@ describe("admin UI routing", () => {
 
 describe("DiscoverySettingsPanel", () => {
   afterEach(() => {
+    apiCache.clear();
     vi.unstubAllGlobals();
   });
 
@@ -137,7 +176,7 @@ function createJsonResponse(body: unknown): Response {
   });
 }
 
-function createRunDetail(options: { withAudit?: boolean } = {}): AgentRunDetail {
+function createRunDetail(options: { id?: string; withAudit?: boolean } = {}): AgentRunDetail {
   const llmRevenueAudit = options.withAudit === false ? undefined : {
     overallAssessment: "問い合わせ導線に改善余地があります。",
     salesPriority: "medium",
@@ -164,7 +203,7 @@ function createRunDetail(options: { withAudit?: boolean } = {}): AgentRunDetail 
     caveats: ["アクセス数は確認していません。"],
   };
   return {
-    id: "run-1",
+    id: options.id ?? "run-1",
     agentType: "seo",
     source: "manual",
     status: "passed",

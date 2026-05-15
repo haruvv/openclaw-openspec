@@ -57,7 +57,6 @@ adminApiRouter.get("/seo-sales/overview", async (_req, res) => {
       runs: runs.length,
       sites: sites.length,
       failedRuns: runs.filter((run) => run.status === "failed").length,
-      latestScore: sites[0]?.latestSeoScore ?? null,
     },
     recentRuns: runs.slice(0, 5),
     recentSites: sites.slice(0, 5),

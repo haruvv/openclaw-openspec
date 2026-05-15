@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { apiPost } from "../api";
+import { apiCache, apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../components/common";
 import { FindingsList, ProposalViewer, RunsTable } from "../components/tables";
 import { useApi } from "../hooks";
@@ -9,22 +9,42 @@ import type { AgentRun, AgentRunDetail, LlmRevenueAudit, SeoDiagnostic } from ".
 import { formatDate, formatDuration, formatRevenueAuditConfidence, formatRevenueAuditPriority, formatSource, formatStepName, getLlmRevenueAudit, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
+  const navigate = useNavigate();
   const { data, loading, error } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
   const [searchParams] = useSearchParams();
   const urlFilter = searchParams.get("url") ?? "";
   const detailSearch = urlFilter ? `?url=${encodeURIComponent(urlFilter)}` : "";
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunError, setRerunError] = useState<string | null>(null);
   const runs = data?.runs ?? [];
   const visibleRuns = urlFilter ? runs.filter((run) => urlsMatch(getTargetUrl(run), urlFilter)) : runs;
+
+  async function rerunUrl() {
+    if (!urlFilter) return;
+    setRerunning(true);
+    setRerunError(null);
+    try {
+      const result = await apiPost<{ location: string }>("/api/admin/seo-sales/runs", { url: urlFilter });
+      apiCache.delete("/api/admin/seo-sales/runs");
+      navigate(`${result.location}?url=${encodeURIComponent(urlFilter)}`);
+    } catch (err) {
+      setRerunError(err instanceof Error ? err.message : "再解析の開始に失敗しました");
+      setRerunning(false);
+    }
+  }
+
   return (
     <Panel
       title={urlFilter ? "このURLの実行ログ" : "実行ログ"}
       action={urlFilter ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <button onClick={rerunUrl} className="btn-primary" disabled={rerunning}><RefreshCw className="h-4 w-4" />このURLを再解析</button>
           <Link to="/admin/seo-sales/runs" className="btn-secondary">すべてのログ</Link>
         </div>
       ) : null}
     >
       {urlFilter ? <p className="mb-3 break-words border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">URL一覧から対象URLで絞り込んでいます: {urlFilter}</p> : null}
+      {rerunError ? <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{rerunError}</p> : null}
       {loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={visibleRuns} detailSearch={detailSearch} />}
     </Panel>
   );
@@ -32,23 +52,16 @@ export function RunsPage() {
 
 export function RunDetailPage() {
   const { id = "" } = useParams();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const urlFilter = searchParams.get("url") ?? "";
   const runListPath = urlFilter ? `/admin/seo-sales/runs?url=${encodeURIComponent(urlFilter)}` : "";
   const { data, loading, error, reload } = useApi<{ run: AgentRunDetail }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}`);
-  const [retrying, setRetrying] = useState(false);
   const isRunning = data?.run?.status === "running";
   useEffect(() => {
     if (!isRunning) return;
     const timer = window.setInterval(() => void reload(), 3000);
     return () => window.clearInterval(timer);
   }, [isRunning, reload]);
-  async function retry() {
-    setRetrying(true);
-    const result = await apiPost<{ location: string }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}/retry`, {});
-    navigate(result.location);
-  }
   if (loading) return <Loading />;
   if (error) return <ErrorState message={error} />;
   const run = data?.run;
@@ -68,7 +81,6 @@ export function RunDetailPage() {
         action={(
           <div className="flex flex-wrap items-center justify-end gap-2">
             {runListPath ? <Link to={runListPath} className="btn-secondary">このURLの実行ログへ戻る</Link> : null}
-            <button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>
           </div>
         )}
       >
