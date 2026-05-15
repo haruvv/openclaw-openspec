@@ -7,6 +7,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "dist-assets/**",
       "node_modules/**",
       "coverage/**",
       ".wrangler/**",
@@ -17,7 +18,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.ts", "tests/**/*.ts", "admin-ui/**/*.{ts,tsx,js}", "scripts/**/*.mjs", "**/*.config.js"],
+    files: ["src/**/*.ts", "worker/**/*.ts", "tests/**/*.ts", "admin-ui/**/*.{ts,tsx,js}", "scripts/**/*.mjs", "**/*.config.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

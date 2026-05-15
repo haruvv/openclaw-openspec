@@ -182,11 +182,12 @@ Rate Limiting は Cloudflare 側を第一防衛線にし、アプリ側の `REVE
 Workflow は次の順で実行します。
 
 1. `npm ci`
-2. `npm test`
-3. `npm run build`
-4. `npm run deploy:cloudflare`
+2. `npm run lint`
+3. `npm test`
+4. `npm run build`
+5. `npm run deploy:cloudflare`
 
-`npm run deploy:cloudflare` は `wrangler deploy --containers-rollout immediate` を実行します。デプロイ時は Wrangler が `Dockerfile` から image を build/push し、Worker と Container binding を Cloudflare に反映します。
+`npm run deploy:cloudflare` は `wrangler deploy --containers-rollout immediate` を実行します。デプロイ時は Wrangler が Worker code、Worker Static Assets、Container binding を Cloudflare に反映します。Container runtime に変更がある場合は `Dockerfile` から image を build/push します。
 
 GitHub repository secrets には以下が必要です。
 
@@ -198,7 +199,9 @@ CLOUDFLARE_API_TOKEN
 
 Container は `max_instances=2` にしています。通常運用は Worker version ごとの singleton 名に寄せますが、deploy / rollout 直後に旧 instance が停止するまでの間、起動上限で webhook が 500/503 になるのを避けるためです。
 
-Worker には `version_metadata` binding を設定しています。Worker は version ID を使って Container instance 名を作るため、push deploy ごとに新しい container instance が起動します。これにより、古い container instance が前回の `dist/admin-ui` を持ち続けて CSS/JS が更新されない問題を避けます。
+Worker には `version_metadata` binding を設定しています。Worker は version ID を使って Container instance 名を作るため、runtime 変更時は新しい container instance が起動します。
+
+管理画面の静的ファイルは Container image ではなく Worker Static Assets から配信します。Vite build は `dist-assets/admin` に出力し、`wrangler.jsonc` の `assets.directory` は `./dist-assets` を指します。これにより、UI だけの変更は Container rollout を待たずに反映できます。
 
 ```bash
 git push origin main
@@ -234,9 +237,9 @@ npx wrangler secret put ADMIN_TOKEN
 
 ### Admin portal
 
-The management portal is served by the same Container under `/admin`. It lists business apps such as SEO営業 and planned future apps such as 株自動売買.
+The management portal is served by Worker Static Assets under `/admin`. It lists business apps such as SEO営業 and planned future apps such as 株自動売買.
 
-The admin UI is a React + Tailwind single-page app built into `dist/admin-ui` by `npm run build`. Express serves that static bundle under `/admin`, while operational data is provided by JSON APIs under `/api/admin`.
+The admin UI is a React + Tailwind single-page app built into `dist-assets/admin` by `npm run build`. Worker Static Assets serves that bundle under `/admin`, while operational data is provided by JSON APIs under `/api/admin` and forwarded to the Container.
 
 Production access requires `ADMIN_TOKEN`. Open the portal with:
 
@@ -244,7 +247,7 @@ Production access requires `ADMIN_TOKEN`. Open the portal with:
 https://<production-hostname>/admin?token=<ADMIN_TOKEN>
 ```
 
-The token is stored in an HTTP-only cookie after the first request. The portal does not display secret values and does not edit secrets.
+The token is stored in browser session storage after the first request and is attached to `/api/admin/*` calls as a query parameter. The static shell itself does not contain secret values and does not edit secrets.
 
 ### SEO sales app
 

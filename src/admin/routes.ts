@@ -16,7 +16,11 @@ export const adminRouter = Router();
 export const adminApiRouter = Router();
 
 const adminUiDirs = uniquePaths([
+  join(process.cwd(), "dist-assets/admin"),
+  join(process.cwd(), "dist/admin"),
   join(process.cwd(), "dist/admin-ui"),
+  join(dirname(fileURLToPath(import.meta.url)), "..", "..", "dist-assets", "admin"),
+  join(dirname(fileURLToPath(import.meta.url)), "..", "admin"),
   join(dirname(fileURLToPath(import.meta.url)), "..", "admin-ui"),
 ]);
 

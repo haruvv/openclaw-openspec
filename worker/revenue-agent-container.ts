@@ -1,10 +1,14 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
+import { maybeServeAdminUiAsset } from "./admin-assets";
 import { handleInternalStorage, handleStorageHealth } from "./storage-bridge";
 
 type WorkerEnv = {
   REVENUE_AGENT_CONTAINER: DurableObjectNamespace<RevenueAgentContainer>;
   REVENUE_AGENT_RUN_LIMITER: RateLimit;
+  ASSETS?: {
+    fetch(request: Request): Promise<Response>;
+  };
   OPERATIONAL_DB?: D1Database;
   OPERATIONAL_ARTIFACTS?: R2Bucket;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
@@ -147,6 +151,11 @@ export default {
       return handleInternalStorage(request, env, url, readEnv("DURABLE_STORAGE_TOKEN"));
     }
 
+    const adminAssetResponse = await maybeServeAdminUiAsset(request, env);
+    if (adminAssetResponse) {
+      return adminAssetResponse;
+    }
+
     const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
 
     if (url.pathname === "/telegram/webhook" && request.method === "POST") {
@@ -193,10 +202,6 @@ export default {
       const suffix = url.pathname === "/sites" ? "" : url.pathname.slice("/sites".length);
       url.pathname = `/admin/seo-sales/sites${suffix}`;
       return Response.redirect(url.toString(), 301);
-    }
-
-    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      return container.fetch(request);
     }
 
     return new Response("Not Found", { status: 404 });

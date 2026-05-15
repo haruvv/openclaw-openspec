@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-assets/
 *.tsbuildinfo
 
 # Runtime data and generated artifacts

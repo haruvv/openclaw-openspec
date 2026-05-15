@@ -972,7 +972,7 @@ function rememberAdminTokenFromUrl(): void {
   try {
     window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
   } catch {
-    // Session storage can be unavailable in hardened browsers; cookies still cover the normal path.
+    // Session storage can be unavailable in hardened browsers; API calls will then require tokenized URLs.
   }
 }
 

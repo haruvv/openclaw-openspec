@@ -5,7 +5,7 @@ const requestTimeoutMs = Number(process.env.SMOKE_REQUEST_TIMEOUT_MS ?? 15_000);
 async function main() {
   await checkHealth();
   await checkAdminUiAssets();
-  await check("admin auth boundary", `${baseUrl}/admin`, { expectedStatus: 401, expectedContentType: "text/html" });
+  await check("admin ui shell", `${baseUrl}/admin`, { expectedStatus: 200, expectedContentType: "text/html" });
   await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatus: 401, expectedContentType: "application/json" });
   console.log(`Production smoke checks passed for ${baseUrl}`);
 }
@@ -26,10 +26,10 @@ async function checkHealth() {
 
 async function checkAdminUiAssets() {
   const { readFile } = await import("node:fs/promises");
-  const html = await readFile("dist/admin-ui/index.html", "utf8");
+  const html = await readFile("dist-assets/admin/index.html", "utf8");
   const assetPaths = [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((match) => match[1]);
   if (assetPaths.length === 0) {
-    throw new Error("admin ui assets: no assets found in dist/admin-ui/index.html");
+    throw new Error("admin ui assets: no assets found in dist-assets/admin/index.html");
   }
 
   for (const assetPath of assetPaths) {

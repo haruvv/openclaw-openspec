@@ -13,6 +13,11 @@
   "build": {
     "command": "npm run build"
   },
+  "assets": {
+    "directory": "./dist-assets",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
   "triggers": {
     "crons": [
       "0 0 * * *"

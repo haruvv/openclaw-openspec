@@ -6,7 +6,7 @@ export default defineConfig({
   base: "/admin/",
   plugins: [react()],
   build: {
-    outDir: "../dist/admin-ui",
+    outDir: "../dist-assets/admin",
     emptyOutDir: true,
   },
 });
