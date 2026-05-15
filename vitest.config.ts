@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    pool: "forks",
+    fileParallelism: false,
     env: {
       DB_PATH: ":memory:",
       SEO_SCORE_THRESHOLD: "50",
