@@ -251,3 +251,24 @@
   border-color: #002fa7;
   background: #002fa7;
 }
+
+.portal-link:hover,
+.app-list-row:hover {
+  border-color: #002fa7 !important;
+  background: #eef4ff !important;
+  color: #111827 !important;
+}
+
+.portal-link:hover .portal-link-icon,
+.app-list-row:hover svg {
+  color: #002fa7 !important;
+  transform: translateX(2px);
+}
+
+.portal-hero:hover {
+  background: #f7f7f8 !important;
+}
+
+.portal-hero:hover h2 {
+  color: #002fa7 !important;
+}

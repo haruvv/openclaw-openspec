@@ -58,6 +58,10 @@ app.use("/sites", (req, res) => {
   res.redirect(301, `/admin/seo-sales/sites${suffix}${query}`);
 });
 
+app.get("/", (_req, res) => {
+  res.redirect(301, "/admin");
+});
+
 app.get("/hil/approve", async (req, res) => {
   const { targetId, token } = req.query as Record<string, string>;
   const ok = await handleApprove(targetId, token);

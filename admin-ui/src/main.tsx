@@ -15,6 +15,7 @@ import {
   Search,
   Settings,
   TrendingUp,
+  ChevronDown,
   XCircle,
 } from "lucide-react";
 import "./styles.css";
@@ -201,7 +202,6 @@ function App() {
             <div>
               <div className="text-xs font-bold text-slate-500">管理画面</div>
               <h1 className="text-2xl font-black tracking-normal text-slate-950 md:text-3xl">{page.title}</h1>
-              {page.description ? <p className="mt-1 max-w-3xl text-sm text-slate-600">{page.description}</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <a href="/admin/seo-sales" className="btn-primary"><PlayCircle className="h-4 w-4" />候補発見を開く</a>
@@ -216,27 +216,41 @@ function App() {
             ))}
           </nav>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-6 md:px-8">{page.node}</main>
+        <main className={`mx-auto px-5 py-6 md:px-8 ${isAdminHome(path) ? "max-w-[1500px]" : "max-w-7xl"}`}>{page.node}</main>
       </div>
     </div>
   );
 }
 
 function SidebarGroup({ label, items, path }: { label: string; items: typeof navItems; path: string }) {
+  const containsActiveItem = items.some((item) => isActive(item.href, path));
+  const [open, setOpen] = useState(containsActiveItem);
+
+  useEffect(() => {
+    if (containsActiveItem) setOpen(true);
+  }, [containsActiveItem]);
+
   return (
     <div>
-      <div className="px-3 text-[11px] font-bold uppercase tracking-normal text-slate-500">{label}</div>
-      <div className="mt-2 space-y-1">
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <a key={item.href} href={item.href} className={`flex items-center gap-3 border px-3 py-2.5 text-sm font-bold ${isActive(item.href, path) ? "border-slate-200 bg-white text-slate-950" : "border-transparent text-slate-300 hover:border-slate-800 hover:bg-white/10 hover:text-white"}`}>
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </a>
-          );
-        })}
-      </div>
+      <button type="button" className="flex w-full items-center justify-between px-3 py-1 text-left text-[11px] font-bold uppercase tracking-normal text-slate-500" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span>{label}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition ${open ? "" : "-rotate-90"}`} />
+      </button>
+      {open ? (
+        <div className="mt-2 space-y-1">
+          {items.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.href, path);
+            return (
+              <a key={item.href} href={item.href} className={`relative flex items-center gap-3 border px-3 py-2.5 pl-4 text-sm font-bold ${active ? "border-blue-200 bg-blue-50 text-slate-950" : "border-transparent text-slate-300 hover:border-slate-200 hover:bg-white hover:text-slate-950"}`} aria-current={active ? "page" : undefined}>
+                {active ? <span className="absolute inset-y-2 left-0 w-1 bg-blue-700" aria-hidden="true" /> : null}
+                <Icon className={`h-4 w-4 ${active ? "text-blue-700" : ""}`} />
+                {item.label}
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -248,46 +262,51 @@ function routePage(path: string): { title: string; description: string; node: Re
   if (path === "/admin/seo-sales/runs") return { title: "実行ログ", description: "解析の実行履歴です。", node: <RunsPage /> };
   if (path.startsWith("/admin/seo-sales/runs/")) return { title: "実行詳細", description: "", node: <RunDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
   if (path === "/admin/seo-sales/settings") return { title: "外部サービス設定", description: "連携設定と実行ポリシーです。", node: <SettingsPage /> };
-  return { title: "業務アプリ", description: "管理対象の業務一覧です。", node: <PortalPage /> };
+  return { title: "業務アプリ", description: "利用する業務を選択します。", node: <PortalPage /> };
 }
 
 function PortalPage() {
   const { data, loading, error } = useApi<{ apps: BusinessApp[] }>("/api/admin/apps");
   if (loading) return <Loading />;
   if (error) return <ErrorState message={error} />;
+  const apps = data?.apps ?? [];
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(data?.apps ?? []).map((app) => (
-        <section key={app.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                {app.id === "stock-trading" ? <TrendingUp className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-              </div>
-              <div>
-                <h2 className="text-lg font-black tracking-normal">{app.name}</h2>
-                <StatusPill status={app.status === "active" ? "passed" : "skipped"} label={app.status === "active" ? "稼働中" : "準備中"} />
-              </div>
-            </div>
-          </div>
-          <p className="mt-4 min-h-12 text-sm text-slate-600">{app.description}</p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {app.status === "active" ? (
-              <>
-                <a href={app.entryPath} className="btn-primary">開く<ChevronRight className="h-4 w-4" /></a>
-                {app.primaryLinks.map((link) => (
-                  <a key={link.href} href={link.href} className="btn-secondary">{link.label}</a>
-                ))}
-              </>
-            ) : (
-              <span className="text-sm font-bold text-slate-500">近日追加予定</span>
-            )}
-          </div>
-        </section>
-        ))}
+    <section className="border border-slate-200 bg-white">
+      <div className="divide-y divide-slate-200">
+        {apps.map((app) => <AppListRow key={app.id} app={app} />)}
       </div>
-    </div>
+    </section>
+  );
+}
+
+function AppListRow({ app }: { app: BusinessApp }) {
+  const Icon = app.id === "stock-trading" ? TrendingUp : Bot;
+  const content = (
+    <>
+      <div className="flex min-w-0 items-center gap-3">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ring-1 ring-slate-200 ${app.status === "active" ? "bg-blue-50 text-blue-700" : "bg-white text-slate-500"}`}>
+          <Icon className="h-6 w-6" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-base font-black text-slate-950">{app.name}</div>
+          <div className="mt-1 truncate text-sm font-semibold text-slate-500">{app.description}</div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <StatusPill status={app.status === "active" ? "passed" : "skipped"} label={app.status === "active" ? "稼働中" : "準備中"} />
+        {app.status === "active" ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
+      </div>
+    </>
+  );
+
+  if (app.status !== "active") {
+    return <div className="flex min-h-20 items-center justify-between gap-4 bg-slate-50 px-5 py-4 md:px-6">{content}</div>;
+  }
+
+  return (
+    <a href={app.entryPath} className="app-list-row flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-6">
+      {content}
+    </a>
   );
 }
 
@@ -1268,12 +1287,17 @@ function withAdminToken(path: string): string {
 }
 
 function isActive(href: string, path: string): boolean {
-  if (href === "/admin" || href === "/admin/seo-sales") return path === href;
+  if (href === "/admin") return isAdminHome(path);
+  if (href === "/admin/seo-sales") return path === href;
   return path === href || path.startsWith(`${href}/`);
 }
 
 function isClientRoute(path: string): boolean {
-  return path === "/admin" || path.startsWith("/admin/seo-sales");
+  return isAdminHome(path) || path.startsWith("/admin/seo-sales");
+}
+
+function isAdminHome(path: string): boolean {
+  return path === "/" || path === "/admin" || path === "/admin/";
 }
 
 function getAnchorFromEventTarget(target: EventTarget | null): HTMLAnchorElement | null {
