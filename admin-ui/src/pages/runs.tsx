@@ -6,12 +6,14 @@ import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../componen
 import { FindingsList, ProposalViewer, RunningRunsList, RunsTable } from "../components/tables";
 import { useApi, useRunningRunsPoll } from "../hooks";
 import type { AgentRun, AgentRunDetail } from "../types";
-import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
+import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl, safeAdminReturnPath, urlsMatch } from "../utils";
 
 export function RunsPage() {
   const { data, loading, error, reload } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
   const [searchParams] = useSearchParams();
   const urlFilter = searchParams.get("url") ?? "";
+  const returnTo = safeAdminReturnPath(searchParams.get("returnTo") ?? "");
+  const detailSearch = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
   const runs = data?.runs ?? [];
   const visibleRuns = urlFilter ? runs.filter((run) => urlsMatch(getTargetUrl(run), urlFilter)) : runs;
   return (
@@ -21,7 +23,7 @@ export function RunsPage() {
       </Panel>
       <Panel title="実行ログ" action={urlFilter ? <Link to="/admin/seo-sales/runs" className="btn-secondary">絞り込みを解除</Link> : null}>
         {urlFilter ? <p className="mb-3 break-words border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">対象URL: {urlFilter}</p> : null}
-        {loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={visibleRuns} />}
+        {loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={visibleRuns} detailSearch={detailSearch} />}
       </Panel>
     </div>
   );
@@ -30,6 +32,8 @@ export function RunsPage() {
 export function RunDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = safeAdminReturnPath(searchParams.get("returnTo") ?? "");
   const { data, loading, error, reload } = useApi<{ run: AgentRunDetail }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}`);
   const [retrying, setRetrying] = useState(false);
   const isRunning = data?.run?.status === "running";
@@ -55,7 +59,15 @@ export function RunDetailPage() {
   const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal" || artifact.contentType === "text/markdown");
   return (
     <div className="space-y-5">
-      <Panel title={targetUrl} action={<button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>}>
+      <Panel
+        title={targetUrl}
+        action={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {returnTo ? <Link to={returnTo} className="btn-secondary">URL詳細へ戻る</Link> : null}
+            <button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>
+          </div>
+        )}
+      >
         <div className="grid gap-3 md:grid-cols-4">
           <Info label="状態" value={<StatusPill status={run.status} />} />
           <Info label="起点" value={formatSource(run.source)} />

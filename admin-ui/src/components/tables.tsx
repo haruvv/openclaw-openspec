@@ -109,17 +109,17 @@ export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; com
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>実行ログ</th></tr></thead>
-      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td><Link className="table-link" to={`/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}`}>開く</Link></td></tr>)}</tbody>
+      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td><Link className="table-link" to={`/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}&returnTo=${encodeURIComponent(`/admin/seo-sales/sites/${site.id}`)}`}>開く</Link></td></tr>)}</tbody>
     </table>
   );
 }
 
-export function RunsTable({ runs, compact = false }: { runs: AgentRun[]; compact?: boolean }) {
+export function RunsTable({ runs, compact = false, detailSearch = "" }: { runs: AgentRun[]; compact?: boolean; detailSearch?: string }) {
   if (runs.length === 0) return <Empty title="実行履歴はまだありません" description="URLを解析すると、ここに実行ステータスと詳細ログが表示されます。" action={<Link to="/admin/seo-sales/runs" className="btn-secondary">URLを解析する</Link>} />;
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>対象URL</th><th>Lighthouse SEO</th><th>改善余地</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
-      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><Link className="table-link" to={`/admin/seo-sales/runs/${run.id}`}>{getTargetUrl(run)}</Link></td><td>{getSeoScore(run) ?? "-"}</td><td>{getOpportunityScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
+      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><Link className="table-link" to={`/admin/seo-sales/runs/${run.id}${detailSearch}`}>{getTargetUrl(run)}</Link></td><td>{getSeoScore(run) ?? "-"}</td><td>{getOpportunityScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
     </table>
   );
 }

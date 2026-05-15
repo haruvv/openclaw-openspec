@@ -21,9 +21,11 @@ export function SiteDetailPage() {
   const latestProposal = site.proposals[0];
   const latestSnapshot = site.snapshots[0];
   const passedSnapshots = site.snapshots.filter((snapshot) => snapshot.status === "passed").length;
+  const sitePath = `/admin/seo-sales/sites/${site.id}`;
+  const runLogPath = `/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}&returnTo=${encodeURIComponent(sitePath)}`;
   return (
     <div className="space-y-5">
-      <Panel title={site.displayUrl} action={<Link to={`/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}`} className="btn-secondary">実行ログ一覧</Link>}>
+      <Panel title={site.displayUrl} action={<Link to={runLogPath} className="btn-secondary">実行ログ一覧</Link>}>
         <div className="grid gap-3 md:grid-cols-4">
           <Info label="状態" value={<StatusPill status={site.latestStatus} />} />
           <Info label="ドメイン" value={site.domain} />
@@ -35,7 +37,7 @@ export function SiteDetailPage() {
           <Info label="解析回数" value={`${site.snapshotCount}回`} />
           <Info label="成功回数" value={`${passedSnapshots}回`} />
           <Info label="提案書" value={`${site.proposals.length}件`} />
-          <Info label="最新実行" value={site.latestRunId ? <Link className="table-link" to={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</Link> : "-"} />
+          <Info label="最新実行" value={site.latestRunId ? <Link className="table-link" to={`/admin/seo-sales/runs/${site.latestRunId}?returnTo=${encodeURIComponent(sitePath)}`}>開く</Link> : "-"} />
         </div>
       </Panel>
       <Panel title="最新の提案書">
