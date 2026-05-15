@@ -2,7 +2,6 @@ import { getDb } from "../utils/db.js";
 import { notifyHil } from "./telegram-notifier.js";
 import { buildApprovalUrls } from "./token.js";
 import { logger } from "../utils/logger.js";
-import type Database from "better-sqlite3";
 
 const TIMEOUT_MS = 48 * 60 * 60 * 1000;
 

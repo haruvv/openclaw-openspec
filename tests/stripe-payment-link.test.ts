@@ -8,7 +8,7 @@ vi.mock("stripe", () => ({
       create: vi.fn().mockResolvedValue({ id: "plink_test", url: "https://buy.stripe.com/test" }),
     },
     webhooks: {
-      constructEvent: vi.fn().mockImplementation((payload, sig, secret) => {
+      constructEvent: vi.fn().mockImplementation((payload, sig, _secret) => {
         if (sig === "bad") throw new Error("Invalid signature");
         return JSON.parse(payload.toString());
       }),
@@ -40,7 +40,6 @@ vi.mock("../src/utils/db.js", () => {
 import sgMail from "@sendgrid/mail";
 import { createAndSendPaymentLink, sendPaymentReminders } from "../src/stripe-payment-link/payment-link.js";
 import { handleStripeEvent } from "../src/stripe-payment-link/webhook-handler.js";
-import { constructStripeEvent } from "../src/stripe-payment-link/webhook-handler.js";
 import { getDb } from "../src/utils/db.js";
 
 describe("createAndSendPaymentLink", () => {

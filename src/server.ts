@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { handleApprove, handleReject } from "./hil-approval-flow/approval-handler.js";
 import { constructStripeEvent, handleStripeEvent } from "./stripe-payment-link/webhook-handler.js";
-import { runHilStep, runPaymentStep } from "./pipeline/agent.js";
+import { runPaymentStep } from "./pipeline/agent.js";
 import { getTarget } from "./pipeline/state.js";
 import { checkHilTimeouts } from "./hil-approval-flow/timeout-watcher.js";
 import { sendPaymentReminders } from "./stripe-payment-link/payment-link.js";

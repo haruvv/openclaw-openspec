@@ -1,6 +1,5 @@
 import { getDb } from "../utils/db.js";
 import type { Target } from "../types/index.js";
-import type Database from "better-sqlite3";
 
 interface TargetRow {
   id: string;

@@ -34,7 +34,7 @@ export async function scrapeUrl(url: string): Promise<CrawlResult | null> {
 }
 
 function extractEmail(html: string): string | undefined {
-  const match = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+  const match = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   return match?.[0];
 }
 

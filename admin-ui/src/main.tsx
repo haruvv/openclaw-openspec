@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -899,7 +899,7 @@ function useApi<T>(path: string) {
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchPath(targetPath: string, force = false, shouldApply: () => boolean = () => true) {
+  const fetchPath = useCallback(async (targetPath: string, force = false, shouldApply: () => boolean = () => true) => {
     const cachedData = apiCache.get(targetPath) as T | undefined;
     if (cachedData && !force) {
       setData(cachedData);
@@ -919,11 +919,11 @@ function useApi<T>(path: string) {
     } finally {
       if (shouldApply()) setLoading(false);
     }
-  }
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     await fetchPath(path, true);
-  }
+  }, [fetchPath, path]);
 
   useEffect(() => {
     let active = true;
@@ -931,7 +931,7 @@ function useApi<T>(path: string) {
     return () => {
       active = false;
     };
-  }, [path]);
+  }, [fetchPath, path]);
   return { data, loading, error, reload: load };
 }
 
