@@ -8,7 +8,7 @@ import { formatBytes, formatDate } from "../utils";
 
 export function SitesPage() {
   const { data, loading, error } = useApi<{ sites: SiteRecord[] }>("/api/admin/seo-sales/sites");
-  return <Panel title="解析済みURL">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
+  return <Panel title="URL別の最新結果">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
 }
 
 export function SiteDetailPage() {
@@ -32,7 +32,7 @@ export function SiteDetailPage() {
         </div>
         {latestSnapshot?.opportunityFindings.length ? <FindingsList findings={latestSnapshot.opportunityFindings.slice(0, 3)} /> : null}
         <div className="mt-3 grid gap-3 md:grid-cols-4">
-          <Info label="解析回数" value={`${site.snapshots.length}回`} />
+          <Info label="解析回数" value={`${site.snapshotCount}回`} />
           <Info label="成功回数" value={`${passedSnapshots}回`} />
           <Info label="提案書" value={`${site.proposals.length}件`} />
           <Info label="最新実行" value={site.latestRunId ? <Link className="table-link" to={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</Link> : "-"} />

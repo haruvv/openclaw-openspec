@@ -108,8 +108,8 @@ export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; com
   if (sites.length === 0) return <Empty title="URL別結果はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<Link to="/admin/seo-sales/runs" className="btn-secondary">URLを解析する</Link>} />;
   return (
     <table className="data-table">
-      <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>更新</th>}<th>実行ログ</th></tr></thead>
-      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td>{site.latestRunId ? <Link className="table-link" to={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</Link> : "-"}</td></tr>)}</tbody>
+      <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>最新実行</th></tr></thead>
+      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td>{site.latestRunId ? <Link className="table-link" to={`/admin/seo-sales/runs/${site.latestRunId}`}>開く</Link> : "-"}</td></tr>)}</tbody>
     </table>
   );
 }

@@ -55,13 +55,72 @@ describe("site results repository", () => {
       latestSeoScore: 88,
       latestOpportunityScore: 66,
       latestRunId: "run-2",
+      snapshotCount: 2,
     });
 
     const detail = await getSiteDetail(sites[0].id);
     expect(detail?.snapshots.map((snapshot) => snapshot.runId)).toEqual(["run-2", "run-1"]);
+    expect(detail?.snapshotCount).toBe(2);
     expect(detail?.snapshots[0]).toMatchObject({ opportunityScore: 66 });
     expect(detail?.snapshots[0].opportunityFindings[0]).toMatchObject({ category: "content" });
     expect(detail?.proposals[0]).toMatchObject({ runId: "run-2", contentText: "# Latest" });
+  });
+
+  it("derives URL list latest state from snapshots when cached site columns are stale", async () => {
+    const { createAgentRun } = await import("../src/agent-runs/repository.js");
+    const { getSiteDetail, getSitesDb, listSites, persistSiteResult } = await import("../src/sites/repository.js");
+
+    await createAgentRun({
+      id: "run-old",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://stale.example.com/" },
+      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await createAgentRun({
+      id: "run-new",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://stale.example.com/" },
+      startedAt: new Date("2026-05-14T00:10:00.000Z"),
+    });
+
+    const oldDetail = await persistSiteResult({
+      runId: "run-old",
+      status: "passed",
+      target: target({ url: "https://stale.example.com/", domain: "stale.example.com", seoScore: 61, opportunityScore: 70 }),
+      createdAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await persistSiteResult({
+      runId: "run-new",
+      status: "passed",
+      target: target({ url: "https://stale.example.com/", domain: "stale.example.com", seoScore: 94, opportunityScore: 24 }),
+      createdAt: new Date("2026-05-14T00:10:00.000Z"),
+    });
+
+    const db = await getSitesDb();
+    db.prepare(
+      `UPDATE analyzed_sites
+       SET latest_seo_score = ?, latest_opportunity_score = ?, latest_run_id = ?, latest_snapshot_id = ?, updated_at = ?
+       WHERE id = ?`
+    ).run(61, 70, "run-old", oldDetail.latestSnapshotId, new Date("2026-05-14T00:00:00.000Z").getTime(), oldDetail.id);
+
+    const sites = await listSites();
+    expect(sites[0]).toMatchObject({
+      displayUrl: "https://stale.example.com/",
+      latestSeoScore: 94,
+      latestOpportunityScore: 24,
+      latestRunId: "run-new",
+      snapshotCount: 2,
+    });
+
+    const detail = await getSiteDetail(oldDetail.id);
+    expect(detail).toMatchObject({
+      latestSeoScore: 94,
+      latestOpportunityScore: 24,
+      latestRunId: "run-new",
+      snapshotCount: 2,
+    });
   });
 
   it("reads legacy site rows without opportunity fields as unavailable", async () => {

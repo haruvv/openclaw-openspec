@@ -33,12 +33,12 @@ async function checkHealth() {
 }
 
 async function checkAdminUiAssets() {
-  const { readFile } = await import("node:fs/promises");
-  const html = await readFile("dist-assets/admin/index.html", "utf8");
+  const html = await getTextWithRetry("admin ui html", `${baseUrl}/admin`, {
+    expectedStatus: 200,
+    expectedContentType: "text/html",
+  });
   const assetPaths = [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((match) => match[1]);
-  if (assetPaths.length === 0) {
-    throw new Error("admin ui assets: no assets found in dist-assets/admin/index.html");
-  }
+  if (assetPaths.length === 0) throw new Error("admin ui assets: no assets found in production admin HTML");
 
   for (const assetPath of assetPaths) {
     const path = assetPath.startsWith("/") ? assetPath : `/admin/${assetPath.replace(/^\.\//, "")}`;
@@ -141,6 +141,25 @@ async function getJsonWithRetry(name, url, expectation) {
       const contentType = res.headers.get("content-type") ?? "";
       if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
         return await res.json();
+      }
+      lastError = new Error(`${name}: expected ${expectation.expectedStatus} ${expectation.expectedContentType}, got ${res.status} ${contentType}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(3000);
+  }
+  throw lastError ?? new Error(`${name}: smoke check timed out`);
+}
+
+async function getTextWithRetry(name, url, expectation) {
+  let lastError;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(requestTimeoutMs) });
+      const contentType = res.headers.get("content-type") ?? "";
+      if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
+        return await res.text();
       }
       lastError = new Error(`${name}: expected ${expectation.expectedStatus} ${expectation.expectedContentType}, got ${res.status} ${contentType}`);
     } catch (error) {

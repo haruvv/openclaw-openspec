@@ -35,6 +35,7 @@ export interface SiteRecord {
   latestSeoScore?: number;
   latestOpportunityScore?: number;
   latestRunId?: string;
+  snapshotCount: number;
   updatedAt: string;
 }
 

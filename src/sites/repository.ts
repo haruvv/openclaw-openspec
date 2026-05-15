@@ -36,6 +36,7 @@ type SiteRow = {
   latest_opportunity_score: number | null;
   latest_run_id: string | null;
   latest_snapshot_id: string | null;
+  snapshot_count?: number | null;
   created_at: number;
   updated_at: number;
 };
@@ -242,12 +243,13 @@ export async function persistSiteResult(input: PersistSiteResultInput): Promise<
 }
 
 export async function listSites(limit = 100): Promise<SiteRecord[]> {
+  const boundedLimit = Math.max(1, Math.min(limit, 500));
   const durable = getDurableClient();
   if (durable) {
     const results = await durable.executeSql<SiteRow>([
       {
-        sql: "SELECT * FROM analyzed_sites ORDER BY updated_at DESC LIMIT ?",
-        params: [Math.max(1, Math.min(limit, 500))],
+        sql: selectSitesWithLatestSnapshotSql(),
+        params: [boundedLimit],
       },
     ]);
     return (results[0]?.results ?? []).map(mapSiteRow);
@@ -255,8 +257,8 @@ export async function listSites(limit = 100): Promise<SiteRecord[]> {
 
   const db = await getDb();
   const rows = db
-    .prepare("SELECT * FROM analyzed_sites ORDER BY updated_at DESC LIMIT ?")
-    .all(Math.max(1, Math.min(limit, 500))) as SiteRow[];
+    .prepare(selectSitesWithLatestSnapshotSql())
+    .all(boundedLimit) as SiteRow[];
   return rows.map(mapSiteRow);
 }
 
@@ -272,11 +274,7 @@ export async function getSiteDetail(id: string): Promise<SiteDetail | null> {
     if (!row) return null;
     const snapshots = (results[1]?.results ?? []) as SnapshotRow[];
     const proposals = (results[2]?.results ?? []) as ProposalRow[];
-    return {
-      ...mapSiteRow(row),
-      snapshots: snapshots.map(mapSnapshotRow),
-      proposals: await Promise.all(proposals.map((proposal) => mapProposalRowWithBody(proposal, durable))),
-    };
+    return mapSiteDetail(row, snapshots, await Promise.all(proposals.map((proposal) => mapProposalRowWithBody(proposal, durable))));
   }
 
   const db = await getDb();
@@ -290,11 +288,7 @@ export async function getSiteDetail(id: string): Promise<SiteDetail | null> {
     .prepare("SELECT * FROM site_proposals WHERE site_id = ? ORDER BY created_at DESC")
     .all(id) as ProposalRow[];
 
-  return {
-    ...mapSiteRow(row),
-    snapshots: snapshots.map(mapSnapshotRow),
-    proposals: proposals.map(mapProposalRow),
-  };
+  return mapSiteDetail(row, snapshots, proposals.map(mapProposalRow));
 }
 
 export async function getSitesDb(): Promise<Database.Database> {
@@ -329,9 +323,63 @@ function mapSiteRow(row: SiteRow): SiteRecord {
     latestOpportunityScore: row.latest_opportunity_score ?? undefined,
     latestRunId: row.latest_run_id ?? undefined,
     latestSnapshotId: row.latest_snapshot_id ?? undefined,
+    snapshotCount: row.snapshot_count ?? 0,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
+}
+
+function mapSiteDetail(row: SiteRow, snapshotRows: SnapshotRow[], proposals: SiteProposalRecord[]): SiteDetail {
+  const snapshots = snapshotRows.map(mapSnapshotRow);
+  const latest = snapshots[0];
+  return {
+    ...mapSiteRow({
+      ...row,
+      latest_status: latest?.status ?? row.latest_status,
+      latest_seo_score: latest?.seoScore ?? row.latest_seo_score,
+      latest_opportunity_score: latest?.opportunityScore ?? row.latest_opportunity_score,
+      latest_run_id: latest?.runId ?? row.latest_run_id,
+      latest_snapshot_id: latest?.id ?? row.latest_snapshot_id,
+      snapshot_count: snapshots.length,
+      updated_at: latest ? new Date(latest.createdAt).getTime() : row.updated_at,
+    }),
+    snapshots,
+    proposals,
+  };
+}
+
+function selectSitesWithLatestSnapshotSql(): string {
+  return `
+    SELECT
+      s.id,
+      s.normalized_url,
+      s.display_url,
+      s.domain,
+      COALESCE(latest.status, s.latest_status) AS latest_status,
+      COALESCE(latest.seo_score, s.latest_seo_score) AS latest_seo_score,
+      COALESCE(latest.opportunity_score, s.latest_opportunity_score) AS latest_opportunity_score,
+      COALESCE(latest.run_id, s.latest_run_id) AS latest_run_id,
+      COALESCE(latest.id, s.latest_snapshot_id) AS latest_snapshot_id,
+      COALESCE(stats.snapshot_count, 0) AS snapshot_count,
+      s.created_at,
+      COALESCE(latest.created_at, s.updated_at) AS updated_at
+    FROM analyzed_sites s
+    LEFT JOIN site_snapshots latest
+      ON latest.id = (
+        SELECT ss.id
+        FROM site_snapshots ss
+        WHERE ss.site_id = s.id
+        ORDER BY ss.created_at DESC
+        LIMIT 1
+      )
+    LEFT JOIN (
+      SELECT site_id, COUNT(*) AS snapshot_count
+      FROM site_snapshots
+      GROUP BY site_id
+    ) stats ON stats.site_id = s.id
+    ORDER BY COALESCE(latest.created_at, s.updated_at) DESC
+    LIMIT ?
+  `;
 }
 
 function mapSnapshotRow(row: SnapshotRow): SiteSnapshotRecord {

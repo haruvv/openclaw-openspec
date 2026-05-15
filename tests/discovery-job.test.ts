@@ -42,6 +42,7 @@ describe("runDailyDiscoveryJob", () => {
           displayUrl: "https://already.com/",
           domain: "already.com",
           latestStatus: "passed",
+          snapshotCount: 1,
           createdAt: "2026-05-14T00:00:00.000Z",
           updatedAt: "2026-05-14T00:00:00.000Z",
         },
