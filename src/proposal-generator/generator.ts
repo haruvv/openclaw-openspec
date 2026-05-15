@@ -2,13 +2,13 @@ import { generateText } from "../utils/llm-provider.js";
 import { logger } from "../utils/logger.js";
 import type { Target } from "../types/index.js";
 
-const SYSTEM_PROMPT = `あなたはSEOコンサルタントです。クライアント企業のウェブサイトのSEO診断結果をもとに、具体的で実行可能な改善提案書を作成します。
+const SYSTEM_PROMPT = `あなたはSEOコンサルタント兼営業担当です。クライアント企業のウェブサイトのSEO診断結果をもとに、営業メールでそのまま提案しやすい改善提案書を作成します。
 提案書は必ず以下の3セクションで構成してください：
-1. ## 現状スコア
-2. ## 課題一覧
-3. ## 改善提案（優先度付き）
+1. ## 調査結果の要点
+2. ## メール提案文
+3. ## 提案の補足ポイント
 
-専門的かつ親切な口調で、クライアントが自社の課題を理解しやすいよう記述してください。`;
+調査結果そのものの羅列ではなく、相手に送る提案として自然な文面にしてください。専門的かつ親切な口調で、相手が自社の課題と次の行動を理解しやすいよう記述してください。`;
 
 export async function generateProposal(target: Target): Promise<string> {
   const opportunityLines = (target.opportunityFindings ?? [])
@@ -18,7 +18,7 @@ export async function generateProposal(target: Target): Promise<string> {
     .map((d) => `- ${d.title}: ${d.score === null ? "未計測" : Math.round((d.score ?? 0) * 100) + "点"}（${d.description}）`)
     .join("\n");
 
-  const userMessage = `以下のSEO診断結果をもとに改善提案書を作成してください。
+  const userMessage = `以下のSEO診断結果をもとに、営業メールでどのように提案するかが分かる提案書を作成してください。
 
 企業名/ドメイン: ${target.domain}
 業種: ${target.industry ?? "不明"}
@@ -37,7 +37,7 @@ ${diagnosticLines}`;
 }
 
 function validateProposal(text: string): void {
-  const required = ["## 現状スコア", "## 課題一覧", "## 改善提案"];
+  const required = ["## 調査結果の要点", "## メール提案文", "## 提案の補足ポイント"];
   const missing = required.filter((s) => !text.includes(s));
   if (missing.length > 0) {
     logger.warn("Proposal missing required sections", { missing });

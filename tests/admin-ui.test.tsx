@@ -26,6 +26,10 @@ describe("admin UI routing", () => {
 
     expect(screen.getByRole("heading", { name: "実行詳細" })).toBeInTheDocument();
     expect(await screen.findByText("https://example.com")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "調査結果" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "営業提案書" })).toBeInTheDocument();
+    expect(screen.getByText("Document lacks title")).toBeInTheDocument();
+    expect(screen.getAllByText("メール提案文").length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith("/api/admin/seo-sales/runs/run-1", { credentials: "same-origin" });
   });
 
@@ -122,11 +126,31 @@ function createRunDetail(): AgentRunDetail {
     source: "manual",
     status: "passed",
     input: { url: "https://example.com" },
-    summary: { targetUrl: "https://example.com", domain: "example.com", seoScore: 90, opportunityScore: 40 },
+    summary: {
+      targetUrl: "https://example.com",
+      domain: "example.com",
+      seoScore: 90,
+      opportunityScore: 40,
+      opportunityFindings: [{
+        category: "content",
+        severity: "high",
+        title: "主要ページの訴求が弱い",
+        evidence: "サービス内容の説明が短く、問い合わせへの導線も目立たない",
+        recommendation: "対象顧客ごとの課題と解決策を追記する",
+        scoreImpact: 18,
+      }],
+      diagnostics: [{ id: "document-title", title: "Document lacks title", score: 0, description: "Title element is missing." }],
+    },
     startedAt: "2026-05-15T10:00:00.000Z",
     completedAt: "2026-05-15T10:00:01.000Z",
     steps: [],
-    artifacts: [],
+    artifacts: [{
+      id: "artifact-1",
+      type: "proposal",
+      label: "example.com proposal",
+      contentType: "text/markdown",
+      contentText: "## 調査結果の要点\nSEOスコアは90点です。\n\n## メール提案文\nメール提案文\n\n## 提案の補足ポイント\n- 問い合わせ導線を改善する",
+    }],
   };
 }
 

@@ -53,6 +53,13 @@ export interface OpportunityFinding {
   scoreImpact: number;
 }
 
+export interface SeoDiagnostic {
+  id: string;
+  title: string;
+  score: number | null;
+  description: string;
+}
+
 export interface ArtifactRecord {
   id: string;
   type: string;

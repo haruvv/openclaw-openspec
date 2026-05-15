@@ -62,6 +62,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.seoScore = target.seoScore;
       outputs.opportunityScore = target.opportunityScore;
       outputs.opportunityFindings = target.opportunityFindings ?? [];
+      outputs.diagnostics = target.diagnostics;
       outputs.domain = target.domain;
       return {
         status: "passed",
@@ -332,6 +333,7 @@ async function recordRunComplete(
         seoScore: report.outputs.seoScore,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
+        diagnostics: report.outputs.diagnostics,
         proposalPath: report.outputs.proposalPath,
         paymentLinkUrl: report.outputs.paymentLinkUrl,
       },
@@ -369,6 +371,7 @@ async function recordSiteResult(
         seoScore: report.outputs.seoScore,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
+        diagnostics: report.outputs.diagnostics,
         proposalPath: report.outputs.proposalPath,
         paymentLinkUrl: report.outputs.paymentLinkUrl,
       },

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../src/utils/llm-provider.js", () => ({
   generateText: vi.fn().mockResolvedValue(
-    "## 現状スコア\nスコア: 30/100\n\n## 課題一覧\n- title欠落\n\n## 改善提案（優先度付き）\n1. titleタグを追加する"
+    "## 調査結果の要点\nスコア: 30/100\n\n## メール提案文\n件名案と本文案\n\n## 提案の補足ポイント\n1. titleタグを追加する"
   ),
 }));
 
@@ -23,8 +23,8 @@ const mockTarget: Target = {
 describe("generateProposal", () => {
   it("returns proposal with required sections", async () => {
     const proposal = await generateProposal(mockTarget);
-    expect(proposal).toContain("## 現状スコア");
-    expect(proposal).toContain("## 課題一覧");
-    expect(proposal).toContain("## 改善提案");
+    expect(proposal).toContain("## 調査結果の要点");
+    expect(proposal).toContain("## メール提案文");
+    expect(proposal).toContain("## 提案の補足ポイント");
   });
 });

@@ -1,4 +1,4 @@
-import type { AgentRun, DiscoveryReport, OpportunityFinding } from "./types";
+import type { AgentRun, DiscoveryReport, OpportunityFinding, SeoDiagnostic } from "./types";
 
 export function isActive(href: string, path: string): boolean {
   if (href === "/admin") return isAdminHome(path);
@@ -56,12 +56,27 @@ export function getOpportunityFindings(run: AgentRun): OpportunityFinding[] {
   return value.filter(isOpportunityFinding);
 }
 
+export function getSeoDiagnostics(run: AgentRun): SeoDiagnostic[] {
+  const value = run.summary.diagnostics;
+  if (!Array.isArray(value)) return [];
+  return value.filter(isSeoDiagnostic);
+}
+
 function isOpportunityFinding(value: unknown): value is OpportunityFinding {
   return Boolean(value)
     && typeof value === "object"
     && typeof (value as OpportunityFinding).title === "string"
     && typeof (value as OpportunityFinding).recommendation === "string"
     && typeof (value as OpportunityFinding).scoreImpact === "number";
+}
+
+function isSeoDiagnostic(value: unknown): value is SeoDiagnostic {
+  return Boolean(value)
+    && typeof value === "object"
+    && typeof (value as SeoDiagnostic).id === "string"
+    && typeof (value as SeoDiagnostic).title === "string"
+    && (typeof (value as SeoDiagnostic).score === "number" || (value as SeoDiagnostic).score === null)
+    && typeof (value as SeoDiagnostic).description === "string";
 }
 
 export function formatDate(value?: string): string {

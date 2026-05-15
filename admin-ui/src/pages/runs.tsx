@@ -5,8 +5,8 @@ import { apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../components/common";
 import { FindingsList, ProposalViewer, RunsTable } from "../components/tables";
 import { useApi } from "../hooks";
-import type { AgentRun, AgentRunDetail } from "../types";
-import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
+import type { AgentRun, AgentRunDetail, SeoDiagnostic } from "../types";
+import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
   const { data, loading, error } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
@@ -57,8 +57,9 @@ export function RunDetailPage() {
   const seoScore = getSeoScore(run);
   const opportunityScore = getOpportunityScore(run);
   const opportunityFindings = getOpportunityFindings(run);
+  const diagnostics = getSeoDiagnostics(run);
   const domain = typeof run.summary.domain === "string" ? run.summary.domain : "-";
-  const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal" || artifact.contentType === "text/markdown");
+  const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal");
   return (
     <div className="space-y-5">
       <Panel
@@ -79,14 +80,17 @@ export function RunDetailPage() {
         {run.status === "running" ? (
           <p className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">実行中です。この詳細画面は3秒ごとに更新されます。</p>
         ) : null}
+        {run.error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{run.error}</p> : null}
+      </Panel>
+      <Panel title="調査結果">
         <div className="mt-3 grid gap-3 md:grid-cols-4">
           <Info label="ドメイン" value={domain} />
           <Info label="Lighthouse SEO" value={seoScore ?? "-"} />
           <Info label="改善余地スコア" value={opportunityScore ?? "-"} />
-          <Info label="提案書" value={`${proposalArtifacts.length}件`} />
+          <Info label="診断項目" value={`${diagnostics.length}件`} />
         </div>
-        {opportunityFindings.length > 0 ? <FindingsList findings={opportunityFindings.slice(0, 3)} /> : null}
-        {run.error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{run.error}</p> : null}
+        {opportunityFindings.length > 0 ? <FindingsList findings={opportunityFindings} /> : <Empty title="改善余地の詳細は記録されていません" />}
+        {diagnostics.length > 0 ? <DiagnosticsTable diagnostics={diagnostics} /> : null}
       </Panel>
       <Panel title="処理ステップ">
         {run.steps.length === 0 ? <Empty title="ステップ開始待ちです" description="サーバーが処理を開始すると、ここにステップ単位の進捗が表示されます。" /> : (
@@ -96,8 +100,8 @@ export function RunDetailPage() {
           </table>
         )}
       </Panel>
-      <Panel title="提案書">
-        {run.artifacts.length === 0 ? <Empty title="成果物はありません" /> : run.artifacts.map((artifact) => (
+      <Panel title="営業提案書">
+        {proposalArtifacts.length === 0 ? <Empty title="営業提案書はまだ生成されていません" description="調査結果をもとに、メールでどう提案するかをまとめた提案書がここに表示されます。" /> : proposalArtifacts.map((artifact) => (
           <ProposalViewer
             key={artifact.id}
             title={artifact.label}
@@ -107,6 +111,23 @@ export function RunDetailPage() {
           />
         ))}
       </Panel>
+    </div>
+  );
+}
+
+function DiagnosticsTable({ diagnostics }: { diagnostics: SeoDiagnostic[] }) {
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="data-table">
+        <thead><tr><th>診断項目</th><th>スコア</th><th>内容</th></tr></thead>
+        <tbody>{diagnostics.map((diagnostic) => (
+          <tr key={diagnostic.id}>
+            <td>{diagnostic.title}</td>
+            <td>{diagnostic.score === null ? "未計測" : `${Math.round(diagnostic.score * 100)}点`}</td>
+            <td>{diagnostic.description || "-"}</td>
+          </tr>
+        ))}</tbody>
+      </table>
     </div>
   );
 }

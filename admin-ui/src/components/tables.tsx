@@ -139,6 +139,7 @@ export function FindingsList({ findings }: { findings: OpportunityFinding[] }) {
               <span className="text-xs font-bold text-slate-500">{formatFindingSeverity(finding.severity)} / +{finding.scoreImpact}</span>
             </div>
             <div className="mt-1 font-black text-slate-800">{finding.title}</div>
+            <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">根拠: {finding.evidence}</div>
             <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">{finding.recommendation}</div>
           </div>
         ))}
