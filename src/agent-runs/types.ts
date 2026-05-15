@@ -21,7 +21,7 @@ export interface AgentRunStepRecord {
   id: string;
   runId: string;
   name: string;
-  status: Exclude<AgentRunStatus, "running">;
+  status: AgentRunStatus;
   durationMs: number;
   reason?: string;
   error?: string;

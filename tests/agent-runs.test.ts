@@ -11,7 +11,7 @@ describe("agent run repository", () => {
   });
 
   it("persists run, step, and artifact records", async () => {
-    const { createAgentRun, completeAgentRun, getAgentRunDetail, listAgentRuns } = await import(
+    const { createAgentRun, completeAgentRun, getAgentRunDetail, listAgentRuns, upsertAgentRunStep } = await import(
       "../src/agent-runs/repository.js"
     );
 
@@ -23,6 +23,18 @@ describe("agent run repository", () => {
       metadata: { requestedBy: "test" },
       startedAt: new Date("2026-05-14T00:00:00.000Z"),
     });
+
+    await upsertAgentRunStep({
+      runId: "run-1",
+      name: "crawl_and_score",
+      status: "running",
+      durationMs: 0,
+      createdAt: new Date("2026-05-14T00:00:00.100Z"),
+    });
+
+    const runningDetail = await getAgentRunDetail("run-1");
+    expect(runningDetail?.status).toBe("running");
+    expect(runningDetail?.steps[0]).toMatchObject({ name: "crawl_and_score", status: "running", durationMs: 0 });
 
     await completeAgentRun({
       id: "run-1",

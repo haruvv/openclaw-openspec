@@ -5,7 +5,7 @@ import { crawlBatch } from "../site-crawler/crawler.js";
 import { generateProposal } from "../proposal-generator/generator.js";
 import { saveProposal } from "../proposal-generator/storage.js";
 import type { Target } from "../types/index.js";
-import { completeAgentRun, createAgentRun } from "../agent-runs/repository.js";
+import { completeAgentRun, createAgentRun, upsertAgentRunStep } from "../agent-runs/repository.js";
 import { persistSiteResult } from "../sites/repository.js";
 import { logger } from "../utils/logger.js";
 import { sanitizeSecretText } from "./security.js";
@@ -41,7 +41,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
   });
 
   steps.push(
-    await runStep("crawl_and_score", async () => {
+    await runStep(id, "crawl_and_score", async () => {
       if (!process.env.FIRECRAWL_API_KEY) {
         return { status: "skipped", reason: "FIRECRAWL_API_KEY is not set" };
       }
@@ -73,7 +73,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
   );
 
   steps.push(
-    await runStep("generate_proposal", async () => {
+    await runStep(id, "generate_proposal", async () => {
       if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
       if (!process.env.GEMINI_API_KEY) {
         return { status: "skipped", reason: "GEMINI_API_KEY is not set" };
@@ -93,17 +93,17 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
   );
 
   steps.push(
-    await runStep("sendgrid_email", () =>
+    await runStep(id, "sendgrid_email", () =>
       sendGridStep(target, options.sendEmail === true, options.sideEffectSkipReasons?.sendEmail)
     )
   );
   steps.push(
-    await runStep("telegram_notification", () =>
+    await runStep(id, "telegram_notification", () =>
       telegramStep(target, options.sendTelegram === true, options.sideEffectSkipReasons?.sendTelegram)
     )
   );
   steps.push(
-    await runStep("stripe_payment_link", () =>
+    await runStep(id, "stripe_payment_link", () =>
       stripeStep(target, options.createPaymentLink === true, outputs, options.sideEffectSkipReasons?.createPaymentLink)
     )
   );
@@ -129,18 +129,46 @@ export function summarizeRunStatus(steps: RevenueAgentRunReport["steps"]): Reven
   return "passed";
 }
 
-async function runStep(name: string, body: StepBody): Promise<RevenueAgentStepResult> {
+async function runStep(runId: string, name: string, body: StepBody): Promise<RevenueAgentStepResult> {
   const started = Date.now();
+  await recordStepProgress({
+    runId,
+    name,
+    status: "running",
+    durationMs: 0,
+    details: { message: `${name} started` },
+    createdAt: new Date(started),
+  });
   try {
     const result = await body();
-    return { name, durationMs: Date.now() - started, ...result };
+    const step = { name, durationMs: Date.now() - started, ...result };
+    await recordStepProgress({
+      runId,
+      name,
+      status: step.status,
+      durationMs: step.durationMs,
+      reason: step.reason,
+      error: step.error,
+      details: step.details,
+      createdAt: new Date(started),
+    });
+    return step;
   } catch (err) {
-    return {
+    const step = {
       name,
       status: "failed",
       durationMs: Date.now() - started,
       error: sanitizeError(err),
-    };
+    } as const;
+    await recordStepProgress({
+      runId,
+      name,
+      status: step.status,
+      durationMs: step.durationMs,
+      error: step.error,
+      createdAt: new Date(started),
+    });
+    return step;
   }
 }
 
@@ -258,6 +286,23 @@ async function recordRunStart(input: {
     });
   } catch (error) {
     logger.error("Failed to persist agent run start", { error });
+  }
+}
+
+async function recordStepProgress(input: {
+  runId: string;
+  name: string;
+  status: RevenueAgentStepResult["status"] | "running";
+  durationMs: number;
+  reason?: string;
+  error?: string;
+  details?: Record<string, unknown>;
+  createdAt: Date;
+}): Promise<void> {
+  try {
+    await upsertAgentRunStep(input);
+  } catch (error) {
+    logger.error("Failed to persist agent run step progress", { error, runId: input.runId, step: input.name });
   }
 }
 

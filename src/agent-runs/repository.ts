@@ -61,7 +61,7 @@ type AgentRunStepRow = {
   id: string;
   run_id: string;
   name: string;
-  status: Exclude<AgentRunStatus, "running">;
+  status: AgentRunStatus;
   duration_ms: number;
   reason: string | null;
   error: string | null;
@@ -128,6 +128,64 @@ export async function createAgentRun(input: CreateAgentRunInput): Promise<void> 
     now,
     now,
   );
+}
+
+export async function upsertAgentRunStep(input: {
+  runId: string;
+  name: string;
+  status: AgentRunStatus;
+  durationMs: number;
+  reason?: string;
+  error?: string;
+  details?: JsonObject;
+  createdAt?: Date;
+}): Promise<void> {
+  const now = input.createdAt?.getTime() ?? Date.now();
+  const stepId = `${input.runId}:${input.name}`;
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([
+      {
+        sql: `INSERT OR REPLACE INTO agent_run_steps (
+          id, run_id, name, status, duration_ms, reason, error, details_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          stepId,
+          input.runId,
+          input.name,
+          input.status,
+          input.durationMs,
+          input.reason ?? null,
+          input.error ?? null,
+          json(input.details ?? {}),
+          now,
+        ],
+      },
+      {
+        sql: "UPDATE agent_runs SET updated_at = ? WHERE id = ?",
+        params: [Date.now(), input.runId],
+      },
+    ]);
+    return;
+  }
+
+  const db = await getDb();
+  db.prepare(
+    `INSERT OR REPLACE INTO agent_run_steps (
+      id, run_id, name, status, duration_ms, reason, error, details_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    stepId,
+    input.runId,
+    input.name,
+    input.status,
+    input.durationMs,
+    input.reason ?? null,
+    input.error ?? null,
+    json(input.details ?? {}),
+    now,
+  );
+  db.prepare("UPDATE agent_runs SET updated_at = ? WHERE id = ?").run(Date.now(), input.runId);
 }
 
 export async function completeAgentRun(input: CompleteAgentRunInput): Promise<void> {
