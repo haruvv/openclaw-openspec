@@ -6,6 +6,8 @@ async function main() {
   await checkHealth();
   await checkAdminUiAssets();
   await check("admin ui shell", `${baseUrl}/admin`, { expectedStatus: 200, expectedContentType: "text/html" });
+  await check("admin ui settings deep link", `${baseUrl}/admin/seo-sales/settings`, { expectedStatus: 200, expectedContentType: "text/html" });
+  await check("admin ui run detail deep link", `${baseUrl}/admin/seo-sales/runs/smoke-deep-link`, { expectedStatus: 200, expectedContentType: "text/html" });
   await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatus: 401, expectedContentType: "application/json" });
   console.log(`Production smoke checks passed for ${baseUrl}`);
 }
