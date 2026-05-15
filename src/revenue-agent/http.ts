@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { getSideEffectSettings } from "../admin/side-effect-settings.js";
 import { runRevenueAgent } from "./runner.js";
 import {
   applySideEffectPolicy,
@@ -41,7 +42,7 @@ export async function handleRevenueAgentRun(req: Request, res: Response): Promis
     sendTelegram: parsed.value.sendTelegram === true,
     createPaymentLink: parsed.value.createPaymentLink === true,
   };
-  const allowed = applySideEffectPolicy(requested);
+  const allowed = applySideEffectPolicy(requested, await getSideEffectSettings());
   const sideEffectSkipReasons = {
     sendEmail: requested.sendEmail && !allowed.sendEmail ? sideEffectPolicyReason("sendEmail") : undefined,
     sendTelegram:

@@ -139,6 +139,49 @@ describe("admin routes", () => {
     });
   });
 
+  it("returns and updates side effect policies from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_ALLOW_EMAIL = "true";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const before = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+    expect(before.status).toBe(200);
+    expect(JSON.parse(before.body)).toMatchObject({
+      policies: [
+        { key: "sendEmail", label: "メール送信", enabled: true },
+        { key: "sendTelegram", label: "Telegram通知", enabled: false },
+        { key: "createPaymentLink", label: "決済リンク作成", enabled: false },
+      ],
+    });
+
+    const update = await dispatch(adminApiRouter, "/seo-sales/settings/policies?token=admin-test", "/api/admin", {
+      method: "PUT",
+      body: {
+        sendEmail: false,
+        sendTelegram: true,
+        createPaymentLink: true,
+      },
+    });
+    expect(update.status).toBe(200);
+    expect(JSON.parse(update.body)).toMatchObject({
+      policies: {
+        sendEmail: false,
+        sendTelegram: true,
+        createPaymentLink: true,
+        configuredFromAdmin: true,
+      },
+    });
+
+    const after = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+    expect(JSON.parse(after.body)).toMatchObject({
+      policies: [
+        { key: "sendEmail", enabled: false },
+        { key: "sendTelegram", enabled: true },
+        { key: "createPaymentLink", enabled: true },
+      ],
+    });
+  });
+
   it("can run discovery from the admin API even when cron discovery is disabled", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.REVENUE_AGENT_DISCOVERY_ENABLED = "false";

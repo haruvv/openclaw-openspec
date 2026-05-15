@@ -101,7 +101,7 @@ interface ProposalRecord {
 
 interface SettingsPayload {
   integrations: Array<{ label: string; key: string; configured: boolean }>;
-  policies: Array<{ label: string; enabled: boolean }>;
+  policies: Array<{ key: "sendEmail" | "sendTelegram" | "createPaymentLink"; label: string; enabled: boolean }>;
   discovery: DiscoverySettings;
 }
 
@@ -137,6 +137,10 @@ const navItems = [
 const apiCache = new Map<string, unknown>();
 const ADMIN_TOKEN_STORAGE_KEY = "revenue_agent_admin_token";
 const DISCOVERY_INDUSTRIES = ["税理士事務所", "歯科医院", "整体院", "美容室", "工務店", "不動産会社", "行政書士事務所", "クリニック"];
+const DISCOVERY_SEARCH_TARGETS = [
+  { label: "日本語サイト / 日本", country: "jp", lang: "ja", location: "" },
+  { label: "英語サイト / 米国", country: "us", lang: "en", location: "" },
+] as const;
 
 function App() {
   rememberAdminTokenFromUrl();
@@ -170,21 +174,21 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-950">
+    <div className="min-h-screen bg-slate-100 text-slate-950 signal-grid">
       <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-slate-800 bg-slate-950 text-white lg:flex lg:flex-col">
-        <a href="/admin" className="flex items-center gap-3 px-6 py-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-black text-slate-950">RA</div>
+        <a href="/admin" className="flex items-center gap-3 border-b border-slate-800 px-6 py-6">
+          <div className="flex h-10 w-10 items-center justify-center border border-slate-800 text-sm font-black text-slate-950">RA</div>
           <div>
             <div className="text-sm font-black">RevenueAgent</div>
             <div className="text-xs font-semibold text-slate-400">業務自動化コンソール</div>
           </div>
         </a>
-        <nav className="space-y-7 px-4">
+        <nav className="space-y-7 px-4 py-5">
           <SidebarGroup label="全体" items={navItems.slice(0, 1)} path={path} />
           <SidebarGroup label="SEO営業" items={navItems.slice(1)} path={path} />
           <div>
             <div className="px-3 text-[11px] font-bold uppercase tracking-normal text-slate-500">準備中</div>
-            <div className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-600">
+            <div className="mt-2 flex items-center gap-3 border border-slate-800 px-3 py-2.5 text-sm font-bold text-slate-600">
               <TrendingUp className="h-4 w-4" />
               株自動売買
             </div>
@@ -196,17 +200,17 @@ function App() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="text-xs font-bold text-slate-500">管理画面</div>
-              <h1 className="text-2xl font-black tracking-normal text-slate-950">{page.title}</h1>
+              <h1 className="text-2xl font-black tracking-normal text-slate-950 md:text-3xl">{page.title}</h1>
               {page.description ? <p className="mt-1 max-w-3xl text-sm text-slate-600">{page.description}</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              <a href="/admin/seo-sales/runs" className="btn-primary"><PlayCircle className="h-4 w-4" />URLを解析</a>
+              <a href="/admin/seo-sales" className="btn-primary"><PlayCircle className="h-4 w-4" />候補発見を開く</a>
               <a href="/admin" className="btn-secondary">業務アプリ一覧</a>
             </div>
           </div>
           <nav className="mt-4 flex gap-2 overflow-x-auto lg:hidden">
             {navItems.map((item) => (
-              <a key={item.href} href={item.href} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-bold ${isActive(item.href, path) ? "bg-slate-950 text-white" : "bg-white text-slate-700"}`}>
+              <a key={item.href} href={item.href} className={`inline-flex whitespace-nowrap border px-3 py-2 text-sm font-bold ${isActive(item.href, path) ? "border-slate-800 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-700"}`}>
                 {item.label}
               </a>
             ))}
@@ -226,7 +230,7 @@ function SidebarGroup({ label, items, path }: { label: string; items: typeof nav
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <a key={item.href} href={item.href} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold ${isActive(item.href, path) ? "bg-white text-slate-950" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
+            <a key={item.href} href={item.href} className={`flex items-center gap-3 border px-3 py-2.5 text-sm font-bold ${isActive(item.href, path) ? "border-slate-200 bg-white text-slate-950" : "border-transparent text-slate-300 hover:border-slate-800 hover:bg-white/10 hover:text-white"}`}>
               <Icon className="h-4 w-4" />
               {item.label}
             </a>
@@ -238,7 +242,7 @@ function SidebarGroup({ label, items, path }: { label: string; items: typeof nav
 }
 
 function routePage(path: string): { title: string; description: string; node: React.ReactNode } {
-  if (path === "/admin/seo-sales") return { title: "SEO営業", description: "URL解析、提案書、実行状況を確認します。", node: <SeoSalesHome /> };
+  if (path === "/admin/seo-sales") return { title: "SEO営業", description: "候補発見、SEO解析、提案作成の実行状況を確認します。", node: <SeoSalesHome /> };
   if (path === "/admin/seo-sales/sites") return { title: "URL別結果", description: "解析済みURLの最新状態です。", node: <SitesPage /> };
   if (path.startsWith("/admin/seo-sales/sites/")) return { title: "URL詳細", description: "", node: <SiteDetailPage id={decodeURIComponent(path.split("/").pop() ?? "")} /> };
   if (path === "/admin/seo-sales/runs") return { title: "実行ログ", description: "解析の実行履歴です。", node: <RunsPage /> };
@@ -288,7 +292,7 @@ function PortalPage() {
 }
 
 function SeoSalesHome() {
-  const { data, loading, error, reload } = useApi<{
+  const { data, loading, error } = useApi<{
     totals: { runs: number; sites: number; failedRuns: number; latestScore: number | null };
     recentRuns: AgentRun[];
     recentSites: SiteRecord[];
@@ -299,25 +303,20 @@ function SeoSalesHome() {
   return (
     <div className="space-y-5">
       <DiscoveryRunPanel />
-      <div className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric icon={<Activity />} label="最近の実行" value={totals?.runs ?? 0} />
         <Metric icon={<Globe2 />} label="解析済みURL" value={totals?.sites ?? 0} />
         <Metric icon={<XCircle />} label="失敗" value={totals?.failedRuns ?? 0} />
         <Metric icon={<Search />} label="最新SEOスコア" value={totals?.latestScore ?? "-"} />
-      </div>
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="URLを指定して解析">
-          <ManualRunForm onDone={reload} />
-        </Panel>
+      </section>
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
         <Panel title="最近のURL結果" action={<a href="/admin/seo-sales/sites" className="link-action">すべて見る</a>}>
           <SiteTable sites={data?.recentSites ?? []} compact />
         </Panel>
-      </div>
-      <div>
         <Panel title="最近の実行" action={<a href="/admin/seo-sales/runs" className="link-action">すべて見る</a>}>
           <RunsTable runs={data?.recentRuns ?? []} compact />
         </Panel>
-      </div>
+      </section>
     </div>
   );
 }
@@ -382,11 +381,11 @@ function DiscoveryRunPanel() {
   ] : [];
 
   return (
-    <section className="rounded-lg border border-blue-200 bg-white shadow-sm">
+    <section className="border border-blue-200 bg-white shadow-sm">
       <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="p-6 md:p-7">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">主ワークフロー</span>
+            <span className="border border-slate-200 bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">主ワークフロー</span>
             {running ? <StatusPill status="running" label="候補発見中" /> : null}
           </div>
           <h2 className="mt-4 text-2xl font-black tracking-normal text-slate-950">自動候補発見</h2>
@@ -411,7 +410,7 @@ function DiscoveryRunPanel() {
           <div className="text-xs font-black text-slate-500">実行状況</div>
           <div className="mt-3 space-y-3">
         {running ? (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
+          <div className="border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
             <div>{runningRuns.length > 0 ? "サーバー側で解析が始まっています。" : "候補検索中、または解析開始待ちです。"}</div>
             <div className="mt-1 text-xs font-semibold text-blue-700">この表示は3秒ごとに実行ログを確認しています。{lastCheckedAt ? ` 最終確認: ${formatDate(lastCheckedAt)}` : ""}</div>
           </div>
@@ -419,7 +418,7 @@ function DiscoveryRunPanel() {
         {runningRuns.length > 0 ? <RunningRunsList runs={runningRuns} /> : null}
         {report ? (
           <div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700">
+            <div className="border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700">
               {formatDiscoverySummary(report)}
               {lastCompletedAt ? <span className="ml-2 text-xs font-semibold text-slate-500">完了: {formatDate(lastCompletedAt)}</span> : null}
             </div>
@@ -432,22 +431,22 @@ function DiscoveryRunPanel() {
           </table>
         ) : null}
         {report?.status === "disabled" ? (
-          <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">手動の候補発見は無効です。Cloudflare の環境変数で REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED=false になっていないか確認してください。</p>
+          <p className="border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-600">手動の候補発見は無効です。Cloudflare の環境変数で REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED=false になっていないか確認してください。</p>
         ) : null}
         {report?.status === "skipped" ? (
-          <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">解析できる新規候補がありませんでした。</p>
+          <p className="border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-600">解析できる新規候補がありませんでした。</p>
         ) : null}
         {report?.skipped.length ? (
-          <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="border border-slate-200 bg-white p-3">
             <div className="text-xs font-black text-slate-500">スキップ理由</div>
             <ul className="mt-2 space-y-1 text-sm font-semibold text-slate-600">
               {report.skipped.slice(0, 5).map((item, index) => <li key={`${item.url}-${index}`}>{item.url}: {formatSkipReason(item.reason)}</li>)}
             </ul>
           </div>
         ) : null}
-        {error ? <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+        {error ? <p className="border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
         {!running && !report && !error ? (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-bold text-slate-500">まだこの画面では実行していません。ボタンを押すと候補検索と解析を開始します。</p>
+          <p className="border border-dashed border-slate-300 bg-white p-4 text-sm font-bold text-slate-500">まだこの画面では実行していません。ボタンを押すと候補検索と解析を開始します。</p>
         ) : null}
           </div>
         </div>
@@ -604,16 +603,101 @@ function SettingsPage() {
       {data?.discovery ? <DiscoverySettingsPanel settings={data.discovery} /> : null}
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="外部サービス設定">
-          <table className="data-table">
-            <tbody>{data?.integrations.map((item) => <tr key={item.key}><th>{item.label}</th><td><StatusPill status={item.configured ? "passed" : "skipped"} label={item.configured ? "設定済み" : "未設定"} /></td></tr>)}</tbody>
-          </table>
+          <SettingsList
+            items={(data?.integrations ?? []).map((item) => ({
+              key: item.key,
+              label: item.label,
+              status: item.configured ? "passed" : "skipped",
+              statusLabel: item.configured ? "設定済み" : "未設定",
+            }))}
+          />
         </Panel>
         <Panel title="副作用の許可設定">
-          <table className="data-table">
-            <tbody>{data?.policies.map((item) => <tr key={item.label}><th>{item.label}</th><td><StatusPill status={item.enabled ? "passed" : "skipped"} label={item.enabled ? "有効" : "無効"} /></td></tr>)}</tbody>
-          </table>
+          <SideEffectPolicyControls policies={data?.policies ?? []} />
         </Panel>
       </div>
+    </div>
+  );
+}
+
+function SettingsList({ items }: { items: Array<{ key: string; label: string; status: Status; statusLabel: string }> }) {
+  return (
+    <div className="grid gap-2">
+      {items.map((item) => (
+        <div key={item.key} className="flex min-h-14 items-center justify-between gap-4 border border-slate-200 bg-white px-4 py-3">
+          <span className="min-w-0">
+            <span className="block text-sm font-black text-slate-950">{item.label}</span>
+            <span className="mt-0.5 block text-xs font-semibold text-slate-500">{item.key}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className={`status-dot ${item.status === "passed" ? "status-dot-on" : ""}`} aria-hidden="true" />
+            <span className={`w-14 text-right text-xs font-black ${item.status === "passed" ? "text-blue-700" : "text-slate-500"}`}>
+              {item.statusLabel}
+            </span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SideEffectPolicyControls({ policies }: { policies: SettingsPayload["policies"] }) {
+  const [items, setItems] = useState(policies);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setItems(policies);
+  }, [policies]);
+
+  async function togglePolicy(key: SettingsPayload["policies"][number]["key"]) {
+    const nextItems = items.map((item) => item.key === key ? { ...item, enabled: !item.enabled } : item);
+    setItems(nextItems);
+    setSavingKey(key);
+    setError(null);
+    try {
+      await apiPut<{ policies: { sendEmail: boolean; sendTelegram: boolean; createPaymentLink: boolean } }>("/api/admin/seo-sales/settings/policies", {
+        sendEmail: nextItems.find((item) => item.key === "sendEmail")?.enabled === true,
+        sendTelegram: nextItems.find((item) => item.key === "sendTelegram")?.enabled === true,
+        createPaymentLink: nextItems.find((item) => item.key === "createPaymentLink")?.enabled === true,
+      });
+      apiCache.delete("/api/admin/seo-sales/settings");
+    } catch (err) {
+      setItems(items);
+      setError(err instanceof Error ? err.message : "設定を保存できませんでした");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="grid gap-2">
+        {items.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className="flex min-h-14 items-center justify-between gap-4 border border-slate-200 bg-white px-4 py-3 text-left disabled:opacity-70"
+            disabled={savingKey !== null}
+            onClick={() => void togglePolicy(item.key)}
+            aria-pressed={item.enabled}
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-black text-slate-950">{item.label}</span>
+              <span className="mt-0.5 block text-xs font-semibold text-slate-500">{item.enabled ? "有効" : "無効"}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-3">
+              <span className={`toggle-switch ${item.enabled ? "toggle-switch-on" : ""}`} aria-hidden="true">
+                <span className="toggle-knob" />
+              </span>
+              <span className={`w-10 text-right text-xs font-black ${item.enabled ? "text-blue-700" : "text-slate-500"}`}>
+                {savingKey === item.key ? "保存中" : item.enabled ? "ON" : "OFF"}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+      {error ? <div className="border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-800">{error}</div> : null}
     </div>
   );
 }
@@ -625,6 +709,9 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
   const [seedUrls, setSeedUrls] = useState(settings.seedUrls.join("\n"));
   const [dailyQuota, setDailyQuota] = useState(String(settings.dailyQuota));
   const [searchLimit, setSearchLimit] = useState(String(settings.searchLimit));
+  const [country, setCountry] = useState(settings.country);
+  const [lang, setLang] = useState(settings.lang);
+  const [location, setLocation] = useState(settings.location);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -639,11 +726,24 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
     setSeedUrls(settings.seedUrls.join("\n"));
     setDailyQuota(String(settings.dailyQuota));
     setSearchLimit(String(settings.searchLimit));
+    setCountry(settings.country);
+    setLang(settings.lang);
+    setLocation(settings.location);
     setConfiguredFromAdmin(settings.configuredFromAdmin);
   }, [settings]);
 
   function toggleSelection(value: string, current: string[], setter: (next: string[]) => void) {
     setter(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  }
+
+  function selectSearchTarget(target: (typeof DISCOVERY_SEARCH_TARGETS)[number]) {
+    setCountry(target.country);
+    setLang(target.lang);
+    setLocation(target.location);
+  }
+
+  function isSearchTargetSelected(target: (typeof DISCOVERY_SEARCH_TARGETS)[number]): boolean {
+    return country === target.country && lang === target.lang && location === target.location;
   }
 
   async function save(event: React.FormEvent) {
@@ -657,9 +757,9 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
         seedUrls,
         dailyQuota: Number(dailyQuota),
         searchLimit: Number(searchLimit),
-        country: "jp",
-        lang: "ja",
-        location: "",
+        country,
+        lang,
+        location,
       });
       apiCache.delete("/api/admin/seo-sales/settings");
       const selection = parseDiscoveryQuerySelection(result.discovery.queries);
@@ -668,6 +768,9 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
       setSeedUrls(result.discovery.seedUrls.join("\n"));
       setDailyQuota(String(result.discovery.dailyQuota));
       setSearchLimit(String(result.discovery.searchLimit));
+      setCountry(result.discovery.country);
+      setLang(result.discovery.lang);
+      setLocation(result.discovery.location);
       setConfiguredFromAdmin(result.discovery.configuredFromAdmin);
       setMessage("自動候補発見の設定を保存しました。次の実行から反映されます。");
     } catch (err) {
@@ -701,11 +804,26 @@ function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
           </div>
           <p className="mt-2 text-xs font-semibold text-slate-500">選んだ業種の公式サイトを探し、解析結果から改善余地が大きいサイトを営業候補にします。</p>
         </div>
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setDailyQuota(event.target.value)} /></label>
           <label className="block text-sm font-black text-slate-700">検索件数/キーワード<input className="input mt-2 w-full" type="number" min="1" max="20" value={searchLimit} onChange={(event) => setSearchLimit(event.target.value)} /></label>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-600 md:col-span-2">検索対象: 日本語サイト / 日本</div>
         </div>
+        <fieldset>
+          <legend className="text-sm font-black text-slate-700">検索対象</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {DISCOVERY_SEARCH_TARGETS.map((target) => (
+              <label key={`${target.country}-${target.lang}`} className="check-row">
+                <input
+                  type="radio"
+                  name="discovery-search-target"
+                  checked={isSearchTargetSelected(target)}
+                  onChange={() => selectSearchTarget(target)}
+                />
+                <span>{target.label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-black text-slate-700">詳細設定</summary>
           <div className="mt-3 space-y-4">
@@ -785,14 +903,14 @@ function ProposalViewer({
 }) {
   const body = contentText?.trim();
   return (
-    <article className="rounded-lg border border-slate-200 bg-white">
+    <article className="border border-slate-200 bg-white">
       <div className="border-b border-slate-200 p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h3 className="text-base font-black text-slate-950">{title}</h3>
             {createdAt ? <div className="mt-1 text-xs font-semibold text-slate-500">{formatDate(createdAt)}</div> : null}
           </div>
-          {pathOrUrl ? <div className="max-w-full rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700 md:max-w-xl">{pathOrUrl}</div> : null}
+          {pathOrUrl ? <div className="max-w-full border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700 md:max-w-xl">{pathOrUrl}</div> : null}
         </div>
       </div>
       {body ? (
@@ -894,13 +1012,13 @@ function RunsTable({ runs, compact = false }: { runs: AgentRun[]; compact?: bool
 
 function FindingsList({ findings }: { findings: OpportunityFinding[] }) {
   return (
-    <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-3">
+    <div className="mt-4 border border-amber-100 bg-amber-50 p-3">
       <div className="text-xs font-black text-amber-800">主な改善余地</div>
       <div className="mt-2 space-y-2">
         {findings.map((finding) => (
-          <div key={`${finding.category}-${finding.title}`} className="rounded-md bg-white p-3 text-sm">
+          <div key={`${finding.category}-${finding.title}`} className="border border-slate-200 bg-white p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-800">{formatFindingCategory(finding.category)}</span>
+              <span className="border border-amber-100 bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-800">{formatFindingCategory(finding.category)}</span>
               <span className="text-xs font-bold text-slate-500">{formatFindingSeverity(finding.severity)} / +{finding.scoreImpact}</span>
             </div>
             <div className="mt-1 font-black text-slate-800">{finding.title}</div>
@@ -913,27 +1031,27 @@ function FindingsList({ findings }: { findings: OpportunityFinding[] }) {
 }
 
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between gap-4"><h2 className="text-lg font-black tracking-normal">{title}</h2>{action}</div>{children}</section>;
+  return <section className="border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between gap-4 border-b border-slate-200 pb-3"><h2 className="min-w-0 break-words text-lg font-black tracking-normal">{title}</h2>{action}</div><div className="panel-body">{children}</div></section>;
 }
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
-  return <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div className="text-sm font-bold text-slate-500">{label}</div><div className="text-blue-700 [&_svg]:h-5 [&_svg]:w-5">{icon}</div></div><div className="mt-3 text-3xl font-black tracking-normal">{value}</div></section>;
+  return <section className="border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between gap-3"><div className="text-sm font-bold text-slate-500">{label}</div><div className="text-blue-700 [&_svg]:h-5 [&_svg]:w-5">{icon}</div></div><div className="mt-3 text-3xl font-black tracking-normal">{value}</div></section>;
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs font-bold text-slate-500">{label}</div><div className="mt-1 text-sm font-black">{value}</div></div>;
+  return <div className="border border-slate-200 bg-slate-50 p-3"><div className="text-xs font-bold text-slate-500">{label}</div><div className="mt-1 break-words text-sm font-black">{value}</div></div>;
 }
 
 function Empty({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
-  return <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div className="text-sm font-black text-slate-700">{title}</div>{description ? <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-slate-500">{description}</p> : null}{action ? <div className="mt-4 flex justify-center">{action}</div> : null}</div>;
+  return <div className="border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><div className="text-sm font-black text-slate-700">{title}</div>{description ? <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-slate-500">{description}</p> : null}{action ? <div className="mt-4 flex justify-center">{action}</div> : null}</div>;
 }
 
 function Loading() {
-  return <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">読み込み中...</div>;
+  return <div className="border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">読み込み中...</div>;
 }
 
 function ErrorState({ message }: { message: string }) {
-  return <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-800"><div className="flex items-center gap-2"><AlertCircle className="h-4 w-4" />読み込みに失敗しました</div><p className="mt-2 font-semibold">{message}</p></div>;
+  return <div className="border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-800"><div className="flex items-center gap-2"><AlertCircle className="h-4 w-4" />読み込みに失敗しました</div><p className="mt-2 font-semibold">{message}</p></div>;
 }
 
 function ManualRunForm({ onDone }: { onDone?: () => void | Promise<void> }) {
@@ -997,24 +1115,24 @@ function ManualRunForm({ onDone }: { onDone?: () => void | Promise<void> }) {
         <button className="btn-primary md:mt-5" disabled={submitting}>{submitting ? "実行中..." : "解析を開始"}</button>
       </div>
       {submitting ? (
-        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
+        <div className="mt-3 border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
           <div>{runningRuns.length > 0 ? "サーバー側で解析が始まっています。" : "サーバーへ実行リクエストを送信済みです。開始ログを確認しています。"}</div>
           <div className="mt-1 text-xs font-semibold text-blue-700">この表示は3秒ごとに実行ログを確認しています。{lastCheckedAt ? ` 最終確認: ${formatDate(lastCheckedAt)}` : ""}</div>
         </div>
       ) : null}
       {runningRuns.length > 0 ? <div className="mt-3"><RunningRunsList runs={runningRuns} /></div> : null}
-      {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+      {error ? <p className="mt-3 border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
     </form>
   );
 }
 
 function RunningRunsList({ runs }: { runs: AgentRun[] }) {
   return (
-    <div className="rounded-lg border border-blue-100 bg-white p-3">
+    <div className="border border-blue-100 bg-white p-3">
       <div className="text-xs font-black text-slate-500">実行中のログ</div>
       <div className="mt-2 space-y-2">
         {runs.map((run) => (
-          <div key={run.id} className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700 md:flex-row md:items-center md:justify-between">
+          <div key={run.id} className="flex flex-col gap-2 border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700 md:flex-row md:items-center md:justify-between">
             <div>
               <div>{getTargetUrl(run)}</div>
               <div className="mt-1 text-xs font-semibold text-slate-500">開始: {formatDate(run.startedAt)} / 起点: {formatSource(run.source)}</div>
@@ -1029,10 +1147,10 @@ function RunningRunsList({ runs }: { runs: AgentRun[] }) {
 
 function StatusPill({ status, label }: { status: Status; label?: string }) {
   const styles = {
-    passed: "bg-emerald-50 text-emerald-700",
-    failed: "bg-red-50 text-red-700",
-    skipped: "bg-slate-100 text-slate-600",
-    running: "bg-blue-50 text-blue-700",
+    passed: "status-passed",
+    failed: "status-failed",
+    skipped: "status-skipped",
+    running: "status-running",
   };
   const icons = {
     passed: <CheckCircle2 className="h-3.5 w-3.5" />,
@@ -1040,7 +1158,7 @@ function StatusPill({ status, label }: { status: Status; label?: string }) {
     skipped: <Clock3 className="h-3.5 w-3.5" />,
     running: <RefreshCw className="h-3.5 w-3.5" />,
   };
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black ${styles[status]}`}>{icons[status]}{label ?? formatStatus(status)}</span>;
+  return <span className={`inline-flex items-center gap-1 border bg-slate-100 px-2.5 py-1 text-xs font-black ${styles[status]}`}>{icons[status]}{label ?? formatStatus(status)}</span>;
 }
 
 function useApi<T>(path: string) {

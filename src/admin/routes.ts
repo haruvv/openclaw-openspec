@@ -11,6 +11,7 @@ import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } 
 import { getSiteDetail, listSites } from "../sites/repository.js";
 import { businessApps } from "./business-apps.js";
 import { isAdminAuthorized, isAdminTokenConfigured } from "./auth.js";
+import { getSideEffectSettings, saveSideEffectSettings } from "./side-effect-settings.js";
 
 export const adminRouter = Router();
 export const adminApiRouter = Router();
@@ -125,6 +126,7 @@ adminApiRouter.get("/seo-sales/sites/:id", async (req, res) => {
 });
 
 adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
+  const sideEffects = await getSideEffectSettings();
   const integrations = [
     ["Firecrawl", "FIRECRAWL_API_KEY"],
     ["Gemini", "GEMINI_API_KEY"],
@@ -137,10 +139,10 @@ adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
     ["管理トークン", "ADMIN_TOKEN"],
   ].map(([label, key]) => ({ label, key, configured: Boolean(process.env[key]) }));
   const policies = [
-    ["メール送信", process.env.REVENUE_AGENT_ALLOW_EMAIL === "true"],
-    ["Telegram通知", process.env.REVENUE_AGENT_ALLOW_TELEGRAM === "true"],
-    ["決済リンク作成", process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK === "true"],
-  ].map(([label, enabled]) => ({ label, enabled: Boolean(enabled) }));
+    ["sendEmail", "メール送信", sideEffects.sendEmail],
+    ["sendTelegram", "Telegram通知", sideEffects.sendTelegram],
+    ["createPaymentLink", "決済リンク作成", sideEffects.createPaymentLink],
+  ].map(([key, label, enabled]) => ({ key, label, enabled: Boolean(enabled) }));
 
   res.json({ integrations, policies, discovery: await getDiscoverySettings() });
 });
@@ -148,6 +150,11 @@ adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
 adminApiRouter.put("/seo-sales/settings/discovery", async (req, res) => {
   const discovery = await saveDiscoverySettings(req.body ?? {});
   res.json({ discovery });
+});
+
+adminApiRouter.put("/seo-sales/settings/policies", async (req, res) => {
+  const policies = await saveSideEffectSettings(req.body ?? {});
+  res.json({ policies });
 });
 
 adminRouter.use(
