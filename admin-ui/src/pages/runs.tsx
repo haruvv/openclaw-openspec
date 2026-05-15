@@ -13,7 +13,8 @@ export function RunsPage() {
   const [searchParams] = useSearchParams();
   const urlFilter = searchParams.get("url") ?? "";
   const returnTo = safeAdminReturnPath(searchParams.get("returnTo") ?? "");
-  const detailSearch = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
+  const listPath = urlFilter ? `/admin/seo-sales/runs?url=${encodeURIComponent(urlFilter)}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ""}` : "/admin/seo-sales/runs";
+  const detailSearch = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}&logList=${encodeURIComponent(listPath)}` : "";
   const runs = data?.runs ?? [];
   const visibleRuns = urlFilter ? runs.filter((run) => urlsMatch(getTargetUrl(run), urlFilter)) : runs;
   return (
@@ -21,8 +22,16 @@ export function RunsPage() {
       <Panel title="新規解析">
         <ManualRunForm onDone={reload} />
       </Panel>
-      <Panel title="実行ログ" action={urlFilter ? <Link to="/admin/seo-sales/runs" className="btn-secondary">絞り込みを解除</Link> : null}>
-        {urlFilter ? <p className="mb-3 break-words border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">対象URL: {urlFilter}</p> : null}
+      <Panel
+        title={urlFilter ? "このURLの実行ログ" : "実行ログ"}
+        action={urlFilter ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {returnTo ? <Link to={returnTo} className="btn-secondary">URL詳細へ戻る</Link> : null}
+            <Link to="/admin/seo-sales/runs" className="btn-secondary">すべてのログ</Link>
+          </div>
+        ) : null}
+      >
+        {urlFilter ? <p className="mb-3 break-words border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">URL一覧から対象URLで絞り込んでいます: {urlFilter}</p> : null}
         {loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={visibleRuns} detailSearch={detailSearch} />}
       </Panel>
     </div>
@@ -34,6 +43,7 @@ export function RunDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = safeAdminReturnPath(searchParams.get("returnTo") ?? "");
+  const logList = safeAdminReturnPath(searchParams.get("logList") ?? "");
   const { data, loading, error, reload } = useApi<{ run: AgentRunDetail }>(`/api/admin/seo-sales/runs/${encodeURIComponent(id)}`);
   const [retrying, setRetrying] = useState(false);
   const isRunning = data?.run?.status === "running";
@@ -63,6 +73,7 @@ export function RunDetailPage() {
         title={targetUrl}
         action={(
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {logList ? <Link to={logList} className="btn-secondary">このURLのログ一覧へ戻る</Link> : null}
             {returnTo ? <Link to={returnTo} className="btn-secondary">URL詳細へ戻る</Link> : null}
             <button onClick={retry} className="btn-primary" disabled={retrying}><RefreshCw className="h-4 w-4" />再実行</button>
           </div>

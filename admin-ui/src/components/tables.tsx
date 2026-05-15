@@ -109,7 +109,7 @@ export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; com
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>実行ログ</th></tr></thead>
-      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td><Link className="table-link" to={`/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}&returnTo=${encodeURIComponent(`/admin/seo-sales/sites/${site.id}`)}`}>開く</Link></td></tr>)}</tbody>
+      <tbody>{sites.map((site) => <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={`/admin/seo-sales/sites/${site.id}`}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td><Link className="table-link" to={`/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}&returnTo=${encodeURIComponent(`/admin/seo-sales/sites/${site.id}`)}`}>一覧を見る</Link></td></tr>)}</tbody>
     </table>
   );
 }
