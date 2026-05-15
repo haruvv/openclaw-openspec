@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import {
   Activity,
   AlertCircle,
-  ArrowUpRight,
   Bot,
   BriefcaseBusiness,
   CheckCircle2,
@@ -289,12 +288,7 @@ function SeoSalesHome() {
   const totals = data?.totals;
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="新規解析">
-          <ManualRunForm onDone={reload} />
-        </Panel>
-        <DiscoveryRunPanel />
-      </div>
+      <DiscoveryRunPanel />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={<Activity />} label="最近の実行" value={totals?.runs ?? 0} />
         <Metric icon={<Globe2 />} label="解析済みURL" value={totals?.sites ?? 0} />
@@ -302,9 +296,14 @@ function SeoSalesHome() {
         <Metric icon={<Search />} label="最新SEOスコア" value={totals?.latestScore ?? "-"} />
       </div>
       <div className="grid gap-5 xl:grid-cols-2">
+        <Panel title="URLを指定して解析">
+          <ManualRunForm onDone={reload} />
+        </Panel>
         <Panel title="最近のURL結果" action={<a href="/admin/seo-sales/sites" className="link-action">すべて見る</a>}>
           <SiteTable sites={data?.recentSites ?? []} compact />
         </Panel>
+      </div>
+      <div>
         <Panel title="最近の実行" action={<a href="/admin/seo-sales/runs" className="link-action">すべて見る</a>}>
           <RunsTable runs={data?.recentRuns ?? []} compact />
         </Panel>
@@ -365,15 +364,45 @@ function DiscoveryRunPanel() {
     }
   }
 
+  const summaryItems = report ? [
+    { label: "状態", value: <StatusPill status={report.status === "disabled" ? "skipped" : report.status} label={formatDiscoveryStatus(report.status)} /> },
+    { label: "候補", value: `${report.candidateCount}件` },
+    { label: "解析開始", value: `${report.selectedCount}件` },
+    { label: "上限", value: `${report.quota}件/日` },
+  ] : [
+    { label: "探索方法", value: "業種から自動検索" },
+    { label: "重複", value: "解析済みURLを除外" },
+    { label: "実行ログ", value: "自動保存" },
+    { label: "操作", value: "手動実行" },
+  ];
+
   return (
-    <Panel
-      title="自動候補発見"
-      action={
-        <button type="button" className="btn-primary" disabled={running} onClick={runDiscovery}><Search className="h-4 w-4" />{running ? "実行中..." : "今すぐ実行"}</button>
-      }
-    >
-      <div className="space-y-4">
-        <p className="text-sm font-semibold leading-6 text-slate-600">検索条件からURL候補を探し、未解析のURLだけを上限件数まで解析します。</p>
+    <section className="rounded-lg border border-blue-200 bg-white shadow-sm">
+      <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="p-6 md:p-7">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">主ワークフロー</span>
+            {running ? <StatusPill status="running" label="候補発見中" /> : null}
+          </div>
+          <h2 className="mt-4 text-2xl font-black tracking-normal text-slate-950">自動候補発見</h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
+            営業対象になりそうなホームページを検索し、未解析のURLだけを選んでSEO解析と提案作成まで進めます。
+          </p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <button type="button" className="btn-primary h-12 px-5 text-base" disabled={running} onClick={runDiscovery}>
+              <Search className="h-5 w-5" />{running ? "候補発見を実行中..." : "候補を探して解析を開始"}
+            </button>
+            <a href="/admin/seo-sales/settings" className="btn-secondary h-12 px-5"><Settings className="h-4 w-4" />検索条件を確認</a>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            {summaryItems.map((item) => (
+              <Info key={item.label} label={item.label} value={item.value} />
+            ))}
+          </div>
+        </div>
+        <div className="border-t border-blue-100 bg-slate-50 p-5 lg:border-l lg:border-t-0">
+          <div className="text-xs font-black text-slate-500">実行状況</div>
+          <div className="mt-3 space-y-3">
         {running ? (
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-800">
             <div>{runningRuns.length > 0 ? "サーバー側で解析が始まっています。" : "候補検索中、または解析開始待ちです。"}</div>
@@ -382,16 +411,10 @@ function DiscoveryRunPanel() {
         ) : null}
         {runningRuns.length > 0 ? <RunningRunsList runs={runningRuns} /> : null}
         {report ? (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+          <div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700">
               {formatDiscoverySummary(report)}
               {lastCompletedAt ? <span className="ml-2 text-xs font-semibold text-slate-500">完了: {formatDate(lastCompletedAt)}</span> : null}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <Info label="状態" value={<StatusPill status={report.status === "disabled" ? "skipped" : report.status} label={formatDiscoveryStatus(report.status)} />} />
-              <Info label="候補" value={`${report.candidateCount}件`} />
-              <Info label="解析開始" value={`${report.selectedCount}件`} />
-              <Info label="上限" value={`${report.quota}件/日`} />
             </div>
           </div>
         ) : null}
@@ -416,9 +439,13 @@ function DiscoveryRunPanel() {
           </div>
         ) : null}
         {error ? <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        <a href="/admin/seo-sales/settings" className="inline-flex items-center gap-1 text-sm font-black text-blue-700">設定を確認する<ArrowUpRight className="h-4 w-4" /></a>
+        {!running && !report && !error ? (
+          <p className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-bold text-slate-500">まだこの画面では実行していません。ボタンを押すと候補検索と解析を開始します。</p>
+        ) : null}
+          </div>
+        </div>
       </div>
-    </Panel>
+    </section>
   );
 }
 
