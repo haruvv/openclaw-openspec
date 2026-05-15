@@ -16,6 +16,29 @@ export function getTargetUrl(run: AgentRun): string {
   return typeof value === "string" ? value : "-";
 }
 
+export function urlsMatch(left: string, right: string): boolean {
+  const normalizedLeft = normalizeComparableUrl(left);
+  const normalizedRight = normalizeComparableUrl(right);
+  return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
+}
+
+function normalizeComparableUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    if ((url.protocol === "https:" && url.port === "443") || (url.protocol === "http:" && url.port === "80")) {
+      url.port = "";
+    }
+    url.hostname = url.hostname.toLowerCase();
+    if (url.pathname !== "/" && url.pathname.endsWith("/")) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
+    return url.toString();
+  } catch {
+    return value.trim();
+  }
+}
+
 export function getSeoScore(run: AgentRun): number | null {
   const candidates = [run.summary.seoScore, run.summary.score, run.summary.latestScore];
   const value = candidates.find((candidate) => typeof candidate === "number" && Number.isFinite(candidate));

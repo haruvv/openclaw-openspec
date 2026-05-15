@@ -7,7 +7,7 @@ import { isActive } from "../utils";
 export const navItems = [
   { label: "業務アプリ", href: "/admin", icon: LayoutDashboard },
   { label: "SEO営業 概要", href: "/admin/seo-sales", icon: BriefcaseBusiness },
-  { label: "最新結果", href: "/admin/seo-sales/sites", icon: Globe2 },
+  { label: "URL一覧", href: "/admin/seo-sales/sites", icon: Globe2 },
   { label: "実行ログ", href: "/admin/seo-sales/runs", icon: Activity },
   { label: "外部サービス設定", href: "/admin/seo-sales/settings", icon: Settings },
 ];

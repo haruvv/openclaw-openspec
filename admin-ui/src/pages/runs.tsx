@@ -1,21 +1,28 @@
 import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../components/common";
 import { FindingsList, ProposalViewer, RunningRunsList, RunsTable } from "../components/tables";
 import { useApi, useRunningRunsPoll } from "../hooks";
 import type { AgentRun, AgentRunDetail } from "../types";
-import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl } from "../utils";
+import { formatDate, formatDuration, formatSource, formatStepName, getOpportunityFindings, getOpportunityScore, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
   const { data, loading, error, reload } = useApi<{ runs: AgentRun[] }>("/api/admin/seo-sales/runs");
+  const [searchParams] = useSearchParams();
+  const urlFilter = searchParams.get("url") ?? "";
+  const runs = data?.runs ?? [];
+  const visibleRuns = urlFilter ? runs.filter((run) => urlsMatch(getTargetUrl(run), urlFilter)) : runs;
   return (
     <div className="space-y-5">
       <Panel title="新規解析">
         <ManualRunForm onDone={reload} />
       </Panel>
-      <Panel title="実行ログ">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={data?.runs ?? []} />}</Panel>
+      <Panel title="実行ログ" action={urlFilter ? <Link to="/admin/seo-sales/runs" className="btn-secondary">絞り込みを解除</Link> : null}>
+        {urlFilter ? <p className="mb-3 break-words border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">対象URL: {urlFilter}</p> : null}
+        {loading ? <Loading /> : error ? <ErrorState message={error} /> : <RunsTable runs={visibleRuns} />}
+      </Panel>
     </div>
   );
 }

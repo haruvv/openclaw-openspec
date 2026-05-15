@@ -15,7 +15,7 @@ export const businessApps: BusinessApp[] = [
     status: "active",
     entryPath: "/admin/seo-sales",
     primaryLinks: [
-      { label: "最新結果", href: "/admin/seo-sales/sites" },
+      { label: "URL一覧", href: "/admin/seo-sales/sites" },
       { label: "実行ログ", href: "/admin/seo-sales/runs" },
       { label: "外部サービス設定", href: "/admin/seo-sales/settings" },
     ],

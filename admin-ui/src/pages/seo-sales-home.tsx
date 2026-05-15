@@ -28,7 +28,7 @@ export function SeoSalesHome() {
         <Metric icon={<Search />} label="最新SEOスコア" value={totals?.latestScore ?? "-"} />
       </section>
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
-        <Panel title="最新結果" action={<Link to="/admin/seo-sales/sites" className="link-action">すべて見る</Link>}>
+        <Panel title="URL一覧" action={<Link to="/admin/seo-sales/sites" className="link-action">すべて見る</Link>}>
           <SiteTable sites={data?.recentSites ?? []} compact />
         </Panel>
         <Panel title="最近の実行" action={<Link to="/admin/seo-sales/runs" className="link-action">すべて見る</Link>}>

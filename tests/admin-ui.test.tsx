@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../admin-ui/src/App";
 import { DiscoverySettingsPanel } from "../admin-ui/src/components/settings";
-import type { AgentRunDetail, DiscoverySettings } from "../admin-ui/src/types";
+import type { AgentRun, AgentRunDetail, DiscoverySettings } from "../admin-ui/src/types";
 
 describe("admin UI routing", () => {
   afterEach(() => {
@@ -27,6 +27,26 @@ describe("admin UI routing", () => {
     expect(screen.getByRole("heading", { name: "実行詳細" })).toBeInTheDocument();
     expect(await screen.findByText("https://example.com")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith("/api/admin/seo-sales/runs/run-1", { credentials: "same-origin" });
+  });
+
+  it("filters the run list by URL query", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
+      runs: [
+        createRun({ id: "run-1", summary: { targetUrl: "https://example.com/", seoScore: 90 } }),
+        createRun({ id: "run-2", summary: { targetUrl: "https://other.example.com/", seoScore: 70 } }),
+      ],
+    })));
+
+    render(
+      <MemoryRouter initialEntries={["/admin/seo-sales/runs?url=https%3A%2F%2Fexample.com%2F"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("対象URL: https://example.com/")).toBeInTheDocument();
+    expect(screen.getByText("https://example.com/")).toBeInTheDocument();
+    expect(screen.queryByText("https://other.example.com/")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "絞り込みを解除" })).toHaveAttribute("href", "/admin/seo-sales/runs");
   });
 });
 
@@ -90,6 +110,20 @@ function createRunDetail(): AgentRunDetail {
     completedAt: "2026-05-15T10:00:01.000Z",
     steps: [],
     artifacts: [],
+  };
+}
+
+function createRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    id: "run-1",
+    agentType: "seo",
+    source: "manual",
+    status: "passed",
+    input: {},
+    summary: { targetUrl: "https://example.com/", seoScore: 90 },
+    startedAt: "2026-05-15T10:00:00.000Z",
+    completedAt: "2026-05-15T10:00:01.000Z",
+    ...overrides,
   };
 }
 

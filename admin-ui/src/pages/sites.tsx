@@ -8,7 +8,7 @@ import { formatBytes, formatDate } from "../utils";
 
 export function SitesPage() {
   const { data, loading, error } = useApi<{ sites: SiteRecord[] }>("/api/admin/seo-sales/sites");
-  return <Panel title="最新結果">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
+  return <Panel title="URL一覧">{loading ? <Loading /> : error ? <ErrorState message={error} /> : <SiteTable sites={data?.sites ?? []} />}</Panel>;
 }
 
 export function SiteDetailPage() {
@@ -23,7 +23,7 @@ export function SiteDetailPage() {
   const passedSnapshots = site.snapshots.filter((snapshot) => snapshot.status === "passed").length;
   return (
     <div className="space-y-5">
-      <Panel title={site.displayUrl} action={site.latestRunId ? <Link to={`/admin/seo-sales/runs/${site.latestRunId}`} className="btn-secondary">実行ログを開く</Link> : null}>
+      <Panel title={site.displayUrl} action={<Link to={`/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}`} className="btn-secondary">実行ログ一覧</Link>}>
         <div className="grid gap-3 md:grid-cols-4">
           <Info label="状態" value={<StatusPill status={site.latestStatus} />} />
           <Info label="ドメイン" value={site.domain} />

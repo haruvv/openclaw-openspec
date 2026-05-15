@@ -14,7 +14,7 @@ const adminRoutes: AdminRouteDefinition[] = [
   { path: "/admin", title: "業務アプリ", description: "利用する業務を選択します。", element: <PortalPage /> },
   { path: "/admin/", title: "業務アプリ", description: "利用する業務を選択します。", element: <PortalPage /> },
   { path: "/admin/seo-sales", title: "SEO営業", description: "候補発見、SEO解析、提案作成の実行状況を確認します。", element: <SeoSalesHome /> },
-  { path: "/admin/seo-sales/sites", title: "最新結果", description: "解析済みURLごとの最新状態です。", element: <SitesPage /> },
+  { path: "/admin/seo-sales/sites", title: "URL一覧", description: "解析済みURLごとの最新状態です。", element: <SitesPage /> },
   { path: "/admin/seo-sales/sites/:id", title: "URL詳細", description: "", element: <SiteDetailPage /> },
   { path: "/admin/seo-sales/runs", title: "実行ログ", description: "解析の実行履歴です。", element: <RunsPage /> },
   { path: "/admin/seo-sales/runs/:id", title: "実行詳細", description: "", element: <RunDetailPage /> },
