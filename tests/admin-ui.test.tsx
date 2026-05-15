@@ -16,9 +16,7 @@ describe("admin UI routing", () => {
   });
 
   it("renders a run detail page from a route param", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
-      run: createRunDetail(),
-    })));
+    vi.stubGlobal("fetch", createRunDetailFetch());
 
     render(
       <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1"]}>
@@ -31,6 +29,7 @@ describe("admin UI routing", () => {
     expect(screen.getByRole("heading", { name: "調査結果" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "営業評価" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "営業提案書" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "営業アクション" })).toBeInTheDocument();
     expect(screen.getByText(/CTA改善/)).toBeInTheDocument();
     expect(screen.getByText("ホームページの簡易診断について")).toBeInTheDocument();
     expect(screen.getByText("Document lacks title")).toBeInTheDocument();
@@ -61,9 +60,7 @@ describe("admin UI routing", () => {
   });
 
   it("shows a filtered run-list return link on a run detail page", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
-      run: createRunDetail(),
-    })));
+    vi.stubGlobal("fetch", createRunDetailFetch());
 
     render(
       <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1?url=https%3A%2F%2Fexample.com%2F"]}>
@@ -86,6 +83,12 @@ describe("admin UI routing", () => {
       }
       if (path === "/api/admin/seo-sales/runs/run-new") {
         return createJsonResponse({ run: createRunDetail({ id: "run-new" }) });
+      }
+      if (path === "/api/admin/seo-sales/runs/run-new/outreach-draft") {
+        return createJsonResponse(createDraftResponse("run-new"));
+      }
+      if (path === "/api/admin/seo-sales/settings") {
+        return createJsonResponse(createSettingsResponse());
       }
       return createJsonResponse({
         runs: [createRun({ id: "run-1", summary: { targetUrl: "https://example.com/", seoScore: 90 } })],
@@ -112,9 +115,7 @@ describe("admin UI routing", () => {
   });
 
   it("shows an empty sales assessment state for older run details", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
-      run: createRunDetail({ withAudit: false }),
-    })));
+    vi.stubGlobal("fetch", createRunDetailFetch(createRunDetail({ withAudit: false })));
 
     render(
       <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1"]}>
@@ -124,6 +125,50 @@ describe("admin UI routing", () => {
 
     expect(await screen.findByRole("heading", { name: "営業評価" })).toBeInTheDocument();
     expect(screen.getByText("営業評価はまだ生成されていません")).toBeInTheDocument();
+  });
+
+  it("sends reviewed outreach from the run detail sales panel", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/admin/seo-sales/runs/run-1/outreach/send" && init?.method === "POST") {
+        expect(JSON.parse(String(init.body))).toMatchObject({
+          recipientEmail: "info@example.com",
+          subject: "ホームページの簡易診断について",
+        });
+        return createJsonResponse({
+          salesActions: {
+            outreachMessages: [{
+              id: "msg-1",
+              runId: "run-1",
+              targetUrl: "https://example.com",
+              domain: "example.com",
+              recipientEmail: "info@example.com",
+              subject: "ホームページの簡易診断について",
+              bodyText: "確認した範囲で気になった点がありました。必要でしたら共有します。",
+              status: "sent",
+              sentAt: "2026-05-15T10:00:02.000Z",
+              metadata: {},
+              createdAt: "2026-05-15T10:00:02.000Z",
+              updatedAt: "2026-05-15T10:00:02.000Z",
+            }],
+            paymentLinks: [],
+          },
+        });
+      }
+      return createRunDetailFetch()(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/seo-sales/runs/run-1"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "レビュー済みメールを送信" }));
+
+    expect(await screen.findByText(/info@example.com \/ sent/)).toBeInTheDocument();
   });
 });
 
@@ -174,6 +219,46 @@ function createJsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
   });
+}
+
+function createRunDetailFetch(run = createRunDetail()) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path.endsWith("/outreach-draft")) return createJsonResponse(createDraftResponse(run.id));
+    if (path === "/api/admin/seo-sales/settings") return createJsonResponse(createSettingsResponse());
+    return createJsonResponse({ run });
+  });
+}
+
+function createSettingsResponse() {
+  return {
+    integrations: [
+      { label: "SendGrid", key: "SENDGRID_API_KEY", configured: true },
+      { label: "Stripe", key: "STRIPE_SECRET_KEY", configured: true },
+    ],
+    policies: [
+      { key: "sendEmail", label: "メール送信", enabled: true },
+      { key: "sendTelegram", label: "Telegram通知", enabled: false },
+      { key: "createPaymentLink", label: "決済リンク作成", enabled: true },
+    ],
+    discovery: createDiscoverySettings(),
+  };
+}
+
+function createDraftResponse(runId: string) {
+  return {
+    draft: {
+      runId,
+      targetUrl: "https://example.com",
+      domain: "example.com",
+      recipientEmail: "info@example.com",
+      subject: "ホームページの簡易診断について",
+      bodyText: "確認した範囲で気になった点がありました。必要でしたら共有します。",
+      source: "llm_revenue_audit",
+      caveats: ["アクセス数は確認していません。"],
+    },
+    salesActions: { outreachMessages: [], paymentLinks: [] },
+  };
 }
 
 function createRunDetail(options: { id?: string; withAudit?: boolean } = {}): AgentRunDetail {

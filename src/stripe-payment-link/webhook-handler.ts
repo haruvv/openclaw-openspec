@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { getDb } from "../utils/db.js";
 import { logger } from "../utils/logger.js";
+import { markPaymentLinkPaidByStripeId } from "../sales/repository.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -17,7 +18,16 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     return;
   }
 
-  const obj = event.data.object as { metadata?: { targetId?: string; domain?: string } };
+  const obj = event.data.object as { metadata?: { targetId?: string; domain?: string }; payment_link?: string };
+  if (obj.payment_link) {
+    const paymentLink = await markPaymentLinkPaidByStripeId(obj.payment_link);
+    if (paymentLink) {
+      logger.info("Sales payment link marked paid", { paymentLinkId: paymentLink.id, domain: paymentLink.domain });
+      await notifyTelegramPaid(paymentLink.domain);
+      return;
+    }
+  }
+
   const targetId = obj.metadata?.targetId;
   const domain = obj.metadata?.domain;
 

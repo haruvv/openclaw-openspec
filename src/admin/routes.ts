@@ -9,6 +9,7 @@ import { applyDiscoverySettingsToEnv, getDiscoverySettings, saveDiscoverySetting
 import { runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
 import { getSiteDetail, listSites } from "../sites/repository.js";
+import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { businessApps } from "./business-apps.js";
 import { isAdminAuthorized, isAdminTokenConfigured } from "./auth.js";
 import { getSideEffectSettings, saveSideEffectSettings } from "./side-effect-settings.js";
@@ -86,7 +87,47 @@ adminApiRouter.get("/seo-sales/runs/:id", async (req, res) => {
     return;
   }
 
-  res.json({ run });
+  res.json({ run: { ...run, salesActions: await getRunSalesState(req.params.id) } });
+});
+
+adminApiRouter.get("/seo-sales/runs/:id/outreach-draft", async (req, res) => {
+  const draft = await buildOutreachDraft(req.params.id);
+  if (!draft) {
+    res.status(404).json({ error: "outreach_draft_not_found" });
+    return;
+  }
+
+  res.json({ draft, salesActions: await getRunSalesState(req.params.id) });
+});
+
+adminApiRouter.post("/seo-sales/runs/:id/outreach/send", async (req, res) => {
+  const parsed = parseOutreachSendBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  try {
+    const message = await sendReviewedOutreach({ runId: req.params.id, ...parsed.value });
+    res.status(201).json({ message, salesActions: await getRunSalesState(req.params.id) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "outreach_send_failed" });
+  }
+});
+
+adminApiRouter.post("/seo-sales/runs/:id/payment-links", async (req, res) => {
+  const parsed = parsePaymentLinkBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  try {
+    const paymentLink = await createReviewedPaymentLink({ runId: req.params.id, ...parsed.value });
+    res.status(201).json({ paymentLink, salesActions: await getRunSalesState(req.params.id) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "payment_link_failed" });
+  }
 });
 
 adminApiRouter.post("/seo-sales/runs/:id/retry", async (req, res) => {
@@ -213,6 +254,52 @@ async function runManualRevenueAgent(targetUrl: string, metadata: Record<string,
       createPaymentLink: sideEffectPolicyReason("createPaymentLink"),
     },
   });
+}
+
+function parseOutreachSendBody(body: unknown):
+  | { ok: true; value: { recipientEmail: string; subject: string; bodyText: string } }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.recipientEmail !== "string") return { ok: false, error: "recipientEmail is required" };
+  if (typeof candidate.subject !== "string") return { ok: false, error: "subject is required" };
+  if (typeof candidate.bodyText !== "string") return { ok: false, error: "bodyText is required" };
+  return {
+    ok: true,
+    value: {
+      recipientEmail: candidate.recipientEmail,
+      subject: candidate.subject,
+      bodyText: candidate.bodyText,
+    },
+  };
+}
+
+function parsePaymentLinkBody(body: unknown):
+  | { ok: true; value: { outreachMessageId?: string; recipientEmail?: string; amountJpy: number; sendEmail?: boolean } }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.amountJpy !== "number" || !Number.isInteger(candidate.amountJpy) || candidate.amountJpy <= 0) {
+    return { ok: false, error: "amountJpy must be a positive integer" };
+  }
+  if (candidate.outreachMessageId !== undefined && typeof candidate.outreachMessageId !== "string") {
+    return { ok: false, error: "outreachMessageId must be a string" };
+  }
+  if (candidate.recipientEmail !== undefined && typeof candidate.recipientEmail !== "string") {
+    return { ok: false, error: "recipientEmail must be a string" };
+  }
+  if (candidate.sendEmail !== undefined && typeof candidate.sendEmail !== "boolean") {
+    return { ok: false, error: "sendEmail must be a boolean" };
+  }
+  return {
+    ok: true,
+    value: {
+      outreachMessageId: candidate.outreachMessageId,
+      recipientEmail: candidate.recipientEmail,
+      amountJpy: candidate.amountJpy,
+      sendEmail: candidate.sendEmail,
+    },
+  };
 }
 
 function requireAdminPageAuth(req: Request, res: Response, next: () => void): void {

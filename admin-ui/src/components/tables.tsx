@@ -108,13 +108,23 @@ export function SiteTable({ sites, compact = false }: { sites: SiteRecord[]; com
   if (sites.length === 0) return <Empty title="URL一覧はまだありません" description="URLを解析すると、この一覧にサイトごとの最新結果が表示されます。" action={<Link to="/admin/seo-sales" className="btn-secondary">候補発見を開く</Link>} />;
   return (
     <table className="data-table">
-      <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>実行ログ</th></tr></thead>
+      <thead><tr><th>状態</th><th>URL</th><th>ドメイン</th><th>Lighthouse SEO</th><th>改善余地</th><th>営業状態</th>{compact ? null : <th>解析回数</th>}{compact ? null : <th>最終解析</th>}<th>実行ログ</th></tr></thead>
       <tbody>{sites.map((site) => {
         const runListPath = `/admin/seo-sales/runs?url=${encodeURIComponent(site.normalizedUrl)}`;
-        return <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={runListPath}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td><Link className="table-link" to={runListPath}>一覧を見る</Link></td></tr>;
+        return <tr key={site.id}><td><StatusPill status={site.latestStatus} /></td><td><Link className="table-link" to={runListPath}>{site.displayUrl}</Link></td><td>{site.domain}</td><td>{site.latestSeoScore ?? "-"}</td><td>{site.latestOpportunityScore ?? "-"}</td><td>{formatSalesState(site)}</td>{compact ? null : <td>{site.snapshotCount}回</td>}{compact ? null : <td>{formatDate(site.updatedAt)}</td>}<td><Link className="table-link" to={runListPath}>一覧を見る</Link></td></tr>;
       })}</tbody>
     </table>
   );
+}
+
+function formatSalesState(site: SiteRecord): string {
+  const parts = [];
+  if (site.latestOutreachStatus) parts.push(`メール: ${site.latestOutreachStatus}`);
+  if (site.latestPaymentLinkStatus) {
+    const amount = site.latestPaymentLinkAmountJpy ? ` ${site.latestPaymentLinkAmountJpy.toLocaleString("ja-JP")}円` : "";
+    parts.push(`決済: ${site.latestPaymentLinkStatus}${amount}`);
+  }
+  return parts.length > 0 ? parts.join(" / ") : "-";
 }
 
 export function RunsTable({ runs, compact = false, detailSearch = "" }: { runs: AgentRun[]; compact?: boolean; detailSearch?: string }) {

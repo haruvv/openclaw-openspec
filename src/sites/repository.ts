@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { getDb } from "../utils/db.js";
 import { DurableHttpStorageClient, getStorageConfig } from "../storage/index.js";
 import type { AgentRunStatus } from "../agent-runs/types.js";
+import type { SalesOutreachStatus, SalesPaymentLinkStatus } from "../sales/types.js";
 import type { SeoDiagnostic, SeoOpportunityFinding, Target } from "../types/index.js";
 import type { SiteDetail, SiteProposalRecord, SiteRecord, SiteSnapshotRecord } from "./types.js";
 
@@ -36,6 +37,11 @@ type SiteRow = {
   latest_opportunity_score: number | null;
   latest_run_id: string | null;
   latest_snapshot_id: string | null;
+  latest_outreach_status?: SalesOutreachStatus | null;
+  latest_outreach_sent_at?: number | null;
+  latest_payment_link_status?: SalesPaymentLinkStatus | null;
+  latest_payment_link_amount_jpy?: number | null;
+  latest_payment_link_url?: string | null;
   snapshot_count?: number | null;
   created_at: number;
   updated_at: number;
@@ -323,6 +329,11 @@ function mapSiteRow(row: SiteRow): SiteRecord {
     latestOpportunityScore: row.latest_opportunity_score ?? undefined,
     latestRunId: row.latest_run_id ?? undefined,
     latestSnapshotId: row.latest_snapshot_id ?? undefined,
+    latestOutreachStatus: row.latest_outreach_status ?? undefined,
+    latestOutreachSentAt: row.latest_outreach_sent_at ? new Date(row.latest_outreach_sent_at).toISOString() : undefined,
+    latestPaymentLinkStatus: row.latest_payment_link_status ?? undefined,
+    latestPaymentLinkAmountJpy: row.latest_payment_link_amount_jpy ?? undefined,
+    latestPaymentLinkUrl: row.latest_payment_link_url ?? undefined,
     snapshotCount: row.snapshot_count ?? 0,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
@@ -360,6 +371,11 @@ function selectSitesWithLatestSnapshotSql(): string {
       COALESCE(latest.opportunity_score, s.latest_opportunity_score) AS latest_opportunity_score,
       COALESCE(latest.run_id, s.latest_run_id) AS latest_run_id,
       COALESCE(latest.id, s.latest_snapshot_id) AS latest_snapshot_id,
+      outreach.status AS latest_outreach_status,
+      outreach.sent_at AS latest_outreach_sent_at,
+      payment.status AS latest_payment_link_status,
+      payment.amount_jpy AS latest_payment_link_amount_jpy,
+      payment.payment_link_url AS latest_payment_link_url,
       COALESCE(stats.snapshot_count, 0) AS snapshot_count,
       s.created_at,
       COALESCE(latest.created_at, s.updated_at) AS updated_at
@@ -377,6 +393,22 @@ function selectSitesWithLatestSnapshotSql(): string {
       FROM site_snapshots
       GROUP BY site_id
     ) stats ON stats.site_id = s.id
+    LEFT JOIN sales_outreach_messages outreach
+      ON outreach.id = (
+        SELECT som.id
+        FROM sales_outreach_messages som
+        WHERE som.site_id = s.id OR som.domain = s.domain
+        ORDER BY som.created_at DESC
+        LIMIT 1
+      )
+    LEFT JOIN sales_payment_links payment
+      ON payment.id = (
+        SELECT spl.id
+        FROM sales_payment_links spl
+        WHERE spl.site_id = s.id OR spl.domain = s.domain
+        ORDER BY spl.created_at DESC
+        LIMIT 1
+      )
     ORDER BY COALESCE(latest.created_at, s.updated_at) DESC
     LIMIT ?
   `;

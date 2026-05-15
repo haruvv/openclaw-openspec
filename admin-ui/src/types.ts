@@ -1,4 +1,6 @@
 export type Status = "running" | "passed" | "failed" | "skipped";
+export type SalesOutreachStatus = "draft" | "sent" | "skipped" | "failed";
+export type SalesPaymentLinkStatus = "created" | "sent" | "failed" | "paid";
 
 export interface BusinessApp {
   id: string;
@@ -24,6 +26,7 @@ export interface AgentRun {
 export interface AgentRunDetail extends AgentRun {
   steps: Array<{ id: string; name: string; status: Status; durationMs: number; reason?: string; error?: string; details?: Record<string, unknown> }>;
   artifacts: Array<ArtifactRecord>;
+  salesActions?: SalesActions;
 }
 
 export interface SiteRecord {
@@ -35,6 +38,11 @@ export interface SiteRecord {
   latestSeoScore?: number;
   latestOpportunityScore?: number;
   latestRunId?: string;
+  latestOutreachStatus?: SalesOutreachStatus;
+  latestOutreachSentAt?: string;
+  latestPaymentLinkStatus?: SalesPaymentLinkStatus;
+  latestPaymentLinkAmountJpy?: number;
+  latestPaymentLinkUrl?: string;
   snapshotCount: number;
   updatedAt: string;
 }
@@ -87,6 +95,64 @@ export interface LlmRevenueAudit {
     followUpEmail: string;
   };
   caveats: string[];
+}
+
+export interface SalesActions {
+  outreachMessages: SalesOutreachMessage[];
+  paymentLinks: SalesPaymentLinkRecord[];
+}
+
+export interface SalesOutreachDraft {
+  runId: string;
+  siteId?: string;
+  snapshotId?: string;
+  targetUrl: string;
+  domain: string;
+  recipientEmail?: string;
+  subject: string;
+  bodyText: string;
+  source: "llm_revenue_audit" | "fallback";
+  caveats: string[];
+}
+
+export interface SalesOutreachMessage {
+  id: string;
+  runId: string;
+  siteId?: string;
+  snapshotId?: string;
+  targetUrl: string;
+  domain: string;
+  recipientEmail: string;
+  subject: string;
+  bodyText: string;
+  status: SalesOutreachStatus;
+  reviewedAt?: string;
+  sentAt?: string;
+  error?: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SalesPaymentLinkRecord {
+  id: string;
+  runId: string;
+  siteId?: string;
+  outreachMessageId?: string;
+  domain: string;
+  recipientEmail?: string;
+  amountJpy: number;
+  stripeProductId?: string;
+  stripePriceId?: string;
+  stripePaymentLinkId?: string;
+  paymentLinkUrl?: string;
+  status: SalesPaymentLinkStatus;
+  expiresAt?: string;
+  sentAt?: string;
+  error?: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ArtifactRecord {

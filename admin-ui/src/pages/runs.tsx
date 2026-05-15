@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { apiCache, apiPost } from "../api";
+import { apiCache, apiGet, apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../components/common";
 import { FindingsList, ProposalViewer, RunsTable } from "../components/tables";
 import { useApi } from "../hooks";
-import type { AgentRun, AgentRunDetail, LlmRevenueAudit, SeoDiagnostic } from "../types";
+import type { AgentRun, AgentRunDetail, LlmRevenueAudit, SalesActions, SalesOutreachDraft, SeoDiagnostic, SettingsPayload } from "../types";
 import { formatDate, formatDuration, formatRevenueAuditConfidence, formatRevenueAuditPriority, formatSource, formatStepName, getLlmRevenueAudit, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
@@ -72,6 +72,7 @@ export function RunDetailPage() {
   const opportunityFindings = getOpportunityFindings(run);
   const diagnostics = getSeoDiagnostics(run);
   const revenueAudit = getLlmRevenueAudit(run);
+  const initialSalesActions = run.salesActions ?? { outreachMessages: [], paymentLinks: [] };
   const domain = typeof run.summary.domain === "string" ? run.summary.domain : "-";
   const proposalArtifacts = run.artifacts.filter((artifact) => artifact.type === "proposal");
   return (
@@ -127,6 +128,212 @@ export function RunDetailPage() {
           />
         ))}
       </Panel>
+      <SalesActionsPanel runId={run.id} initialSalesActions={initialSalesActions} />
+    </div>
+  );
+}
+
+function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; initialSalesActions: SalesActions }) {
+  const [draft, setDraft] = useState<SalesOutreachDraft | null>(null);
+  const [salesActions, setSalesActions] = useState<SalesActions>(initialSalesActions);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [subject, setSubject] = useState("");
+  const [bodyText, setBodyText] = useState("");
+  const [amountJpy, setAmountJpy] = useState("50000");
+  const [sendPaymentEmail, setSendPaymentEmail] = useState(false);
+  const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingDraft(true);
+    setError(null);
+    setSettingsError(null);
+    setSettings(null);
+    void Promise.all([
+      apiGet<{ draft: SalesOutreachDraft; salesActions: SalesActions }>(`/api/admin/seo-sales/runs/${encodeURIComponent(runId)}/outreach-draft`),
+      apiGet<SettingsPayload>("/api/admin/seo-sales/settings").catch((err) => {
+        if (active) setSettingsError(err instanceof Error ? err.message : "副作用設定を読み込めませんでした");
+        return null;
+      }),
+    ])
+      .then(([result, loadedSettings]) => {
+        if (!active) return;
+        setDraft(result.draft);
+        setSalesActions(result.salesActions);
+        setSettings(loadedSettings);
+        setRecipientEmail(result.draft.recipientEmail ?? "");
+        setSubject(result.draft.subject);
+        setBodyText(result.draft.bodyText);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "営業レビューを読み込めませんでした");
+      })
+      .finally(() => {
+        if (active) setLoadingDraft(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [runId]);
+
+  async function refreshSalesActions() {
+    const result = await apiGet<{ draft: SalesOutreachDraft; salesActions: SalesActions }>(`/api/admin/seo-sales/runs/${encodeURIComponent(runId)}/outreach-draft`);
+    setSalesActions(result.salesActions);
+  }
+
+  async function sendOutreach() {
+    if (!window.confirm("レビュー済みの営業メールを送信します。よろしいですか？")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await apiPost<{ salesActions: SalesActions }>(`/api/admin/seo-sales/runs/${encodeURIComponent(runId)}/outreach/send`, {
+        recipientEmail,
+        subject,
+        bodyText,
+      });
+      setSalesActions(result.salesActions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "営業メールを送信できませんでした");
+      await refreshSalesActions().catch(() => undefined);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createPaymentLink() {
+    if (!window.confirm("Payment Linkを作成します。初回営業メールとは別の明示操作として実行されます。よろしいですか？")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const latestSent = salesActions.outreachMessages.find((message) => message.status === "sent");
+      const result = await apiPost<{ salesActions: SalesActions }>(`/api/admin/seo-sales/runs/${encodeURIComponent(runId)}/payment-links`, {
+        amountJpy: Number(amountJpy),
+        recipientEmail: recipientEmail || latestSent?.recipientEmail,
+        outreachMessageId: latestSent?.id,
+        sendEmail: sendPaymentEmail,
+      });
+      setSalesActions(result.salesActions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Payment Linkを作成できませんでした");
+      await refreshSalesActions().catch(() => undefined);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const emailPolicyEnabled = Boolean(settings?.policies.find((policy) => policy.key === "sendEmail")?.enabled);
+  const paymentPolicyEnabled = Boolean(settings?.policies.find((policy) => policy.key === "createPaymentLink")?.enabled);
+  const sendGridConfigured = Boolean(settings?.integrations.find((integration) => integration.key === "SENDGRID_API_KEY")?.configured);
+  const stripeConfigured = Boolean(settings?.integrations.find((integration) => integration.key === "STRIPE_SECRET_KEY")?.configured);
+  const emailUnavailableReason = !settings ? "副作用設定を確認中です" : !emailPolicyEnabled ? "メール送信ポリシーが無効です" : !sendGridConfigured ? "SendGrid APIキーが未設定です" : null;
+  const paymentUnavailableReason = !settings ? "副作用設定を確認中です" : !paymentPolicyEnabled ? "決済リンク作成ポリシーが無効です" : !stripeConfigured ? "Stripeシークレットキーが未設定です" : null;
+  const amountIsValid = Number.isInteger(Number(amountJpy)) && Number(amountJpy) > 0;
+  const canSend = Boolean(recipientEmail.trim() && subject.trim() && bodyText.trim()) && !saving && !emailUnavailableReason;
+  const canCreatePayment = amountIsValid && !saving && !paymentUnavailableReason && (!sendPaymentEmail || !emailUnavailableReason);
+
+  return (
+    <Panel title="営業アクション">
+      {loadingDraft ? <Loading /> : draft ? (
+        <div className="space-y-4">
+          {error ? <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+          {settingsError ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-bold text-amber-800">{settingsError}</p> : null}
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-black text-slate-700" htmlFor="outreach-recipient">宛先メール</label>
+                <input id="outreach-recipient" className="input mt-2 w-full" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder="info@example.com" />
+              </div>
+              <div>
+                <label className="text-sm font-black text-slate-700" htmlFor="outreach-subject">件名</label>
+                <input id="outreach-subject" className="input mt-2 w-full" value={subject} onChange={(event) => setSubject(event.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-black text-slate-700" htmlFor="outreach-body">本文</label>
+                <textarea id="outreach-body" className="textarea mt-2 min-h-56" value={bodyText} onChange={(event) => setBodyText(event.target.value)} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="btn-primary" disabled={!canSend} onClick={sendOutreach}>レビュー済みメールを送信</button>
+                {emailUnavailableReason ? <span className="self-center text-xs font-bold text-slate-500">{emailUnavailableReason}</span> : null}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <Info label="ドラフト元" value={draft.source === "llm_revenue_audit" ? "営業評価" : "保守的な汎用文面"} />
+              <Info label="対象URL" value={draft.targetUrl} />
+              <Info label="ドメイン" value={draft.domain} />
+              {draft.caveats.length > 0 ? (
+                <div className="border border-amber-100 bg-amber-50 p-3">
+                  <div className="text-xs font-black text-amber-800">注意事項</div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-slate-700">
+                    {draft.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-black text-slate-800">Payment Link</div>
+            <p className="mt-1 text-sm font-semibold text-slate-600">初回営業メールとは別の明示操作です。相手の関心を確認してから作成してください。</p>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end">
+              <div>
+                <label className="text-sm font-black text-slate-700" htmlFor="payment-amount">金額（JPY）</label>
+                <input id="payment-amount" className="input mt-2 w-40" type="number" min="1" step="1" value={amountJpy} onChange={(event) => setAmountJpy(event.target.value)} />
+              </div>
+              <label className="check-row">
+                <input type="checkbox" checked={sendPaymentEmail} disabled={Boolean(emailUnavailableReason)} onChange={(event) => setSendPaymentEmail(event.target.checked)} />
+                作成後に宛先へメール送付
+              </label>
+              <button type="button" className="btn-secondary" disabled={!canCreatePayment} onClick={createPaymentLink}>Payment Linkを作成</button>
+              {paymentUnavailableReason ? <span className="text-xs font-bold text-slate-500">{paymentUnavailableReason}</span> : null}
+            </div>
+            {sendPaymentEmail && emailUnavailableReason ? <p className="mt-2 text-xs font-bold text-amber-800">{emailUnavailableReason}</p> : null}
+          </div>
+
+          <SalesActionHistory salesActions={salesActions} />
+        </div>
+      ) : (
+        <Empty title="営業レビューを作成できません" description="完了した解析結果がない、または対象URLが記録されていません。" />
+      )}
+    </Panel>
+  );
+}
+
+function SalesActionHistory({ salesActions }: { salesActions: SalesActions }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <div>
+        <div className="mb-2 text-sm font-black text-slate-800">送信履歴</div>
+        {salesActions.outreachMessages.length === 0 ? <Empty title="送信履歴はまだありません" /> : (
+          <div className="space-y-2">
+            {salesActions.outreachMessages.map((message) => (
+              <div key={message.id} className="border border-slate-200 bg-white p-3 text-sm">
+                <div className="font-black text-slate-800">{message.subject}</div>
+                <div className="mt-1 break-all text-xs font-semibold text-slate-500">{message.recipientEmail} / {message.status} / {formatDate(message.sentAt ?? message.createdAt)}</div>
+                {message.error ? <div className="mt-2 text-xs font-bold text-red-700">{message.error}</div> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <div className="mb-2 text-sm font-black text-slate-800">Payment Link</div>
+        {salesActions.paymentLinks.length === 0 ? <Empty title="Payment Linkはまだありません" /> : (
+          <div className="space-y-2">
+            {salesActions.paymentLinks.map((link) => (
+              <div key={link.id} className="border border-slate-200 bg-white p-3 text-sm">
+                <div className="font-black text-slate-800">{link.amountJpy.toLocaleString("ja-JP")}円 / {link.status}</div>
+                {link.paymentLinkUrl ? <a className="table-link mt-1 block break-all" href={link.paymentLinkUrl} target="_blank" rel="noreferrer">{link.paymentLinkUrl}</a> : null}
+                <div className="mt-1 text-xs font-semibold text-slate-500">期限: {formatDate(link.expiresAt)}</div>
+                {link.error ? <div className="mt-2 text-xs font-bold text-red-700">{link.error}</div> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

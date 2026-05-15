@@ -1,4 +1,5 @@
 import type { AgentRunStatus } from "../agent-runs/types.js";
+import type { SalesOutreachStatus, SalesPaymentLinkStatus } from "../sales/types.js";
 import type { SeoDiagnostic, SeoOpportunityFinding } from "../types/index.js";
 
 export interface SiteRecord {
@@ -11,6 +12,11 @@ export interface SiteRecord {
   latestOpportunityScore?: number;
   latestRunId?: string;
   latestSnapshotId?: string;
+  latestOutreachStatus?: SalesOutreachStatus;
+  latestOutreachSentAt?: string;
+  latestPaymentLinkStatus?: SalesPaymentLinkStatus;
+  latestPaymentLinkAmountJpy?: number;
+  latestPaymentLinkUrl?: string;
   snapshotCount: number;
   createdAt: string;
   updatedAt: string;

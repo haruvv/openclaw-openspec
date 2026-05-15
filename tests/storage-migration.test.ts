@@ -23,6 +23,8 @@ describe("operational storage migration", () => {
       "analyzed_sites",
       "app_settings",
       "outreach_log",
+      "sales_outreach_messages",
+      "sales_payment_links",
       "site_proposals",
       "site_snapshots",
       "targets",
@@ -31,6 +33,14 @@ describe("operational storage migration", () => {
     const artifactColumns = db.prepare("PRAGMA table_info(agent_artifacts)").all() as { name: string }[];
     expect(artifactColumns.map((column) => column.name)).toContain("object_key");
     expect(artifactColumns.map((column) => column.name)).toContain("body_storage");
+
+    const outreachColumns = db.prepare("PRAGMA table_info(sales_outreach_messages)").all() as { name: string }[];
+    expect(outreachColumns.map((column) => column.name)).toContain("recipient_email");
+    expect(outreachColumns.map((column) => column.name)).toContain("sent_at");
+
+    const paymentColumns = db.prepare("PRAGMA table_info(sales_payment_links)").all() as { name: string }[];
+    expect(paymentColumns.map((column) => column.name)).toContain("payment_link_url");
+    expect(paymentColumns.map((column) => column.name)).toContain("amount_jpy");
 
     db.close();
   });

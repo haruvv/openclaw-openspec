@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("stripe", () => ({
   default: vi.fn().mockImplementation(() => ({
@@ -20,6 +20,10 @@ vi.mock("@sendgrid/mail", () => ({
   default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }]) },
 }));
 
+vi.mock("../src/sales/repository.js", () => ({
+  markPaymentLinkPaidByStripeId: vi.fn(),
+}));
+
 vi.mock("../src/utils/db.js", () => {
   const Database = require("better-sqlite3");
   const db = new Database(":memory:");
@@ -38,6 +42,7 @@ vi.mock("../src/utils/db.js", () => {
 });
 
 import sgMail from "@sendgrid/mail";
+import { markPaymentLinkPaidByStripeId } from "../src/sales/repository.js";
 import { createAndSendPaymentLink, sendPaymentReminders } from "../src/stripe-payment-link/payment-link.js";
 import { handleStripeEvent } from "../src/stripe-payment-link/webhook-handler.js";
 import { getDb } from "../src/utils/db.js";
@@ -77,6 +82,10 @@ describe("createAndSendPaymentLink", () => {
 });
 
 describe("handleStripeEvent", () => {
+  beforeEach(() => {
+    vi.mocked(markPaymentLinkPaidByStripeId).mockResolvedValue(null);
+  });
+
   it("marks target as paid on payment_intent.succeeded", async () => {
     const event = {
       type: "payment_intent.succeeded",
@@ -91,5 +100,27 @@ describe("handleStripeEvent", () => {
       data: { object: {} },
     };
     await expect(handleStripeEvent(event as any)).resolves.not.toThrow();
+  });
+
+  it("marks durable sales payment link as paid when Stripe includes payment_link", async () => {
+    vi.mocked(markPaymentLinkPaidByStripeId).mockResolvedValue({
+      id: "sales-link-1",
+      runId: "run-1",
+      domain: "example.com",
+      amountJpy: 30000,
+      stripePaymentLinkId: "plink_test",
+      status: "paid",
+      metadata: {},
+      createdAt: "2026-05-15T10:00:00.000Z",
+      updatedAt: "2026-05-15T10:00:01.000Z",
+    });
+    const event = {
+      type: "checkout.session.completed",
+      data: { object: { payment_link: "plink_test", metadata: {} } },
+    };
+
+    await expect(handleStripeEvent(event as any)).resolves.not.toThrow();
+
+    expect(markPaymentLinkPaidByStripeId).toHaveBeenCalledWith("plink_test");
   });
 });

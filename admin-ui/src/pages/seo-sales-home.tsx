@@ -57,10 +57,11 @@ function RecentSitesList({ sites }: { sites: SiteRecord[] }) {
                   <span>最終解析: {formatDate(site.updatedAt)}</span>
                 </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-3 xl:w-[420px]">
+              <div className="grid gap-2 sm:grid-cols-4 xl:w-[540px]">
                 <Info label="状態" value={<StatusPill status={site.latestStatus} />} />
                 <Info label="SEO" value={site.latestSeoScore ?? "-"} />
                 <Info label="改善余地" value={site.latestOpportunityScore ?? "-"} />
+                <Info label="営業" value={formatSiteSalesState(site)} />
               </div>
               <div className="flex shrink-0">
                 <Link className="btn-secondary" to={runListPath}>実行ログを見る</Link>
@@ -71,6 +72,12 @@ function RecentSitesList({ sites }: { sites: SiteRecord[] }) {
       })}
     </div>
   );
+}
+
+function formatSiteSalesState(site: SiteRecord): string {
+  if (site.latestPaymentLinkStatus) return `決済 ${site.latestPaymentLinkStatus}`;
+  if (site.latestOutreachStatus) return `メール ${site.latestOutreachStatus}`;
+  return "-";
 }
 
 function RecentRunsList({ runs }: { runs: AgentRun[] }) {

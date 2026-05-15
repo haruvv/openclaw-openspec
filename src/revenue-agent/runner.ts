@@ -65,6 +65,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.opportunityFindings = target.opportunityFindings ?? [];
       outputs.diagnostics = target.diagnostics;
       outputs.domain = target.domain;
+      outputs.contactEmail = target.contactEmail;
       return {
         status: "passed",
         details: {
@@ -231,7 +232,7 @@ async function sendGridStep(
     subject: `[Smoke Test] SEO outreach pipeline for ${target.domain}`,
     text: `Smoke test email for ${target.url}. SEO score: ${target.seoScore}/100.`,
   });
-  return { status: "passed", details: { to } };
+  return { status: "passed", details: { to, purpose: "smoke_test_email_only" } };
 }
 
 async function telegramStep(
@@ -287,7 +288,7 @@ async function stripeStep(
     metadata: { smokeRun: "true", targetId: target.id, domain: target.domain },
   });
   outputs.paymentLinkUrl = paymentLink.url;
-  return { status: "passed", details: { paymentLinkId: paymentLink.id, url: paymentLink.url } };
+  return { status: "passed", details: { paymentLinkId: paymentLink.id, url: paymentLink.url, purpose: "smoke_test_payment_link_only" } };
 }
 
 function toRunId(date: Date): string {
@@ -363,6 +364,7 @@ async function recordRunComplete(
       summary: {
         targetUrl: report.targetUrl,
         domain: report.outputs.domain,
+        contactEmail: report.outputs.contactEmail,
         seoScore: report.outputs.seoScore,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
@@ -402,6 +404,7 @@ async function recordSiteResult(
       summary: {
         targetUrl: report.targetUrl,
         domain: report.outputs.domain,
+        contactEmail: report.outputs.contactEmail,
         seoScore: report.outputs.seoScore,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,

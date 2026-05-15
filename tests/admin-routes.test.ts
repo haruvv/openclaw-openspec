@@ -6,6 +6,18 @@ import { tmpdir } from "node:os";
 
 const originalEnv = { ...process.env };
 
+vi.mock("@sendgrid/mail", () => ({
+  default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }]) },
+}));
+
+vi.mock("stripe", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    products: { create: vi.fn().mockResolvedValue({ id: "prod_test" }) },
+    prices: { create: vi.fn().mockResolvedValue({ id: "price_test" }) },
+    paymentLinks: { create: vi.fn().mockResolvedValue({ id: "plink_test", url: "https://buy.stripe.com/test" }) },
+  })),
+}));
+
 describe("admin routes", () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -86,6 +98,143 @@ describe("admin routes", () => {
     expect(response.status).toBe(200);
     const body = JSON.parse(response.body) as { sites: Array<{ displayUrl: string; latestSeoScore: number }> };
     expect(body.sites[0]).toMatchObject({ displayUrl: "https://example.com/", latestSeoScore: 81 });
+  });
+
+  it("loads an outreach draft for a completed run", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
+    await createAgentRun({
+      id: "run-1",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://example.com/" },
+      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await completeAgentRun({
+      id: "run-1",
+      status: "passed",
+      completedAt: new Date("2026-05-14T00:00:01.000Z"),
+      summary: {
+        targetUrl: "https://example.com/",
+        domain: "example.com",
+        contactEmail: "info@example.com",
+        llmRevenueAudit: {
+          outreach: { subject: "簡易診断について", firstEmail: "必要でしたら要点を共有します。", followUpEmail: "" },
+          caveats: ["アクセス数は未確認です。"],
+        },
+      },
+      steps: [],
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/outreach-draft?token=admin-test", "/api/admin");
+
+    expect(response.status).toBe(200);
+    const body = JSON.parse(response.body) as { draft: { recipientEmail: string; subject: string; bodyText: string } };
+    expect(body.draft).toMatchObject({
+      recipientEmail: "info@example.com",
+      subject: "簡易診断について",
+      bodyText: "必要でしたら要点を共有します。",
+    });
+  });
+
+  it("rejects outreach send when email side effects are disabled", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
+    await createAgentRun({
+      id: "run-1",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://example.com/" },
+      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await completeAgentRun({
+      id: "run-1",
+      status: "passed",
+      completedAt: new Date("2026-05-14T00:00:01.000Z"),
+      summary: { targetUrl: "https://example.com/", domain: "example.com", contactEmail: "info@example.com" },
+      steps: [],
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/outreach/send?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { recipientEmail: "info@example.com", subject: "確認", bodyText: "本文" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(JSON.parse(response.body).error).toContain("email side effects are disabled");
+  });
+
+  it("sends reviewed outreach and prevents duplicate sends", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_ALLOW_EMAIL = "true";
+    process.env.SENDGRID_API_KEY = "sendgrid-test";
+    process.env.SENDGRID_FROM_EMAIL = "from@example.com";
+    const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
+    await createAgentRun({
+      id: "run-1",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://example.com/" },
+      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await completeAgentRun({
+      id: "run-1",
+      status: "passed",
+      completedAt: new Date("2026-05-14T00:00:01.000Z"),
+      summary: { targetUrl: "https://example.com/", domain: "example.com", contactEmail: "info@example.com" },
+      steps: [],
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const first = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/outreach/send?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { recipientEmail: "info@example.com", subject: "確認", bodyText: "本文" },
+    });
+    const second = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/outreach/send?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { recipientEmail: "info@example.com", subject: "確認", bodyText: "本文" },
+    });
+
+    expect(first.status).toBe(201);
+    expect(JSON.parse(first.body).message).toMatchObject({ status: "sent", recipientEmail: "info@example.com" });
+    expect(second.status).toBe(400);
+    expect(JSON.parse(second.body).error).toContain("cooldown");
+  });
+
+  it("creates a reviewed payment link when payment policy is enabled", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK = "true";
+    process.env.STRIPE_SECRET_KEY = "sk_test";
+    const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
+    await createAgentRun({
+      id: "run-1",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://example.com/" },
+      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await completeAgentRun({
+      id: "run-1",
+      status: "passed",
+      completedAt: new Date("2026-05-14T00:00:01.000Z"),
+      summary: { targetUrl: "https://example.com/", domain: "example.com", contactEmail: "info@example.com" },
+      steps: [],
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/payment-links?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { amountJpy: 30000, recipientEmail: "info@example.com", sendEmail: false },
+    });
+
+    expect(response.status).toBe(201);
+    expect(JSON.parse(response.body).paymentLink).toMatchObject({
+      amountJpy: 30000,
+      paymentLinkUrl: "https://buy.stripe.com/test",
+      status: "created",
+    });
   });
 
   it("returns and updates discovery settings from the admin API", async () => {
