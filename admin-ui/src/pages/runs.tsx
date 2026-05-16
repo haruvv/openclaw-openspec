@@ -165,6 +165,9 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
         setDraft(result.draft);
         setSalesActions(result.salesActions);
         setSettings(loadedSettings);
+        if (loadedSettings?.sales?.defaultPaymentAmountJpy) {
+          setAmountJpy(String(loadedSettings.sales.defaultPaymentAmountJpy));
+        }
         setRecipientEmail(result.draft.recipientEmail ?? "");
         setSubject(result.draft.subject);
         setBodyText(result.draft.bodyText);

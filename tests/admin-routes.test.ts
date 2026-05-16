@@ -353,6 +353,59 @@ describe("admin routes", () => {
     });
   });
 
+  it("returns and updates sales operation settings from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_DEFAULT_PAYMENT_AMOUNT_JPY = "40000";
+    process.env.OUTREACH_COOLDOWN_DAYS = "14";
+    process.env.CONTACT_DISCOVERY_MAX_PAGES = "3";
+    process.env.SENDGRID_FROM_NAME = "旧送信者";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const before = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+    expect(before.status).toBe(200);
+    expect(JSON.parse(before.body)).toMatchObject({
+      sales: {
+        defaultPaymentAmountJpy: 40000,
+        outreachCooldownDays: 14,
+        contactDiscoveryMaxPages: 3,
+        sendgridFromName: "旧送信者",
+        configuredFromAdmin: false,
+      },
+    });
+
+    const update = await dispatch(adminApiRouter, "/seo-sales/settings/sales?token=admin-test", "/api/admin", {
+      method: "PUT",
+      body: {
+        defaultPaymentAmountJpy: 80000,
+        outreachCooldownDays: 45,
+        contactDiscoveryMaxPages: 8,
+        sendgridFromName: "Revenue Agent",
+      },
+    });
+
+    expect(update.status).toBe(200);
+    expect(JSON.parse(update.body)).toMatchObject({
+      sales: {
+        defaultPaymentAmountJpy: 80000,
+        outreachCooldownDays: 45,
+        contactDiscoveryMaxPages: 8,
+        sendgridFromName: "Revenue Agent",
+        configuredFromAdmin: true,
+      },
+    });
+
+    const after = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+    expect(JSON.parse(after.body)).toMatchObject({
+      sales: {
+        defaultPaymentAmountJpy: 80000,
+        outreachCooldownDays: 45,
+        contactDiscoveryMaxPages: 8,
+        sendgridFromName: "Revenue Agent",
+        configuredFromAdmin: true,
+      },
+    });
+  });
+
   it("can run discovery from the admin API even when cron discovery is disabled", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.REVENUE_AGENT_DISCOVERY_ENABLED = "false";

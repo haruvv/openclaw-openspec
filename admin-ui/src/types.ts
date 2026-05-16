@@ -197,6 +197,7 @@ export interface SettingsPayload {
   integrations: Array<{ label: string; key: string; configured: boolean }>;
   policies: Array<{ key: "sendEmail" | "sendTelegram" | "createPaymentLink"; label: string; enabled: boolean }>;
   discovery: DiscoverySettings;
+  sales: SalesOperationSettings;
 }
 
 export type SideEffectPolicy = SettingsPayload["policies"][number];
@@ -205,6 +206,14 @@ export interface PolicyUpdatePayload {
   sendEmail: boolean;
   sendTelegram: boolean;
   createPaymentLink: boolean;
+}
+
+export interface SalesOperationSettings {
+  defaultPaymentAmountJpy: number;
+  outreachCooldownDays: number;
+  contactDiscoveryMaxPages: number;
+  sendgridFromName: string;
+  configuredFromAdmin: boolean;
 }
 
 export interface DiscoverySettings {

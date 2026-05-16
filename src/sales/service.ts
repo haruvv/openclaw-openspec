@@ -6,6 +6,7 @@ import { sideEffectPolicyReason } from "../revenue-agent/security.js";
 import { withRetry } from "../utils/retry.js";
 import { sanitizeSecretText } from "../revenue-agent/security.js";
 import { logger } from "../utils/logger.js";
+import { getSalesOperationSettings } from "./settings.js";
 import {
   createOutreachMessage,
   createPaymentLinkRecord,
@@ -18,7 +19,6 @@ import {
 import type { SalesActions, SalesOutreachDraft, SalesOutreachMessage, SalesPaymentLinkRecord } from "./types.js";
 import type { ContactMethod, LlmRevenueAudit } from "../types/index.js";
 
-const OUTREACH_COOLDOWN_DAYS = Number(process.env.OUTREACH_COOLDOWN_DAYS ?? 30);
 const PAYMENT_LINK_VALIDITY_DAYS = 30;
 const DAY_MS = 86400 * 1000;
 
@@ -89,6 +89,7 @@ export async function sendReviewedOutreach(input: {
   if (!subject) throw new Error("subject is required");
   if (!bodyText) throw new Error("bodyText is required");
 
+  const salesSettings = await getSalesOperationSettings();
   const policies = await getSideEffectSettings();
   if (!policies.sendEmail) {
     await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, sideEffectPolicyReason("sendEmail"));
@@ -98,7 +99,7 @@ export async function sendReviewedOutreach(input: {
     await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, "SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set");
     throw new Error("SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set");
   }
-  if (await hasRecentSentOutreach(draft.domain, OUTREACH_COOLDOWN_DAYS)) {
+  if (await hasRecentSentOutreach(draft.domain, salesSettings.outreachCooldownDays)) {
     await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, "outreach already sent to this domain within cooldown window");
     throw new Error("outreach already sent to this domain within cooldown window");
   }
@@ -111,7 +112,7 @@ export async function sendReviewedOutreach(input: {
         to: recipientEmail,
         from: {
           email: process.env.SENDGRID_FROM_EMAIL!,
-          name: process.env.SENDGRID_FROM_NAME ?? "RevenueAgentPlatform",
+          name: salesSettings.sendgridFromName,
         },
         subject,
         text: bodyText,
@@ -166,6 +167,7 @@ export async function createReviewedPaymentLink(input: {
   }
 
   const policies = await getSideEffectSettings();
+  const salesSettings = await getSalesOperationSettings();
   if (!policies.createPaymentLink) throw new Error(sideEffectPolicyReason("createPaymentLink"));
   if (!process.env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY is not set");
   if (input.sendEmail === true && !policies.sendEmail) throw new Error(sideEffectPolicyReason("sendEmail"));
@@ -224,7 +226,7 @@ export async function createReviewedPaymentLink(input: {
     });
 
     if (input.sendEmail === true && input.recipientEmail) {
-      await sendPaymentLinkEmail(input.recipientEmail, draft.domain, paymentLink.url, expiresAt);
+      await sendPaymentLinkEmail(input.recipientEmail, draft.domain, paymentLink.url, expiresAt, salesSettings.sendgridFromName);
       if (policies.sendTelegram) {
         await notifyTelegramPaymentLink(draft.domain, paymentLink.url).catch((err) => {
           logger.error("Telegram payment link notify failed", { err: sanitizeSecretText(err) });
@@ -281,7 +283,13 @@ async function recordSkippedOutreach(
   });
 }
 
-async function sendPaymentLinkEmail(recipientEmail: string, domain: string, linkUrl: string, expiresAt: Date): Promise<void> {
+async function sendPaymentLinkEmail(
+  recipientEmail: string,
+  domain: string,
+  linkUrl: string,
+  expiresAt: Date,
+  fromName: string,
+): Promise<void> {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
   const expiryDate = expiresAt.toLocaleDateString("ja-JP");
   await withRetry(() =>
@@ -289,7 +297,7 @@ async function sendPaymentLinkEmail(recipientEmail: string, domain: string, link
       to: recipientEmail,
       from: {
         email: process.env.SENDGRID_FROM_EMAIL!,
-        name: process.env.SENDGRID_FROM_NAME ?? "RevenueAgentPlatform",
+        name: fromName,
       },
       subject: `【お申し込み】${domain} SEO改善サービスのお支払いページ`,
       text: `この度はご関心をいただきありがとうございます。\n\n下記リンクよりお申し込みください（有効期限: ${expiryDate}）：\n${linkUrl}`,

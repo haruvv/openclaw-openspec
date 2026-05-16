@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../admin-ui/src/App";
 import { apiCache } from "../admin-ui/src/api";
-import { DiscoverySettingsPanel } from "../admin-ui/src/components/settings";
+import { DiscoverySettingsPanel, SalesOperationSettingsPanel } from "../admin-ui/src/components/settings";
 import type { AgentRun, AgentRunDetail, DiscoverySettings } from "../admin-ui/src/types";
 
 describe("admin UI routing", () => {
@@ -217,6 +217,47 @@ describe("DiscoverySettingsPanel", () => {
   });
 });
 
+describe("SalesOperationSettingsPanel", () => {
+  afterEach(() => {
+    apiCache.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("submits sales operation settings", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        defaultPaymentAmountJpy: 88000,
+        outreachCooldownDays: 45,
+        contactDiscoveryMaxPages: 8,
+        sendgridFromName: "Revenue Agent",
+      });
+      return createJsonResponse({
+        sales: {
+          defaultPaymentAmountJpy: 88000,
+          outreachCooldownDays: 45,
+          contactDiscoveryMaxPages: 8,
+          sendgridFromName: "Revenue Agent",
+          configuredFromAdmin: true,
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SalesOperationSettingsPanel settings={createSalesSettings()} />);
+
+    fireEvent.change(screen.getByLabelText("デフォルト金額（JPY）"), { target: { value: "88000" } });
+    fireEvent.change(screen.getByLabelText("再送クールダウン（日）"), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText("連絡先探索ページ数"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("送信者名"), { target: { value: "Revenue Agent" } });
+    expect(screen.getByText("未保存の変更があります。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "設定を保存" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("保存しました")).toBeInTheDocument();
+  });
+});
+
 function createJsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
@@ -244,6 +285,7 @@ function createSettingsResponse() {
       { key: "createPaymentLink", label: "決済リンク作成", enabled: true },
     ],
     discovery: createDiscoverySettings(),
+    sales: createSalesSettings(),
   };
 }
 
@@ -365,5 +407,15 @@ function createDiscoverySettings(overrides: Partial<DiscoverySettings> = {}): Di
     location: "",
     configuredFromAdmin: true,
     ...overrides,
+  };
+}
+
+function createSalesSettings() {
+  return {
+    defaultPaymentAmountJpy: 50000,
+    outreachCooldownDays: 30,
+    contactDiscoveryMaxPages: 5,
+    sendgridFromName: "RevenueAgentPlatform",
+    configuredFromAdmin: true,
   };
 }

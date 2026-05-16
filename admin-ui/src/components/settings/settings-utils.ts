@@ -1,5 +1,5 @@
 import { DISCOVERY_INDUSTRIES } from "../../constants";
-import type { DiscoveryFormState, DiscoverySettings, PolicyUpdatePayload, SideEffectPolicy } from "../../types";
+import type { DiscoveryFormState, DiscoverySettings, PolicyUpdatePayload, SalesOperationSettings, SideEffectPolicy } from "../../types";
 
 export function buildDiscoveryQueries(industries: string[]): string[] {
   return industries.map((industry) => `${industry} 公式サイト`);
@@ -67,6 +67,16 @@ export function createDiscoverySettingsKey(settings: DiscoverySettings): string 
     settings.country,
     settings.lang,
     settings.location,
+    settings.configuredFromAdmin ? "1" : "0",
+  ].join("|");
+}
+
+export function createSalesSettingsKey(settings: SalesOperationSettings): string {
+  return [
+    settings.defaultPaymentAmountJpy,
+    settings.outreachCooldownDays,
+    settings.contactDiscoveryMaxPages,
+    settings.sendgridFromName,
     settings.configuredFromAdmin ? "1" : "0",
   ].join("|");
 }

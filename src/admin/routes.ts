@@ -10,6 +10,7 @@ import { runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
 import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
+import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
 import { getSideEffectSettings, saveSideEffectSettings } from "./side-effect-settings.js";
@@ -184,7 +185,7 @@ adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
     ["createPaymentLink", "決済リンク作成", sideEffects.createPaymentLink],
   ].map(([key, label, enabled]) => ({ key, label, enabled: Boolean(enabled) }));
 
-  res.json({ integrations, policies, discovery: await getDiscoverySettings() });
+  res.json({ integrations, policies, discovery: await getDiscoverySettings(), sales: await getSalesOperationSettings() });
 });
 
 adminApiRouter.put("/seo-sales/settings/discovery", async (req, res) => {
@@ -195,6 +196,11 @@ adminApiRouter.put("/seo-sales/settings/discovery", async (req, res) => {
 adminApiRouter.put("/seo-sales/settings/policies", async (req, res) => {
   const policies = await saveSideEffectSettings(req.body ?? {});
   res.json({ policies });
+});
+
+adminApiRouter.put("/seo-sales/settings/sales", async (req, res) => {
+  const sales = await saveSalesOperationSettings(req.body ?? {});
+  res.json({ sales });
 });
 
 adminRouter.use(

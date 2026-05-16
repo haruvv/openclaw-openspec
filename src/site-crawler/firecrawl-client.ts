@@ -1,9 +1,9 @@
 import FirecrawlApp from "firecrawl";
+import { getSalesOperationSettings } from "../sales/settings.js";
 import { logger } from "../utils/logger.js";
 import type { ContactMethod, CrawlResult } from "../types/index.js";
 
 const client = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY! });
-const MAX_CONTACT_PAGES = Number(process.env.CONTACT_DISCOVERY_MAX_PAGES ?? 5);
 
 export async function scrapeUrl(url: string): Promise<CrawlResult | null> {
   try {
@@ -46,8 +46,9 @@ async function scrapePage(url: string): Promise<{ html: string } | null> {
 }
 
 async function discoverContactMethods(url: string, html: string): Promise<ContactMethod[]> {
+  const settings = await getSalesOperationSettings();
   const methods = extractContactMethodsFromHtml(html, url);
-  const contactUrls = extractContactPageUrls(html, url);
+  const contactUrls = extractContactPageUrls(html, url, settings.contactDiscoveryMaxPages);
 
   for (const contactUrl of contactUrls) {
     const page = await scrapePage(contactUrl).catch((err) => {
@@ -99,7 +100,7 @@ function extractContactMethodsFromHtml(html: string, sourceUrl: string): Contact
   return methods;
 }
 
-function extractContactPageUrls(html: string, baseUrl: string): string[] {
+function extractContactPageUrls(html: string, baseUrl: string, maxPages: number): string[] {
   const candidates: Array<{ url: string; score: number }> = [];
   for (const match of html.matchAll(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
     const href = decodeHtml(match[1] ?? "");
@@ -114,7 +115,7 @@ function extractContactPageUrls(html: string, baseUrl: string): string[] {
   return [...new Map(candidates
     .sort((a, b) => b.score - a.score)
     .map((candidate) => [candidate.url, candidate.url])).values()]
-    .slice(0, Math.max(0, MAX_CONTACT_PAGES));
+    .slice(0, Math.max(0, maxPages));
 }
 
 function resolveSameOriginUrl(href: string, baseUrl: string): string | null {

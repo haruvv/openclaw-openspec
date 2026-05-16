@@ -3,8 +3,10 @@ import { ErrorState, Loading, Panel } from "../components/common";
 import {
   DiscoverySettingsPanel,
   IntegrationSettingsList,
+  SalesOperationSettingsPanel,
   SideEffectPolicyControls,
   createDiscoverySettingsKey,
+  createSalesSettingsKey,
   createPoliciesKey,
 } from "../components/settings";
 import { useApi } from "../hooks";
@@ -19,6 +21,11 @@ export function SettingsPage() {
   return (
     <div className="space-y-5">
       {data?.discovery ? <DiscoverySettingsPanel key={createDiscoverySettingsKey(data.discovery)} settings={data.discovery} /> : null}
+      {data?.sales ? (
+        <Panel title="営業送信設定">
+          <SalesOperationSettingsPanel key={createSalesSettingsKey(data.sales)} settings={data.sales} />
+        </Panel>
+      ) : null}
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.72fr)] xl:grid-cols-2">
         <Panel title="外部サービス設定">
           <IntegrationSettingsList items={data?.integrations ?? []} />
