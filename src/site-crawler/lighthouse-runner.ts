@@ -3,12 +3,19 @@ import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { logger } from "../utils/logger.js";
 import type { LighthouseResult, SeoDiagnostic } from "../types/index.js";
+import { buildFailureDiagnostic, type FailureDiagnostic } from "../utils/failure-diagnostics.js";
 
 const execFileAsync = promisify(execFile);
-const TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 90_000;
 const CHROME_PATH = process.env.CHROME_PATH ?? defaultChromePath();
 
-export async function measureSeo(url: string): Promise<LighthouseResult | null> {
+export type LighthouseMeasurement =
+  | { ok: true; result: LighthouseResult; durationMs: number }
+  | { ok: false; failure: FailureDiagnostic };
+
+export async function measureSeo(url: string): Promise<LighthouseMeasurement> {
+  const started = Date.now();
+  const timeoutMs = lighthouseTimeoutMs();
   try {
     const { stdout } = await Promise.race([
       execFileAsync("npx", [
@@ -20,22 +27,36 @@ export async function measureSeo(url: string): Promise<LighthouseResult | null> 
         "--only-categories=seo",
         "--quiet",
         "--no-enable-error-reporting",
-        "--chrome-flags=--headless --no-sandbox --disable-gpu",
+        "--chrome-flags=--headless --no-sandbox --disable-gpu --disable-dev-shm-usage",
       ]),
-      timeout(TIMEOUT_MS, url),
+      timeout(timeoutMs, url),
     ]);
 
-    const report = JSON.parse(stdout) as LhReport;
+    let report: LhReport;
+    try {
+      report = JSON.parse(stdout) as LhReport;
+    } catch (err) {
+      const failure = buildFailureDiagnostic(err, {
+        stage: "lighthouse",
+        reason: "parse_error",
+        durationMs: Date.now() - started,
+        retryable: false,
+      });
+      logger.error("Lighthouse report parse failed", { url, failure });
+      return { ok: false, failure };
+    }
     const seoScore = Math.round((report.categories.seo?.score ?? 0) * 100);
     const diagnostics = extractDiagnostics(report);
 
-    return { url, seoScore, diagnostics };
+    return { ok: true, result: { url, seoScore, diagnostics }, durationMs: Date.now() - started };
   } catch (err) {
-    logger.error("Lighthouse measurement failed", {
-      url,
-      error: err instanceof Error ? err.message : String(err),
+    const failure = buildFailureDiagnostic(err, {
+      stage: "lighthouse",
+      durationMs: Date.now() - started,
+      retryable: true,
     });
-    return null;
+    logger.error("Lighthouse measurement failed", { url, failure });
+    return { ok: false, failure };
   }
 }
 
@@ -43,6 +64,11 @@ function timeout(ms: number, url: string): Promise<never> {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`Lighthouse timeout after ${ms}ms for ${url}`)), ms)
   );
+}
+
+function lighthouseTimeoutMs(): number {
+  const value = Number(process.env.LIGHTHOUSE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
 }
 
 function extractDiagnostics(report: LhReport): SeoDiagnostic[] {

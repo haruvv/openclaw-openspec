@@ -28,9 +28,13 @@ describe("crawlBatch", () => {
       contactEmail: "info@example.com",
     });
     mockLh.mockResolvedValue({
-      url: "https://example.com",
-      seoScore: 30,
-      diagnostics: [{ id: "document-title", title: "Document lacks title", score: 0, description: "" }],
+      ok: true,
+      durationMs: 1200,
+      result: {
+        url: "https://example.com",
+        seoScore: 30,
+        diagnostics: [{ id: "document-title", title: "Document lacks title", score: 0, description: "" }],
+      },
     });
 
     const result = await crawlBatch(["https://example.com"]);
@@ -47,7 +51,7 @@ describe("crawlBatch", () => {
       title: "法人向け会計サービスの導入支援と無料相談 | Good",
       contactEmail: "info@good.com",
     });
-    mockLh.mockResolvedValue({ url: "https://good.com", seoScore: 80, diagnostics: [] });
+    mockLh.mockResolvedValue({ ok: true, durationMs: 900, result: { url: "https://good.com", seoScore: 80, diagnostics: [] } });
 
     const result = await crawlBatch(["https://good.com"]);
     expect(result.targets).toHaveLength(0);
@@ -72,18 +76,32 @@ describe("crawlBatch", () => {
       html: "",
       title: "",
     });
-    mockLh.mockResolvedValue(null);
+    mockLh.mockResolvedValue({
+      ok: false,
+      failure: {
+        stage: "lighthouse",
+        reason: "timeout",
+        message: "Lighthouse timeout after 90000ms for https://slow.com",
+        durationMs: 90000,
+        retryable: true,
+      },
+    });
     const result = await crawlBatch(["https://slow.com"]);
     expect(result.targets).toHaveLength(1);
     expect(result.targets[0].seoScore).toBe(0);
     expect(result.targets[0].diagnostics).toContainEqual(expect.objectContaining({ id: "lighthouse-unavailable" }));
+    expect(result.targets[0].diagnostics[0].description).toContain("timeout");
+    expect(result.warnings).toContainEqual(expect.objectContaining({ url: "https://slow.com", stage: "lighthouse", reason: "timeout" }));
     expect(result.skipped).toHaveLength(0);
     expect(result.skipDetails).toHaveLength(0);
   });
 
   it("queues URLs beyond batch limit of 50", async () => {
     mockScrape.mockResolvedValue(null);
-    mockLh.mockResolvedValue(null);
+    mockLh.mockResolvedValue({
+      ok: false,
+      failure: { stage: "lighthouse", reason: "timeout", message: "timeout", retryable: true },
+    });
     const urls = Array.from({ length: 55 }, (_, i) => `https://site${i}.com`);
     const result = await crawlBatch(urls);
     expect(result.queued).toHaveLength(5);

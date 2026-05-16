@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises";
 import net from "node:net";
 import type { Request } from "express";
 import type { RevenueAgentRunReport } from "./types.js";
+import { sanitizeDiagnosticText } from "../utils/failure-diagnostics.js";
 
 export interface AuthFailure {
   ok: false;
@@ -134,13 +135,7 @@ export function sideEffectPolicyReason(action: keyof SideEffectPolicy): string {
 }
 
 export function sanitizeSecretText(input: unknown, env = process.env): string {
-  let output = input instanceof Error ? input.message : String(input);
-  for (const secret of collectSecrets(env)) {
-    output = output.split(secret).join("[REDACTED]");
-  }
-  output = output.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
-  output = output.replace(/bot\d+:[A-Za-z0-9_-]+/g, "bot[REDACTED]");
-  return output;
+  return sanitizeDiagnosticText(input, 1200, env);
 }
 
 export function sanitizeRunReport(report: RevenueAgentRunReport): RevenueAgentRunReport {
@@ -169,20 +164,6 @@ function getRateLimitKey(req: Request): string {
   const forwarded = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"];
   if (typeof forwarded === "string") return `ip:${forwarded.split(",")[0]?.trim() ?? "unknown"}`;
   return `ip:${req.ip ?? "unknown"}`;
-}
-
-function collectSecrets(env: NodeJS.ProcessEnv): string[] {
-  return [
-    env.REVENUE_AGENT_INTEGRATION_TOKEN,
-    env.FIRECRAWL_API_KEY,
-    env.GEMINI_API_KEY,
-    env.ZAI_API_KEY,
-    env.SENDGRID_API_KEY,
-    env.STRIPE_SECRET_KEY,
-    env.STRIPE_WEBHOOK_SECRET,
-    env.TELEGRAM_BOT_TOKEN,
-    env.HIL_APPROVAL_TOKEN_SECRET,
-  ].filter((value): value is string => Boolean(value && value.length >= 6));
 }
 
 function normalizeHostname(hostname: string): string {

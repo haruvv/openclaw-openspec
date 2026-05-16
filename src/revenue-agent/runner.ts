@@ -8,8 +8,8 @@ import type { Target } from "../types/index.js";
 import { completeAgentRun, createAgentRun, upsertAgentRunStep } from "../agent-runs/repository.js";
 import { persistSiteResult } from "../sites/repository.js";
 import { logger } from "../utils/logger.js";
-import { sanitizeSecretText } from "./security.js";
 import type { RevenueAgentRunOptions, RevenueAgentRunReport, RevenueAgentStepResult } from "./types.js";
+import { buildFailureDiagnostic, buildSkipDiagnostic } from "../utils/failure-diagnostics.js";
 
 type StepBody = () => Promise<Omit<RevenueAgentStepResult, "name" | "durationMs">>;
 
@@ -51,6 +51,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
         targets: result.targets.length,
         skipped: result.skipped,
         skipDetails: result.skipDetails,
+        warnings: result.warnings,
         queued: result.queued.length,
       };
       if (!target) {
@@ -71,12 +72,14 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.contactEmail = target.contactEmail;
       outputs.contactMethods = target.contactMethods ?? [];
       const lighthouseFallback = target.diagnostics.some((diagnostic) => diagnostic.id === "lighthouse-unavailable");
+      const crawlWarnings = result.warnings;
       return {
         status: "passed",
         details: {
           domain: target.domain,
           seoScore: target.seoScore,
           lighthouseFallback,
+          crawlWarnings,
           opportunityScore: target.opportunityScore,
           opportunityFindings: target.opportunityFindings?.length ?? 0,
           contactMethods: target.contactMethods?.length ?? 0,
@@ -105,14 +108,15 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
           },
         };
       } catch (err) {
+        const diagnostic = buildFailureDiagnostic(err, { stage: "llm_revenue_audit", reason: "provider_error", retryable: true });
         logger.warn("LLM revenue audit failed, continuing with deterministic research", {
           domain: target.domain,
-          error: sanitizeError(err),
+          diagnostic,
         });
         return {
           status: "skipped",
           reason: "LLM revenue audit failed",
-          details: { error: sanitizeError(err) },
+          details: { error: diagnostic.message, diagnostic },
         };
       }
     })
@@ -187,7 +191,9 @@ async function runStep(runId: string, name: string, body: StepBody): Promise<Rev
   });
   try {
     const result = await body();
-    const step = { name, durationMs: Date.now() - started, ...result };
+    const durationMs = Date.now() - started;
+    const step = normalizeStepResult({ name, durationMs, ...result });
+    logCompletedStep(runId, step);
     await recordStepProgress({
       runId,
       name,
@@ -200,21 +206,61 @@ async function runStep(runId: string, name: string, body: StepBody): Promise<Rev
     });
     return step;
   } catch (err) {
+    const durationMs = Date.now() - started;
+    const failure = buildFailureDiagnostic(err, { stage: name, durationMs });
     const step = {
       name,
       status: "failed",
-      durationMs: Date.now() - started,
-      error: sanitizeError(err),
+      durationMs,
+      error: failure.message,
+      details: { failure },
     } as const;
+    logger.error("Revenue agent step failed", { runId, step: name, failure });
     await recordStepProgress({
       runId,
       name,
       status: step.status,
       durationMs: step.durationMs,
       error: step.error,
+      details: step.details,
       createdAt: new Date(started),
     });
     return step;
+  }
+}
+
+function normalizeStepResult(step: RevenueAgentStepResult): RevenueAgentStepResult {
+  if (step.status === "passed") return step;
+  const details = { ...(step.details ?? {}) };
+  if (step.status === "failed" && step.error && !details.failure) {
+    details.failure = buildFailureDiagnostic(new Error(step.error), {
+      stage: step.name,
+      durationMs: step.durationMs,
+    });
+  }
+  if (step.status === "skipped" && step.reason && !details.diagnostic) {
+    details.diagnostic = buildSkipDiagnostic(step.name, step.reason);
+  }
+  return { ...step, details };
+}
+
+function logCompletedStep(runId: string, step: RevenueAgentStepResult): void {
+  if (step.status === "failed") {
+    logger.error("Revenue agent step failed", {
+      runId,
+      step: step.name,
+      durationMs: step.durationMs,
+      error: step.error,
+      failure: step.details?.failure,
+    });
+  } else if (step.status === "skipped") {
+    logger.info("Revenue agent step skipped", {
+      runId,
+      step: step.name,
+      durationMs: step.durationMs,
+      reason: step.reason,
+      diagnostic: step.details?.diagnostic,
+    });
   }
 }
 
@@ -289,10 +335,6 @@ async function stripeStep(
 
 function toRunId(date: Date): string {
   return `${date.toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
-}
-
-function sanitizeError(err: unknown): string {
-  return sanitizeSecretText(err);
 }
 
 async function recordRunStart(input: {

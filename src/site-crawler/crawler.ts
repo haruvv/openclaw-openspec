@@ -4,6 +4,7 @@ import { scoreSeoOpportunity } from "./opportunity-scorer.js";
 import { logger } from "../utils/logger.js";
 import type { LighthouseResult, Target } from "../types/index.js";
 import { randomUUID } from "node:crypto";
+import type { FailureDiagnostic } from "../utils/failure-diagnostics.js";
 
 const DEFAULT_THRESHOLD = Number(process.env.SEO_SCORE_THRESHOLD ?? 50);
 const DEFAULT_OPPORTUNITY_THRESHOLD = Number(process.env.SEO_OPPORTUNITY_SCORE_THRESHOLD ?? 60);
@@ -13,6 +14,7 @@ export interface CrawlBatchResult {
   targets: Target[];
   skipped: string[];
   skipDetails: CrawlSkipDetail[];
+  warnings: CrawlWarningDetail[];
   queued: string[];
 }
 
@@ -20,6 +22,10 @@ export interface CrawlSkipDetail {
   url: string;
   stage: "crawl" | "opportunity";
   reason: string;
+}
+
+export interface CrawlWarningDetail extends FailureDiagnostic {
+  url: string;
 }
 
 export async function crawlBatch(
@@ -34,6 +40,7 @@ export async function crawlBatch(
   const targets: Target[] = [];
   const skipped: string[] = [];
   const skipDetails: CrawlSkipDetail[] = [];
+  const warnings: CrawlWarningDetail[] = [];
 
   for (const url of batch) {
     const crawled = await scrapeUrl(url);
@@ -45,8 +52,11 @@ export async function crawlBatch(
     }
 
     const measured = await measureSeo(url);
-    const lhResult = measured ?? fallbackLighthouseResult(url);
-    if (!measured) logger.warn("Continuing URL with crawl-only SEO fallback (lighthouse failed)", { url });
+    const lhResult = measured.ok ? measured.result : fallbackLighthouseResult(url, measured.failure);
+    if (!measured.ok) {
+      warnings.push({ url, ...measured.failure });
+      logger.warn("Continuing URL with crawl-only SEO fallback (lighthouse failed)", { url, failure: measured.failure });
+    }
 
     const opportunity = scoreSeoOpportunity(crawled, lhResult);
     if (lhResult.seoScore > threshold && opportunity.opportunityScore < opportunityThreshold) {
@@ -91,10 +101,10 @@ export async function crawlBatch(
     queued: queued.length,
   });
 
-  return { targets, skipped, skipDetails, queued };
+  return { targets, skipped, skipDetails, warnings, queued };
 }
 
-function fallbackLighthouseResult(url: string): LighthouseResult {
+function fallbackLighthouseResult(url: string, failure: FailureDiagnostic): LighthouseResult {
   return {
     url,
     seoScore: 0,
@@ -103,8 +113,7 @@ function fallbackLighthouseResult(url: string): LighthouseResult {
         id: "lighthouse-unavailable",
         title: "Lighthouse measurement unavailable",
         score: 0,
-        description:
-          "Lighthouse did not complete for this run, so the crawler continued with crawl-only fallback scoring.",
+        description: `Lighthouse did not complete for this run (${failure.reason}: ${failure.message}), so the crawler continued with crawl-only fallback scoring.`,
       },
     ],
   };

@@ -17,7 +17,7 @@ const { target } = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/site-crawler/crawler.js", () => ({
-  crawlBatch: vi.fn().mockResolvedValue({ targets: [target], skipped: [], skipDetails: [], queued: [] }),
+  crawlBatch: vi.fn().mockResolvedValue({ targets: [target], skipped: [], skipDetails: [], warnings: [], queued: [] }),
 }));
 
 vi.mock("../src/proposal-generator/generator.js", () => ({
@@ -120,7 +120,36 @@ describe("runE2eSmoke", () => {
       status: "skipped",
       reason: "FIRECRAWL_API_KEY is not set",
     });
+    expect(report.steps[0].details?.diagnostic).toMatchObject({
+      stage: "crawl_and_score",
+      reason: "missing_configuration",
+      message: "FIRECRAWL_API_KEY is not set",
+    });
     expect(crawlBatch).not.toHaveBeenCalled();
+  });
+
+  it("persists provider failure diagnostics when a side-effect step fails", async () => {
+    process.env.SMOKE_SEND_TELEGRAM = "true";
+    process.env.TELEGRAM_BOT_TOKEN = "telegram-test";
+    process.env.TELEGRAM_CHAT_ID = "123";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: async () => ({ ok: false, error: "bad token telegram-test" }),
+      })
+    );
+
+    const reportDir = await mkdtemp(join(tmpdir(), "smoke-report-"));
+    const report = await runE2eSmoke({ targetUrl: "https://example.com", reportDir });
+    const telegramStep = report.steps.find((step) => step.name === "telegram_notification");
+
+    expect(report.status).toBe("failed");
+    expect(telegramStep).toMatchObject({ status: "failed" });
+    expect(telegramStep?.details?.failure).toMatchObject({
+      stage: "telegram_notification",
+      reason: "provider_error",
+    });
+    expect(telegramStep?.details?.failure?.message).not.toContain("telegram-test");
   });
 
   it("passes enabled side-effect flags through the shared run path", async () => {

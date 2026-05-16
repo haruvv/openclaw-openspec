@@ -1,3 +1,5 @@
+import type { FailureDiagnostic } from "../utils/failure-diagnostics.js";
+
 export type RevenueAgentStepStatus = "passed" | "failed" | "skipped";
 
 export interface RevenueAgentStepResult {
@@ -6,7 +8,11 @@ export interface RevenueAgentStepResult {
   durationMs: number;
   reason?: string;
   error?: string;
-  details?: Record<string, unknown>;
+  details?: Record<string, unknown> & {
+    diagnostic?: FailureDiagnostic;
+    failure?: FailureDiagnostic;
+    warnings?: FailureDiagnostic[];
+  };
 }
 
 export interface RevenueAgentRunReport {
