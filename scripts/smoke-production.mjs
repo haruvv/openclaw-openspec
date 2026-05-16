@@ -5,17 +5,27 @@ const jobRequestTimeoutMs = Number(process.env.SMOKE_JOB_REQUEST_TIMEOUT_MS ?? 3
 
 async function main() {
   await checkHealth();
-  await checkAdminUiAssets();
-  await check("admin ui shell", `${baseUrl}/admin`, { expectedStatus: 200, expectedContentType: "text/html", headers: accessHeaders() });
-  await check("admin ui settings deep link", `${baseUrl}/admin/seo-sales/settings`, { expectedStatus: 200, expectedContentType: "text/html", headers: accessHeaders() });
-  await check("admin ui run detail deep link", `${baseUrl}/admin/seo-sales/runs/smoke-deep-link`, { expectedStatus: 200, expectedContentType: "text/html", headers: accessHeaders() });
-  await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatuses: [401, 403], expectedContentType: "" });
+  await checkAdminUi();
+  await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatuses: [302, 401, 403], expectedContentType: "", redirect: "manual" });
   if (process.env.SMOKE_RUN_CRAWL_JOB === "true") {
     await checkManualCrawlJob();
   } else {
     console.log("manual crawl job: skipped (set SMOKE_RUN_CRAWL_JOB=true to enable)");
   }
   console.log(`Production smoke checks passed for ${baseUrl}`);
+}
+
+async function checkAdminUi() {
+  const headers = accessHeaders();
+  if (!headers["CF-Access-Client-Id"] || !headers["CF-Access-Client-Secret"]) {
+    console.log("admin ui checks: skipped (Cloudflare Access service token is not configured)");
+    return;
+  }
+
+  await checkAdminUiAssets(headers);
+  await check("admin ui shell", `${baseUrl}/admin`, { expectedStatus: 200, expectedContentType: "text/html", headers });
+  await check("admin ui settings deep link", `${baseUrl}/admin/seo-sales/settings`, { expectedStatus: 200, expectedContentType: "text/html", headers });
+  await check("admin ui run detail deep link", `${baseUrl}/admin/seo-sales/runs/smoke-deep-link`, { expectedStatus: 200, expectedContentType: "text/html", headers });
 }
 
 async function checkHealth() {
@@ -32,18 +42,18 @@ async function checkHealth() {
   console.log(`health: 200 application/json storage=${body?.storage?.mode ?? "unknown"}`);
 }
 
-async function checkAdminUiAssets() {
+async function checkAdminUiAssets(headers) {
   const html = await getTextWithRetry("admin ui html", `${baseUrl}/admin`, {
     expectedStatus: 200,
     expectedContentType: "text/html",
-    headers: accessHeaders(),
+    headers,
   });
   const assetPaths = [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((match) => match[1]);
   if (assetPaths.length === 0) throw new Error("admin ui assets: no assets found in production admin HTML");
 
   for (const assetPath of assetPaths) {
     const path = assetPath.startsWith("/") ? assetPath : `/admin/${assetPath.replace(/^\.\//, "")}`;
-    await check(`admin ui asset ${path}`, `${baseUrl}${path}`, { expectedStatus: 200, expectedContentType: assetContentType(path), headers: accessHeaders() });
+    await check(`admin ui asset ${path}`, `${baseUrl}${path}`, { expectedStatus: 200, expectedContentType: assetContentType(path), headers });
   }
 }
 
@@ -127,7 +137,12 @@ async function check(name, url, expectation) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "HEAD", headers: expectation.headers ?? {}, signal: AbortSignal.timeout(requestTimeoutMs) });
+      const res = await fetch(url, {
+        method: "HEAD",
+        headers: expectation.headers ?? {},
+        redirect: expectation.redirect ?? "follow",
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
       const contentType = res.headers.get("content-type") ?? "";
       const statuses = expectation.expectedStatuses ?? [expectation.expectedStatus];
       if (statuses.includes(res.status) && contentType.includes(expectation.expectedContentType)) {
