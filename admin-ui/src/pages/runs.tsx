@@ -24,9 +24,13 @@ export function RunsPage() {
     setRerunning(true);
     setRerunError(null);
     try {
-      const result = await apiPost<{ location: string }>("/api/admin/seo-sales/runs", { url: urlFilter });
+      const result = await apiPost<{ runId?: string; location?: string }>("/api/admin/seo-sales/runs", { url: urlFilter });
       apiCache.delete("/api/admin/seo-sales/runs");
-      navigate(`${result.location}?url=${encodeURIComponent(urlFilter)}`);
+      const detailPath = result.runId
+        ? `/admin/seo-sales/runs/${encodeURIComponent(result.runId)}`
+        : result.location;
+      if (!detailPath) throw new Error("再解析の実行IDが返りませんでした");
+      navigate(`${detailPath}?url=${encodeURIComponent(urlFilter)}`);
     } catch (err) {
       setRerunError(err instanceof Error ? err.message : "再解析の開始に失敗しました");
       setRerunning(false);
