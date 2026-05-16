@@ -17,7 +17,7 @@ const { target } = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/site-crawler/crawler.js", () => ({
-  crawlBatch: vi.fn().mockResolvedValue({ targets: [target], skipped: [], queued: [] }),
+  crawlBatch: vi.fn().mockResolvedValue({ targets: [target], skipped: [], skipDetails: [], queued: [] }),
 }));
 
 vi.mock("../src/proposal-generator/generator.js", () => ({

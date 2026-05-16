@@ -2,7 +2,7 @@ import { scrapeUrl } from "./firecrawl-client.js";
 import { measureSeo } from "./lighthouse-runner.js";
 import { scoreSeoOpportunity } from "./opportunity-scorer.js";
 import { logger } from "../utils/logger.js";
-import type { Target } from "../types/index.js";
+import type { LighthouseResult, Target } from "../types/index.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_THRESHOLD = Number(process.env.SEO_SCORE_THRESHOLD ?? 50);
@@ -12,7 +12,14 @@ const MAX_BATCH_SIZE = Number(process.env.MAX_BATCH_SIZE ?? 50);
 export interface CrawlBatchResult {
   targets: Target[];
   skipped: string[];
+  skipDetails: CrawlSkipDetail[];
   queued: string[];
+}
+
+export interface CrawlSkipDetail {
+  url: string;
+  stage: "crawl" | "opportunity";
+  reason: string;
 }
 
 export async function crawlBatch(
@@ -26,24 +33,29 @@ export async function crawlBatch(
 
   const targets: Target[] = [];
   const skipped: string[] = [];
+  const skipDetails: CrawlSkipDetail[] = [];
 
   for (const url of batch) {
     const crawled = await scrapeUrl(url);
     if (!crawled) {
       skipped.push(url);
+      skipDetails.push({ url, stage: "crawl", reason: "crawl_failed" });
       logger.warn("Skipping URL (crawl failed)", { url });
       continue;
     }
 
-    const lhResult = await measureSeo(url);
-    if (!lhResult) {
-      skipped.push(url);
-      logger.warn("Skipping URL (lighthouse failed)", { url });
-      continue;
-    }
+    const measured = await measureSeo(url);
+    const lhResult = measured ?? fallbackLighthouseResult(url);
+    if (!measured) logger.warn("Continuing URL with crawl-only SEO fallback (lighthouse failed)", { url });
 
     const opportunity = scoreSeoOpportunity(crawled, lhResult);
     if (lhResult.seoScore > threshold && opportunity.opportunityScore < opportunityThreshold) {
+      skipped.push(url);
+      skipDetails.push({
+        url,
+        stage: "opportunity",
+        reason: `seo_score_${lhResult.seoScore}_above_threshold_${threshold}_and_opportunity_${opportunity.opportunityScore}_below_${opportunityThreshold}`,
+      });
       logger.info("URL below opportunity threshold, skipping", {
         url,
         score: lhResult.seoScore,
@@ -79,5 +91,21 @@ export async function crawlBatch(
     queued: queued.length,
   });
 
-  return { targets, skipped, queued };
+  return { targets, skipped, skipDetails, queued };
+}
+
+function fallbackLighthouseResult(url: string): LighthouseResult {
+  return {
+    url,
+    seoScore: 0,
+    diagnostics: [
+      {
+        id: "lighthouse-unavailable",
+        title: "Lighthouse measurement unavailable",
+        score: 0,
+        description:
+          "Lighthouse did not complete for this run, so the crawler continued with crawl-only fallback scoring.",
+      },
+    ],
+  };
 }

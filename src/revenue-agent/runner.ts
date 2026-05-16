@@ -50,12 +50,16 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.crawl = {
         targets: result.targets.length,
         skipped: result.skipped,
+        skipDetails: result.skipDetails,
         queued: result.queued.length,
       };
       if (!target) {
+        const firstSkip = result.skipDetails[0];
         return {
           status: "failed",
-          error: "No target produced by crawl and Lighthouse steps",
+          error: firstSkip
+            ? `No target produced by crawl_and_score (${firstSkip.stage}: ${firstSkip.reason})`
+            : "No target produced by crawl and Lighthouse steps",
           details: outputs.crawl as Record<string, unknown>,
         };
       }
@@ -66,11 +70,13 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.domain = target.domain;
       outputs.contactEmail = target.contactEmail;
       outputs.contactMethods = target.contactMethods ?? [];
+      const lighthouseFallback = target.diagnostics.some((diagnostic) => diagnostic.id === "lighthouse-unavailable");
       return {
         status: "passed",
         details: {
           domain: target.domain,
           seoScore: target.seoScore,
+          lighthouseFallback,
           opportunityScore: target.opportunityScore,
           opportunityFindings: target.opportunityFindings?.length ?? 0,
           contactMethods: target.contactMethods?.length ?? 0,

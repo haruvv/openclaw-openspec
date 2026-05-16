@@ -58,9 +58,14 @@ describe("crawlBatch", () => {
     const result = await crawlBatch(["https://broken.com"]);
     expect(result.targets).toHaveLength(0);
     expect(result.skipped).toContain("https://broken.com");
+    expect(result.skipDetails).toContainEqual({
+      url: "https://broken.com",
+      stage: "crawl",
+      reason: "crawl_failed",
+    });
   });
 
-  it("skips URL when lighthouse fails", async () => {
+  it("continues with crawl-only fallback when lighthouse fails", async () => {
     mockScrape.mockResolvedValue({
       url: "https://slow.com",
       domain: "slow.com",
@@ -69,8 +74,11 @@ describe("crawlBatch", () => {
     });
     mockLh.mockResolvedValue(null);
     const result = await crawlBatch(["https://slow.com"]);
-    expect(result.targets).toHaveLength(0);
-    expect(result.skipped).toContain("https://slow.com");
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0].seoScore).toBe(0);
+    expect(result.targets[0].diagnostics).toContainEqual(expect.objectContaining({ id: "lighthouse-unavailable" }));
+    expect(result.skipped).toHaveLength(0);
+    expect(result.skipDetails).toHaveLength(0);
   });
 
   it("queues URLs beyond batch limit of 50", async () => {
