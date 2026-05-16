@@ -457,14 +457,87 @@ function DiagnosticsTable({ diagnostics }: { diagnostics: SeoDiagnostic[] }) {
     <div className="mt-4 overflow-x-auto">
       <table className="data-table">
         <thead><tr><th>診断項目</th><th>スコア</th><th>内容</th></tr></thead>
-        <tbody>{diagnostics.map((diagnostic) => (
-          <tr key={diagnostic.id}>
-            <td>{diagnostic.title}</td>
-            <td>{diagnostic.score === null ? "未計測" : `${Math.round(diagnostic.score * 100)}点`}</td>
-            <td>{diagnostic.description || "-"}</td>
-          </tr>
-        ))}</tbody>
+        <tbody>{diagnostics.map((diagnostic) => {
+          const display = formatSeoDiagnostic(diagnostic);
+          return (
+            <tr key={diagnostic.id}>
+              <td>{display.title}</td>
+              <td>{diagnostic.score === null ? "未計測" : `${Math.round(diagnostic.score * 100)}点`}</td>
+              <td>{display.description}</td>
+            </tr>
+          );
+        })}</tbody>
       </table>
     </div>
   );
 }
+
+function formatSeoDiagnostic(diagnostic: SeoDiagnostic): { title: string; description: string } {
+  const known = SEO_DIAGNOSTIC_COPY[diagnostic.id];
+  if (known) return known;
+  return {
+    title: `Lighthouse診断: ${diagnostic.id}`,
+    description: diagnostic.score === null
+      ? "この項目はLighthouseで計測できませんでした。"
+      : "Lighthouseでこの項目に改善余地が検出されました。詳細な原文は保存データに保持されています。",
+  };
+}
+
+const SEO_DIAGNOSTIC_COPY: Record<string, { title: string; description: string }> = {
+  "document-title": {
+    title: "ページタイトル",
+    description: "検索結果やブラウザタブに表示されるtitle要素に改善余地があります。ページ内容と提供価値が伝わるタイトルにします。",
+  },
+  "meta-description": {
+    title: "メタディスクリプション",
+    description: "検索結果の説明文として使われるmeta descriptionに改善余地があります。対象顧客、提供価値、問い合わせ導線を含めます。",
+  },
+  "http-status-code": {
+    title: "HTTPステータス",
+    description: "ページが正常なHTTPステータスで返っていない可能性があります。検索エンジンがページを取得できる状態にします。",
+  },
+  "link-text": {
+    title: "リンク文言",
+    description: "リンクの文言だけでは遷移先の内容が分かりにくい可能性があります。具体的なページ名や行動が伝わる文言にします。",
+  },
+  "crawlable-anchors": {
+    title: "クロール可能なリンク",
+    description: "検索エンジンがたどりにくいリンクがあります。通常のhrefを持つリンクとして実装します。",
+  },
+  "is-crawlable": {
+    title: "クロール許可",
+    description: "検索エンジンがページをクロールできない設定になっている可能性があります。robots設定やmeta robotsを確認します。",
+  },
+  "robots-txt": {
+    title: "robots.txt",
+    description: "robots.txtの設定により、検索エンジンの巡回に影響が出ている可能性があります。",
+  },
+  "image-alt": {
+    title: "画像の代替テキスト",
+    description: "画像に代替テキストが不足しています。画像の意味や内容が伝わるalt属性を設定します。",
+  },
+  hreflang: {
+    title: "言語・地域指定",
+    description: "多言語・地域向けページの指定に改善余地があります。hreflang設定を確認します。",
+  },
+  canonical: {
+    title: "canonical URL",
+    description: "正規URLの指定に改善余地があります。重複ページの評価が分散しないようcanonicalを確認します。",
+  },
+  "structured-data": {
+    title: "構造化データ",
+    description: "構造化データに改善余地があります。検索エンジンが事業・サービス情報を理解しやすい形式にします。",
+  },
+  "font-size": {
+    title: "文字サイズ",
+    description: "モバイルで読みにくい文字サイズが含まれている可能性があります。本文やリンクの可読性を調整します。",
+  },
+  "tap-targets": {
+    title: "タップ領域",
+    description: "スマートフォンでタップしにくいボタンやリンクがあります。十分な余白と押しやすいサイズにします。",
+  },
+  "lighthouse-unavailable": {
+    title: "Lighthouse計測",
+    description: "Lighthouse計測が完了しなかったため、クロール結果のみで分析を継続しました。実行ログの警告に失敗理由が記録されています。",
+  },
+};

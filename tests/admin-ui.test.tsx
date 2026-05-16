@@ -34,7 +34,10 @@ describe("admin UI routing", () => {
     expect(screen.getByText("ホームページの簡易診断について")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "info@example.com" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "https://example.com/contact" })).toBeInTheDocument();
-    expect(screen.getByText("Document lacks title")).toBeInTheDocument();
+    expect(screen.getByText("ページタイトル")).toBeInTheDocument();
+    expect(screen.getByText(/検索結果やブラウザタブ/)).toBeInTheDocument();
+    expect(screen.queryByText("Document lacks title")).not.toBeInTheDocument();
+    expect(screen.queryByText("Title element is missing.")).not.toBeInTheDocument();
     expect(screen.getAllByText("メール提案文").length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith("/api/admin/seo-sales/runs/run-1", { credentials: "same-origin" });
   });
