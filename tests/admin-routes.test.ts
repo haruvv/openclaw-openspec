@@ -32,13 +32,26 @@ describe("admin routes", () => {
     };
   });
 
-  it("requires ADMIN_TOKEN in production", async () => {
+  it("requires an admin auth boundary in production", async () => {
     const { adminRouter } = await import("../src/admin/routes.js");
 
     const response = await dispatch(adminRouter, "/");
 
     expect(response.status).toBe(503);
-    expect(response.body).toContain("ADMIN_TOKEN");
+    expect(response.body).toContain("Cloudflare Access");
+  });
+
+  it("does not accept admin token query parameters when Cloudflare Access is enabled", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.CLOUDFLARE_ACCESS_ENABLED = "true";
+    process.env.CLOUDFLARE_ACCESS_ISSUER = "https://team.cloudflareaccess.com";
+    process.env.CLOUDFLARE_ACCESS_ADMIN_AUD = "admin-aud";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/apps?token=admin-test", "/api/admin");
+
+    expect(response.status).toBe(401);
+    expect(JSON.parse(response.body)).toEqual({ error: "Unauthorized" });
   });
 
   it("returns business apps from the admin API when token is provided", async () => {

@@ -8,10 +8,10 @@ Production is deployed by GitHub Actions.
 - Workflow: `.github/workflows/deploy-production.yml`
 - Checks: `npm ci`, `npm test`, `npm run build`
 - Deploy command: `npm run deploy:cloudflare`
-- Post-deploy smoke: `/health`, `/admin`, built admin assets, admin SPA deep links, and the admin API auth boundary
+- Post-deploy smoke: `/health`, `/admin`, built admin assets, admin SPA deep links, and the admin API auth boundary. When Cloudflare Access is enabled, smoke requests that must pass Access use `SMOKE_CF_ACCESS_CLIENT_ID` and `SMOKE_CF_ACCESS_CLIENT_SECRET`.
 - Runtime Node.js: 20, because `better-sqlite3@9.6.0` is currently validated on Node 20 in this project
 
-Production smoke can also run one real manual crawl job. This is disabled by default to avoid external API cost and production history noise. Enable it by setting GitHub variable `SMOKE_RUN_CRAWL_JOB=true`, GitHub secret `SMOKE_ADMIN_TOKEN`, and optionally GitHub variable `SMOKE_CRAWL_TARGET_URL`. The manual admin job disables email, Telegram, and Stripe side effects, then checks that the run and its `crawl_and_score` step both pass.
+Production smoke can also run one real manual crawl job. This is disabled by default to avoid external API cost and production history noise. Enable it by setting GitHub variable `SMOKE_RUN_CRAWL_JOB=true`, GitHub secrets `SMOKE_CF_ACCESS_CLIENT_ID` and `SMOKE_CF_ACCESS_CLIENT_SECRET`, and optionally GitHub variable `SMOKE_CRAWL_TARGET_URL`. The Access service token used for smoke must be allowed by the admin Access application, and production must set `CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN=true` if app-side Access validation is enabled. The manual admin job disables email, Telegram, and Stripe side effects, then checks that the run and its `crawl_and_score` step both pass.
 
 Manual staging deploy is available from the `Deploy Staging` workflow. Staging uses the same build and tests, then deploys with a different Worker name.
 
@@ -20,7 +20,8 @@ Manual staging deploy is available from the `Deploy Staging` workflow. Staging u
 | Secret | Purpose |
 | --- | --- |
 | `CLOUDFLARE_API_TOKEN` | Allows GitHub Actions to run `wrangler deploy` |
-| `SMOKE_ADMIN_TOKEN` | Optional. Enables the production smoke test to start one manual crawl job through the admin API |
+| `SMOKE_CF_ACCESS_CLIENT_ID` | Optional. Cloudflare Access Service Token client ID for authenticated smoke requests |
+| `SMOKE_CF_ACCESS_CLIENT_SECRET` | Optional. Cloudflare Access Service Token client secret for authenticated smoke requests |
 
 The Cloudflare account ID is fixed in the workflow. Runtime application secrets are not stored in GitHub; keep them in Cloudflare Worker secrets.
 
@@ -33,7 +34,17 @@ Required:
 | `REVENUE_AGENT_INTEGRATION_TOKEN` | Bearer token for protected API calls |
 | `FIRECRAWL_API_KEY` | Crawl provider |
 | `GEMINI_API_KEY` | Primary LLM provider |
-| `ADMIN_TOKEN` | Admin portal access |
+
+Required Cloudflare Access configuration when `CLOUDFLARE_ACCESS_ENABLED=true`:
+
+| Variable | Purpose |
+| --- | --- |
+| `CLOUDFLARE_ACCESS_ISSUER` | Access team domain, for example `https://<team>.cloudflareaccess.com` |
+| `CLOUDFLARE_ACCESS_ADMIN_AUD` | Access audience tag for the admin application |
+| `CLOUDFLARE_ACCESS_MACHINE_AUD` | Access audience tag for machine API access |
+| `CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN` | Set to `true` only when a Service Token is allowed to run admin smoke checks |
+
+`ADMIN_TOKEN` remains a local/development fallback. In production with Cloudflare Access enabled, query-token admin access is disabled unless `CLOUDFLARE_ACCESS_ALLOW_ADMIN_TOKEN_FALLBACK=true` is set temporarily for rollback.
 
 Optional:
 
@@ -61,6 +72,15 @@ npx wrangler containers instances a037f67b-f44e-4df2-982e-9a90d323736e
 ```
 
 Do not paste secret values into issue comments, logs, or chat.
+
+## Cloudflare Access Rollback
+
+If Access rollout blocks production unexpectedly:
+
+1. Set `CLOUDFLARE_ACCESS_ENABLED=false` in the Worker environment and redeploy.
+2. If emergency admin access is needed before Access is fixed, set `ADMIN_TOKEN` and use `CLOUDFLARE_ACCESS_ALLOW_ADMIN_TOKEN_FALLBACK=true` only for the rollback window.
+3. Keep `REVENUE_AGENT_INTEGRATION_TOKEN` unchanged so OpenClaw machine calls can continue through the existing bearer-token boundary.
+4. Fix the Access application paths, audience tags, or Service Token policy, then re-enable `CLOUDFLARE_ACCESS_ENABLED=true`.
 
 ## Persistence
 

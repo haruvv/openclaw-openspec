@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiCache, apiGet, withAdminToken } from "./api";
+import { apiCache, apiGet } from "./api";
 import type { AgentRun } from "./types";
 import { getTargetUrl } from "./utils";
 
@@ -78,7 +78,7 @@ export function useApi<T>(path: string) {
     }
     if (canApply()) setError(null);
     try {
-      const res = await fetch(withAdminToken(targetPath), { credentials: "same-origin" });
+      const res = await fetch(targetPath, { credentials: "same-origin" });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const json = (await res.json()) as T;
       apiCache.set(targetPath, json);

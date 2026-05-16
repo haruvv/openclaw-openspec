@@ -11,7 +11,7 @@ import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } 
 import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { businessApps } from "./business-apps.js";
-import { isAdminAuthorized, isAdminTokenConfigured } from "./auth.js";
+import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
 import { getSideEffectSettings, saveSideEffectSettings } from "./side-effect-settings.js";
 
 export const adminRouter = Router();
@@ -302,37 +302,34 @@ function parsePaymentLinkBody(body: unknown):
   };
 }
 
-function requireAdminPageAuth(req: Request, res: Response, next: () => void): void {
-  if (isAdminAuthorized(req, res)) {
+async function requireAdminPageAuth(req: Request, res: Response, next: () => void): Promise<void> {
+  const auth = await authorizeAdminRequest(req, res);
+  if (auth.ok) {
     next();
     return;
   }
 
-  if (isAdminTokenConfigured()) {
+  if (auth.status === 401 && isAdminTokenConfigured() && auth.reason === "token") {
     res.status(401).send(renderFallbackPage("管理画面ログイン", renderLogin(req.originalUrl)));
     return;
   }
 
-  if (process.env.NODE_ENV === "production") {
-    res.status(503).send(renderFallbackPage("管理画面を利用できません", "<p>本番環境では <code>ADMIN_TOKEN</code> が必要です。</p>"));
+  if (auth.status === 503) {
+    res.status(503).send(renderFallbackPage("管理画面を利用できません", "<p>本番環境では Cloudflare Access または一時 fallback 認証の設定が必要です。</p>"));
     return;
   }
 
-  next();
+  res.status(401).send(renderFallbackPage("管理画面ログイン", "<p>Cloudflare Access 認証が必要です。</p>"));
 }
 
-function requireAdminApiAuth(req: Request, res: Response, next: () => void): void {
-  if (isAdminAuthorized(req, res)) {
+async function requireAdminApiAuth(req: Request, res: Response, next: () => void): Promise<void> {
+  const auth = await authorizeAdminRequest(req, res);
+  if (auth.ok) {
     next();
     return;
   }
 
-  if (process.env.NODE_ENV === "production" || isAdminTokenConfigured()) {
-    res.status(401).json({ error: "admin_token_required" });
-    return;
-  }
-
-  next();
+  res.status(auth.status).json({ error: auth.error });
 }
 
 function renderLogin(returnTo: string): string {

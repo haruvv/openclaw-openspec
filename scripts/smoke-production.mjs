@@ -6,10 +6,10 @@ const jobRequestTimeoutMs = Number(process.env.SMOKE_JOB_REQUEST_TIMEOUT_MS ?? 3
 async function main() {
   await checkHealth();
   await checkAdminUiAssets();
-  await check("admin ui shell", `${baseUrl}/admin`, { expectedStatus: 200, expectedContentType: "text/html" });
-  await check("admin ui settings deep link", `${baseUrl}/admin/seo-sales/settings`, { expectedStatus: 200, expectedContentType: "text/html" });
-  await check("admin ui run detail deep link", `${baseUrl}/admin/seo-sales/runs/smoke-deep-link`, { expectedStatus: 200, expectedContentType: "text/html" });
-  await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatus: 401, expectedContentType: "application/json" });
+  await check("admin ui shell", `${baseUrl}/admin`, { expectedStatus: 200, expectedContentType: "text/html", headers: accessHeaders() });
+  await check("admin ui settings deep link", `${baseUrl}/admin/seo-sales/settings`, { expectedStatus: 200, expectedContentType: "text/html", headers: accessHeaders() });
+  await check("admin ui run detail deep link", `${baseUrl}/admin/seo-sales/runs/smoke-deep-link`, { expectedStatus: 200, expectedContentType: "text/html", headers: accessHeaders() });
+  await check("admin api auth boundary", `${baseUrl}/api/admin/apps`, { expectedStatuses: [401, 403], expectedContentType: "" });
   if (process.env.SMOKE_RUN_CRAWL_JOB === "true") {
     await checkManualCrawlJob();
   } else {
@@ -36,32 +36,34 @@ async function checkAdminUiAssets() {
   const html = await getTextWithRetry("admin ui html", `${baseUrl}/admin`, {
     expectedStatus: 200,
     expectedContentType: "text/html",
+    headers: accessHeaders(),
   });
   const assetPaths = [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((match) => match[1]);
   if (assetPaths.length === 0) throw new Error("admin ui assets: no assets found in production admin HTML");
 
   for (const assetPath of assetPaths) {
     const path = assetPath.startsWith("/") ? assetPath : `/admin/${assetPath.replace(/^\.\//, "")}`;
-    await check(`admin ui asset ${path}`, `${baseUrl}${path}`, { expectedStatus: 200, expectedContentType: assetContentType(path) });
+    await check(`admin ui asset ${path}`, `${baseUrl}${path}`, { expectedStatus: 200, expectedContentType: assetContentType(path), headers: accessHeaders() });
   }
 }
 
 async function checkManualCrawlJob() {
-  const adminToken = process.env.SMOKE_ADMIN_TOKEN || process.env.ADMIN_TOKEN;
-  if (!adminToken) {
-    throw new Error("manual crawl job: SMOKE_ADMIN_TOKEN or ADMIN_TOKEN is required when SMOKE_RUN_CRAWL_JOB=true");
+  const headers = accessHeaders();
+  if (!headers["CF-Access-Client-Id"] || !headers["CF-Access-Client-Secret"]) {
+    throw new Error("manual crawl job: SMOKE_CF_ACCESS_CLIENT_ID and SMOKE_CF_ACCESS_CLIENT_SECRET are required when SMOKE_RUN_CRAWL_JOB=true");
   }
 
   const targetUrl = process.env.SMOKE_CRAWL_TARGET_URL || "https://example.com";
-  const response = await postJson("manual crawl job", adminUrl("/api/admin/seo-sales/runs", adminToken), {
+  const response = await postJson("manual crawl job", adminUrl("/api/admin/seo-sales/runs"), {
     url: targetUrl,
-  });
+  }, headers);
 
   assertRunPassed("manual crawl job", response.report);
 
-  const detail = await getJsonWithRetry("manual crawl job detail", adminUrl(`/api/admin/seo-sales/runs/${encodeURIComponent(response.runId)}`, adminToken), {
+  const detail = await getJsonWithRetry("manual crawl job detail", adminUrl(`/api/admin/seo-sales/runs/${encodeURIComponent(response.runId)}`), {
     expectedStatus: 200,
     expectedContentType: "application/json",
+    headers,
   });
   assertRunPassed("manual crawl job detail", detail.run);
   console.log(`manual crawl job: passed runId=${response.runId} target=${targetUrl}`);
@@ -78,10 +80,10 @@ function assertRunPassed(name, run) {
   }
 }
 
-async function postJson(name, url, body) {
+async function postJson(name, url, body, headers = {}) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(jobRequestTimeoutMs),
   });
@@ -100,10 +102,18 @@ async function postJson(name, url, body) {
   return json;
 }
 
-function adminUrl(path, token) {
-  const url = new URL(path, `${baseUrl}/`);
-  url.searchParams.set("token", token);
-  return url.toString();
+function adminUrl(path) {
+  return new URL(path, `${baseUrl}/`).toString();
+}
+
+function accessHeaders() {
+  const clientId = process.env.SMOKE_CF_ACCESS_CLIENT_ID;
+  const clientSecret = process.env.SMOKE_CF_ACCESS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return {};
+  return {
+    "CF-Access-Client-Id": clientId,
+    "CF-Access-Client-Secret": clientSecret,
+  };
 }
 
 function assetContentType(path) {
@@ -117,13 +127,14 @@ async function check(name, url, expectation) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(requestTimeoutMs) });
+      const res = await fetch(url, { method: "HEAD", headers: expectation.headers ?? {}, signal: AbortSignal.timeout(requestTimeoutMs) });
       const contentType = res.headers.get("content-type") ?? "";
-      if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
+      const statuses = expectation.expectedStatuses ?? [expectation.expectedStatus];
+      if (statuses.includes(res.status) && contentType.includes(expectation.expectedContentType)) {
         console.log(`${name}: ${res.status} ${contentType}`);
         return;
       }
-      lastError = new Error(`${name}: expected ${expectation.expectedStatus} ${expectation.expectedContentType}, got ${res.status} ${contentType}`);
+      lastError = new Error(`${name}: expected ${statuses.join("/")} ${expectation.expectedContentType}, got ${res.status} ${contentType}`);
     } catch (error) {
       lastError = error;
     }
@@ -137,7 +148,7 @@ async function getJsonWithRetry(name, url, expectation) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(requestTimeoutMs) });
+      const res = await fetch(url, { method: "GET", headers: expectation.headers ?? {}, signal: AbortSignal.timeout(requestTimeoutMs) });
       const contentType = res.headers.get("content-type") ?? "";
       if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
         return await res.json();
@@ -156,7 +167,7 @@ async function getTextWithRetry(name, url, expectation) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(requestTimeoutMs) });
+      const res = await fetch(url, { method: "GET", headers: expectation.headers ?? {}, signal: AbortSignal.timeout(requestTimeoutMs) });
       const contentType = res.headers.get("content-type") ?? "";
       if (res.status === expectation.expectedStatus && contentType.includes(expectation.expectedContentType)) {
         return await res.text();

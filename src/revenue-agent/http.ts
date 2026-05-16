@@ -1,5 +1,10 @@
 import type { Request, Response } from "express";
 import { getSideEffectSettings } from "../admin/side-effect-settings.js";
+import {
+  cloudflareAccessConfigForMachine,
+  logCloudflareAccessFailure,
+  validateCloudflareAccessHeader,
+} from "../security/cloudflare-access.js";
 import { runRevenueAgent } from "./runner.js";
 import {
   applySideEffectPolicy,
@@ -12,6 +17,16 @@ import {
 import type { RevenueAgentRunRequest } from "./types.js";
 
 export async function handleRevenueAgentRun(req: Request, res: Response): Promise<void> {
+  const accessConfig = cloudflareAccessConfigForMachine();
+  if (accessConfig.enabled) {
+    const access = await validateCloudflareAccessHeader(req.headers["cf-access-jwt-assertion"], accessConfig, "service");
+    if (!access.ok) {
+      logCloudflareAccessFailure(req.originalUrl ?? req.url ?? "/api/revenue-agent/run", access.status);
+      res.status(access.status).json(access.body);
+      return;
+    }
+  }
+
   const auth = validateRevenueAgentAuth(req.headers.authorization);
   if (!auth.ok) {
     res.status(auth.status).json(auth.body);

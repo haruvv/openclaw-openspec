@@ -6,9 +6,13 @@ This document defines how OpenClaw should call RevenueAgentPlatform as one high-
 
 ```http
 POST /api/revenue-agent/run
+CF-Access-Client-Id: <CLOUDFLARE_ACCESS_CLIENT_ID>
+CF-Access-Client-Secret: <CLOUDFLARE_ACCESS_CLIENT_SECRET>
 Authorization: Bearer <REVENUE_AGENT_INTEGRATION_TOKEN>
 Content-Type: application/json
 ```
+
+In production, Cloudflare Access Service Auth is the outer machine boundary. During migration, the application still requires `Authorization: Bearer <REVENUE_AGENT_INTEGRATION_TOKEN>` as an inner defense-in-depth check.
 
 ## Request
 
@@ -114,6 +118,8 @@ OpenClaw Gateway:
 ```dotenv
 REVENUE_AGENT_BASE_URL=http://localhost:3000
 REVENUE_AGENT_INTEGRATION_TOKEN=<same-shared-secret>
+CLOUDFLARE_ACCESS_CLIENT_ID=<service-token-client-id>
+CLOUDFLARE_ACCESS_CLIENT_SECRET=<service-token-client-secret>
 ```
 
 ## Production Security
@@ -126,10 +132,12 @@ Required production controls:
 
 - Serve the API only over HTTPS.
 - Put the API behind Cloudflare.
+- Protect `POST /api/revenue-agent/run` with Cloudflare Access Service Auth and issue one Service Token per automation client.
 - Configure Cloudflare Rate Limiting for `POST /api/revenue-agent/run`; the application also has `REVENUE_AGENT_RATE_LIMIT_PER_MINUTE` as a local fallback.
 - Keep CORS closed unless a separate browser-facing client is intentionally introduced.
 - Keep `REVENUE_AGENT_ALLOW_EMAIL`, `REVENUE_AGENT_ALLOW_TELEGRAM`, and `REVENUE_AGENT_ALLOW_PAYMENT_LINK` set to `false` until each side effect is manually verified in production.
 - Do not log `Authorization` headers, integration tokens, provider API keys, Telegram bot tokens, or Stripe secrets.
+- Rotate or revoke Cloudflare Access Service Tokens from Zero Trust > Access controls > Service credentials when a client is decommissioned or a secret may have leaked.
 
 The API rejects unsafe crawl targets before starting expensive work:
 
@@ -198,6 +206,8 @@ Call:
 
 ```bash
 curl -sS "$REVENUE_AGENT_BASE_URL/api/revenue-agent/run" \
+  -H "CF-Access-Client-Id: $CLOUDFLARE_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CLOUDFLARE_ACCESS_CLIENT_SECRET" \
   -H "Authorization: Bearer $REVENUE_AGENT_INTEGRATION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

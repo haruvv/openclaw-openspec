@@ -156,8 +156,9 @@ OpenClaw 連携は将来の拡張として残します。自然文 routing、複
 | 項目 | 方針 |
 | --- | --- |
 | Hosting | Cloudflare Containers |
-| Hostname | 初期は `https://revenue-agent-platform.<workers-subdomain>.workers.dev` |
+| Hostname | 初期は `https://revenue-agent-platform.<workers-subdomain>.workers.dev`。Access 本運用では独自ドメインを推奨 |
 | TLS | Cloudflare managed HTTPS |
+| Access | Cloudflare Access で管理画面と機械 API を保護 |
 | Rate Limiting | Workers Rate Limiting binding で `POST /api/revenue-agent/run` を対象に設定 |
 | Request filtering | 必要に応じて WAF / custom rules を追加 |
 | Logs | Authorization header や API key を出さない |
@@ -166,7 +167,40 @@ Rate Limiting は Cloudflare 側を第一防衛線にし、アプリ側の `REVE
 
 `wrangler.jsonc` では `REVENUE_AGENT_RUN_LIMITER` binding を設定し、`POST /api/revenue-agent/run` だけを client IP ごとに 60 秒 10 requests へ制限します。この制限は Worker wrapper で container に proxy する前に評価するため、無効 token や不正 request でも高コストな container 実行へ進みにくくなります。
 
-`wrangler.jsonc` では `workers_dev=true` を明示し、初回は Cloudflare の workers.dev hostname を本番候補 URL として使います。独自ドメインを使う場合は、Cloudflare zone が決まった後で `routes` を追加します。
+`wrangler.jsonc` では `workers_dev=true` を明示していますが、Cloudflare Access を安定運用する本番 URL は Cloudflare 管理の独自 hostname を推奨します。独自ドメインを使う場合は、Cloudflare zone が決まった後で `routes` を追加し、その hostname に Access application を設定します。
+
+Cloudflare Access の保護対象:
+
+| 対象 path | Access policy |
+| --- | --- |
+| `/admin`, `/admin/*` | 管理者の本人確認を必須にする。MFA も必須 |
+| `/api/admin`, `/api/admin/*` | 管理者の本人確認を必須にする。Smoke 用 Service Token を許可する場合のみ `CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN=true` |
+| `POST /api/revenue-agent/run` | OpenClaw / automation 用の Service Auth policy を必須にする |
+| `/health` | 秘密を含まない health check として公開するか、運用方針に応じて別 policy で保護する |
+| `/telegram/webhook` | Telegram から到達できるよう Access 対象外にする。設定時は `TELEGRAM_WEBHOOK_SECRET` で検証する |
+| `/webhooks/stripe` | Stripe から到達できるよう Access 対象外にする。Stripe signature validation で検証する |
+| `/hil/*`, `/thank-you` | ユーザー向け導線として公開する。必要な箇所は HIL token で検証する |
+
+アプリ側の Access JWT 検証は、以下の secret を設定して有効化します。
+
+```bash
+npx wrangler secret put CLOUDFLARE_ACCESS_ENABLED
+npx wrangler secret put CLOUDFLARE_ACCESS_ISSUER
+npx wrangler secret put CLOUDFLARE_ACCESS_ADMIN_AUD
+npx wrangler secret put CLOUDFLARE_ACCESS_MACHINE_AUD
+```
+
+`CLOUDFLARE_ACCESS_ENABLED` は、Access application を作成し、AUD tag と smoke 用 credential を設定してから `true` にします。`wrangler secret put` で設定する値はログに出さないでください。`CLOUDFLARE_ACCESS_ISSUER` は `https://<team>.cloudflareaccess.com` のような team domain です。AUD tag は各 Access application の画面から取得します。
+
+Cloudflare Dashboard での設定手順:
+
+1. Zero Trust > Access > Applications を開き、Self-hosted application を作成します。管理画面用 application の対象は本番 hostname の `/admin`, `/admin/*`, `/api/admin`, `/api/admin/*` です。
+2. 管理者のメールアドレスまたはグループを許可 policy に追加します。MFA は identity provider または Access policy 側で必須にします。
+3. 管理画面用 application の AUD tag をコピーし、`CLOUDFLARE_ACCESS_ADMIN_AUD` に設定します。
+4. `POST /api/revenue-agent/run` 用に、機械 API 向けの Self-hosted application または path policy を作成します。
+5. Access controls > Service credentials > Service Tokens で Service Token を作成します。その Service Token を機械 API application の Service Auth policy に追加し、機械 API application の AUD tag を `CLOUDFLARE_ACCESS_MACHINE_AUD` に設定します。
+6. GitHub Actions の smoke test から管理 API にアクセスする場合は、smoke 専用の Service Token を別途作成して管理画面用 application に追加します。その場合だけ `CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN=true` を設定します。
+7. Access application、AUD tag、smoke 用 credential の設定がすべて終わってから `CLOUDFLARE_ACCESS_ENABLED=true` を設定します。
 
 このリポジトリには Cloudflare Containers 用の最小構成を置きます。
 
@@ -232,62 +266,61 @@ npx wrangler secret put TELEGRAM_CHAT_ID
 npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
-npx wrangler secret put ADMIN_TOKEN
 ```
 
-### Admin portal
+### 管理ポータル
 
-The management portal is served by Worker Static Assets under `/admin`. It lists business apps such as SEO営業 and planned future apps such as 株自動売買.
+管理ポータルは `/admin` 配下で Worker Static Assets から配信します。SEO営業などの有効な business app と、株自動売買など今後追加予定の app を一覧表示します。
 
-The admin UI is a React + Tailwind single-page app built into `dist-assets/admin` by `npm run build`. Worker Static Assets serves that bundle under `/admin`, while operational data is provided by JSON APIs under `/api/admin` and forwarded to the Container.
+管理 UI は React + Tailwind の single-page app で、`npm run build` により `dist-assets/admin` に出力されます。Worker Static Assets が `/admin` 配下でその bundle を配信し、運用データは `/api/admin` 配下の JSON API から取得します。JSON API は Container へ転送されます。
 
-Production access requires `ADMIN_TOKEN`. Open the portal with:
+本番の管理画面アクセスには Cloudflare Access が必要です。管理画面は以下の URL で開きます。
 
 ```text
-https://<production-hostname>/admin?token=<ADMIN_TOKEN>
+https://<production-hostname>/admin
 ```
 
-The token is stored in browser session storage after the first request and is attached to `/api/admin/*` calls as a query parameter. The static shell itself does not contain secret values and does not edit secrets.
+ブラウザログイン、MFA、session cookie は Cloudflare Access が処理します。管理 UI は admin token を browser session storage に保存せず、`/api/admin/*` への request に `token` query parameter も付与しません。`ADMIN_TOKEN` は local development または一時 rollback fallback として明示的に有効化した場合だけ使います。
 
-### SEO sales app
+### SEO営業 app
 
-SEO営業 is the first active business app. Its canonical paths are:
+SEO営業は最初に有効化する business app です。canonical path は以下です。
 
 ```text
-https://<production-hostname>/admin/seo-sales?token=<ADMIN_TOKEN>
-https://<production-hostname>/admin/seo-sales/sites?token=<ADMIN_TOKEN>
-https://<production-hostname>/admin/seo-sales/runs?token=<ADMIN_TOKEN>
-https://<production-hostname>/admin/seo-sales/settings?token=<ADMIN_TOKEN>
+https://<production-hostname>/admin/seo-sales
+https://<production-hostname>/admin/seo-sales/sites
+https://<production-hostname>/admin/seo-sales/runs
+https://<production-hostname>/admin/seo-sales/settings
 ```
 
-Use `/admin/seo-sales/sites` for product-facing review of analyzed URLs: latest status, latest Lighthouse SEO score, 改善余地スコア, latest proposal, snapshot history, and links back to related run details.
+`/admin/seo-sales/sites` は、分析済み URL を product-facing に確認する画面です。最新 status、Lighthouse SEO score、改善余地スコア、最新 proposal、snapshot history、関連 run detail へのリンクを表示します。
 
-The platform now keeps two SEO-related scores:
+この platform は SEO 関連の score を 2 種類保持します。
 
-- `seoScore`: Lighthouse SEO category score. Higher is technically better and mostly reflects crawlability and basic SEO hygiene.
-- `opportunityScore`: sales-oriented improvement opportunity score. Higher means stronger outreach potential, even when Lighthouse SEO is already high.
+- `seoScore`: Lighthouse の SEO category score。高いほど技術的な SEO 状態が良く、主に crawlability と基本的な SEO hygiene を反映します。
+- `opportunityScore`: 営業向けの改善余地スコア。Lighthouse SEO score が高い場合でも、営業提案につながる改善余地が大きいほど高くなります。
 
-Run details separate three layers:
+Run detail は 3 層に分けて表示します。
 
-- `調査結果`: deterministic research from Firecrawl, Lighthouse, and local opportunity scoring. This is the factual basis.
-- `営業評価`: optional LLM interpretation stored as `summary.llmRevenueAudit`. It converts the factual research into sales priority, business impact, recommended offer, outreach draft, confidence, and caveats. It must not recalculate scores or invent unsupported facts.
-- `営業提案書`: the longer proposal artifact generated from the research and, when available, the LLM営業評価.
+- `調査結果`: Firecrawl、Lighthouse、local opportunity scoring による deterministic research。事実ベースとして扱います。
+- `営業評価`: `summary.llmRevenueAudit` に保存する任意の LLM interpretation。事実ベースの調査結果を、sales priority、business impact、recommended offer、outreach draft、confidence、caveats に変換します。score の再計算や根拠のない事実追加は禁止します。
+- `営業提案書`: 調査結果と、存在する場合は LLM営業評価から生成する長文 proposal artifact。
 
-Initial outreach policy:
+初期 outreach policy:
 
-- Prefer public email addresses for first contact.
-- Keep inquiry-form content as a human-reviewed draft only; do not submit forms automatically.
-- Require human approval before sending outreach.
-- Optimize first contact for reply acquisition and free-diagnosis sharing, not immediate payment or contract pressure.
-- Avoid insulting, accusatory, or guaranteed-results language.
+- 初回接触では公開 email address を優先します。
+- 問い合わせフォーム向け文面は human-reviewed draft に留め、自動送信しません。
+- outreach 送信前に human approval を必須にします。
+- 初回接触は即時決済や契約圧力ではなく、返信獲得と無料診断共有を目的にします。
+- 侮辱的、断定的、保証を匂わせる表現は避けます。
 
-Use `/admin/seo-sales/runs` for operations work: failures, retries, raw steps, artifacts, and manual RevenueAgent run/retry actions.
+`/admin/seo-sales/runs` は運用確認用です。failure、retry、raw step、artifact、手動 RevenueAgent run/retry action を確認します。
 
 ```text
-Legacy `/sites`, `/admin/runs`, and `/admin/integrations` URLs redirect to the SEO営業 canonical paths.
+旧 URL の `/sites`, `/admin/runs`, `/admin/integrations` は SEO営業の canonical path へ redirect します。
 ```
 
-Each successful RevenueAgent run that produces a crawled target writes both the generic run log and the site result state. Runs that do not produce a target remain visible in `/admin/seo-sales/runs` but do not create a URL result record.
+クロール済み target を生成した successful RevenueAgent run は、generic run log と site result state の両方を書き込みます。target を生成しない run は `/admin/seo-sales/runs` には表示されますが、URL result record は作成しません。
 
 独自ドメイン移行後、zone-level Rate Limiting も追加したい場合は、example をコピーして `cloudflare_zone_id` と `revenue_agent_hostname` を設定します。初期値は `POST /api/revenue-agent/run` を IP ごとに 60 秒 10 requests まで許可し、超過時は 10 分 block します。
 
@@ -298,19 +331,19 @@ cp infra/cloudflare/revenue-agent-rate-limit.tf.example infra/cloudflare/revenue
 Cloudflare Dashboard で設定する場合も同じ条件にします。
 
 ```text
-Expression:
+条件式:
 (http.host eq "<production-hostname>" and http.request.method eq "POST" and http.request.uri.path eq "/api/revenue-agent/run")
 
-Characteristics:
+集計単位:
 cf.colo.id, ip.src
 
-Period:
+期間:
 60 seconds
 
-Requests per period:
+期間あたりの request 数:
 10
 
-Mitigation timeout:
+mitigation timeout:
 600 seconds
 ```
 
@@ -326,6 +359,8 @@ curl -sS https://<production-hostname>/health
 
 ```bash
 curl -sS https://<production-hostname>/api/revenue-agent/run \
+  -H "CF-Access-Client-Id: <CLOUDFLARE_ACCESS_CLIENT_ID>" \
+  -H "CF-Access-Client-Secret: <CLOUDFLARE_ACCESS_CLIENT_SECRET>" \
   -H "Authorization: Bearer <REVENUE_AGENT_INTEGRATION_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -355,14 +390,14 @@ curl -sS https://<production-hostname>/api/revenue-agent/run \
 | OpenClaw Gateway version | `9313d517-4ab8-4a43-9aba-fb85d79ccce0` |
 | Side effects | `REVENUE_AGENT_ALLOW_EMAIL=false`, `REVENUE_AGENT_ALLOW_TELEGRAM=false`, `REVENUE_AGENT_ALLOW_PAYMENT_LINK=false` |
 
-Verified:
+確認済み:
 
-- `GET /health` returned HTTP 200 with `{"status":"ok"}`.
-- Direct `POST /api/revenue-agent/run` returned HTTP 200 for `https://example.com` with `crawl_and_score=passed`, `generate_proposal=passed`, and all side-effect steps skipped.
-- Worker-level Rate Limiting returned HTTP 429 after repeated invalid `POST /api/revenue-agent/run` requests. In the bounded check, 30 requests produced 22 `401` responses and 8 `429` responses.
-- OpenClaw Gateway production secrets were configured for `REVENUE_AGENT_BASE_URL` and `REVENUE_AGENT_INTEGRATION_TOKEN`, then Gateway was redeployed and reached `running`.
-- OpenClaw Gateway `POST /api/revenue-agent/verify` returned HTTP 200. The Gateway container invoked production `POST /api/revenue-agent/run` with the configured Bearer token and received the expected API validation response `HTTP 400 {"error":"url must be a valid URL"}`, confirming the request reached RevenueAgentPlatform past authentication without triggering crawl side effects.
-- Telegram webhook was switched to `https://revenue-agent-platform.haruki-ito0044.workers.dev/telegram/webhook` with `secret_token` protection. A request without `X-Telegram-Bot-Api-Secret-Token` returned HTTP 401.
+- `GET /health` は HTTP 200 と `{"status":"ok"}` を返しました。
+- `POST /api/revenue-agent/run` は `https://example.com` に対して HTTP 200 を返し、`crawl_and_score=passed`、`generate_proposal=passed`、すべての side-effect step が skipped になりました。
+- Worker-level Rate Limiting は、不正な `POST /api/revenue-agent/run` を繰り返した後に HTTP 429 を返しました。限定的な確認では、30 requests のうち 22 件が `401`、8 件が `429` でした。
+- OpenClaw Gateway production secrets に `REVENUE_AGENT_BASE_URL` と `REVENUE_AGENT_INTEGRATION_TOKEN` を設定し、Gateway を redeploy して `running` 到達を確認しました。
+- OpenClaw Gateway `POST /api/revenue-agent/verify` は HTTP 200 を返しました。Gateway container は設定済み Bearer token で production の `POST /api/revenue-agent/run` を呼び、期待通り `HTTP 400 {"error":"url must be a valid URL"}` を受け取りました。これにより、副作用を発生させずに RevenueAgentPlatform の認証境界を越えて request が到達することを確認しました。
+- Telegram webhook は `secret_token` protection 付きで `https://revenue-agent-platform.haruki-ito0044.workers.dev/telegram/webhook` に切り替えました。`X-Telegram-Bot-Api-Secret-Token` なしの request は HTTP 401 を返しました。
 
 ## ロールバック
 

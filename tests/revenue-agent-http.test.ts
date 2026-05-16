@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
 import { resetRevenueAgentRateLimit } from "../src/revenue-agent/security.js";
+import { resetCloudflareAccessJwksCache } from "../src/security/cloudflare-access.js";
 
 const { mockRunRevenueAgent } = vi.hoisted(() => ({
   mockRunRevenueAgent: vi.fn(),
@@ -22,7 +23,12 @@ describe("handleRevenueAgentRun", () => {
     delete process.env.REVENUE_AGENT_ALLOW_EMAIL;
     delete process.env.REVENUE_AGENT_ALLOW_TELEGRAM;
     delete process.env.REVENUE_AGENT_ALLOW_PAYMENT_LINK;
+    delete process.env.CLOUDFLARE_ACCESS_ENABLED;
+    delete process.env.CLOUDFLARE_ACCESS_ISSUER;
+    delete process.env.CLOUDFLARE_ACCESS_MACHINE_AUD;
+    delete process.env.CLOUDFLARE_ACCESS_CERTS_URL;
     resetRevenueAgentRateLimit();
+    resetCloudflareAccessJwksCache();
     mockRunRevenueAgent.mockResolvedValue({
       id: "run-1",
       targetUrl: "https://93.184.216.34",
@@ -37,6 +43,8 @@ describe("handleRevenueAgentRun", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     resetRevenueAgentRateLimit();
+    resetCloudflareAccessJwksCache();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -75,6 +83,68 @@ describe("handleRevenueAgentRun", () => {
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith({ error: "Service unavailable" });
     expect(mockRunRevenueAgent).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing Cloudflare Access service assertions when Access is enabled", async () => {
+    enableMachineAccess([]);
+    const { req, res } = mockHttp({
+      auth: "Bearer integration-test",
+      body: { url: "https://93.184.216.34" },
+    });
+
+    await handleRevenueAgentRun(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized" });
+    expect(mockRunRevenueAgent).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid Cloudflare Access service assertions", async () => {
+    const key = await createSigningKey("key-1");
+    enableMachineAccess([key.publicJwk]);
+    const { req, res } = mockHttp({
+      auth: "Bearer integration-test",
+      accessJwt: "not-a-jwt",
+      body: { url: "https://93.184.216.34" },
+    });
+
+    await handleRevenueAgentRun(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(mockRunRevenueAgent).not.toHaveBeenCalled();
+  });
+
+  it("still rejects invalid bearer tokens when the Access service assertion is valid", async () => {
+    const key = await createSigningKey("key-1");
+    enableMachineAccess([key.publicJwk]);
+    const accessJwt = await signServiceJwt(key);
+    const { req, res } = mockHttp({
+      auth: "Bearer wrong-token",
+      accessJwt,
+      body: { url: "https://93.184.216.34" },
+    });
+
+    await handleRevenueAgentRun(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized" });
+    expect(mockRunRevenueAgent).not.toHaveBeenCalled();
+  });
+
+  it("runs when both Access service assertion and bearer token are valid", async () => {
+    const key = await createSigningKey("key-1");
+    enableMachineAccess([key.publicJwk]);
+    const accessJwt = await signServiceJwt(key);
+    const { req, res } = mockHttp({
+      auth: "Bearer integration-test",
+      accessJwt,
+      body: { url: "https://93.184.216.34" },
+    });
+
+    await handleRevenueAgentRun(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockRunRevenueAgent).toHaveBeenCalledTimes(1);
   });
 
   it("rate limits before running the pipeline", async () => {
@@ -241,15 +311,73 @@ describe("handleRevenueAgentRun", () => {
   });
 });
 
-function mockHttp(input: { auth?: string; body: unknown }): { req: Request; res: Response } {
+function mockHttp(input: { auth?: string; accessJwt?: string; body: unknown }): { req: Request; res: Response } {
   const res = {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn().mockReturnThis(),
   } as unknown as Response;
+  const headers: Record<string, string> = {};
+  if (input.auth) headers.authorization = input.auth;
+  if (input.accessJwt) headers["cf-access-jwt-assertion"] = input.accessJwt;
   const req = {
-    headers: input.auth ? { authorization: input.auth } : {},
+    headers,
     body: input.body,
   } as Request;
   return { req, res };
+}
+
+function enableMachineAccess(keys: JsonWebKey[]) {
+  process.env.CLOUDFLARE_ACCESS_ENABLED = "true";
+  process.env.CLOUDFLARE_ACCESS_ISSUER = "https://team.cloudflareaccess.com";
+  process.env.CLOUDFLARE_ACCESS_MACHINE_AUD = "machine-aud";
+  process.env.CLOUDFLARE_ACCESS_CERTS_URL = "https://team.cloudflareaccess.com/cdn-cgi/access/certs";
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ keys }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })));
+}
+
+async function createSigningKey(kid: string) {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  publicJwk.kid = kid;
+  publicJwk.alg = "RS256";
+  publicJwk.use = "sig";
+  return { kid, privateKey: keyPair.privateKey, publicJwk };
+}
+
+async function signServiceJwt(key: { kid: string; privateKey: CryptoKey }): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlJson({ alg: "RS256", kid: key.kid, typ: "JWT" });
+  const body = base64UrlJson({
+    type: "app",
+    iss: "https://team.cloudflareaccess.com",
+    aud: ["machine-aud"],
+    iat: now,
+    nbf: now - 1,
+    exp: now + 300,
+    service_token_status: true,
+    common_name: "openclaw.access",
+  });
+  const signingInput = `${header}.${body}`;
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key.privateKey,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${Buffer.from(signature).toString("base64url")}`;
+}
+
+function base64UrlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }

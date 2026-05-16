@@ -2,6 +2,10 @@ import { Container, getContainer } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
 import { maybeServeAdminUiAsset } from "./admin-assets";
 import { handleInternalStorage, handleStorageHealth } from "./storage-bridge";
+import {
+  logCloudflareAccessFailure,
+  validateCloudflareAccessHeader,
+} from "../src/security/cloudflare-access";
 
 type WorkerEnv = {
   REVENUE_AGENT_CONTAINER: DurableObjectNamespace<RevenueAgentContainer>;
@@ -41,6 +45,14 @@ const OPTIONAL_ENV = [
   "DURABLE_STORAGE_BASE_URL",
   "DURABLE_STORAGE_TOKEN",
   "ARTIFACT_INLINE_BYTE_THRESHOLD",
+  "CLOUDFLARE_ACCESS_ENABLED",
+  "CLOUDFLARE_ACCESS_ISSUER",
+  "CLOUDFLARE_ACCESS_ADMIN_AUD",
+  "CLOUDFLARE_ACCESS_MACHINE_AUD",
+  "CLOUDFLARE_ACCESS_CERTS_URL",
+  "CLOUDFLARE_ACCESS_ALLOW_ADMIN_TOKEN_FALLBACK",
+  "CLOUDFLARE_ACCESS_ALLOW_HUMAN_RUN_API",
+  "CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN",
   "REVENUE_AGENT_DISCOVERY_ENABLED",
   "REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED",
   "REVENUE_AGENT_DISCOVERY_DAILY_QUOTA",
@@ -151,6 +163,14 @@ export default {
       return handleInternalStorage(request, env, url, readEnv("DURABLE_STORAGE_TOKEN"));
     }
 
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+      const access = await validateWorkerAccess(request, "admin", readEnv("CLOUDFLARE_ACCESS_ADMIN_AUD"));
+      if (!access.ok) {
+        logCloudflareAccessFailure(url.pathname, access.status);
+        return Response.json(access.body, { status: access.status });
+      }
+    }
+
     const adminAssetResponse = await maybeServeAdminUiAsset(request, env);
     if (adminAssetResponse) {
       return adminAssetResponse;
@@ -174,6 +194,12 @@ export default {
     }
 
     if (url.pathname === "/api/revenue-agent/run" && request.method === "POST") {
+      const access = await validateWorkerAccess(request, "service", readEnv("CLOUDFLARE_ACCESS_MACHINE_AUD"));
+      if (!access.ok) {
+        logCloudflareAccessFailure(url.pathname, access.status);
+        return Response.json(access.body, { status: access.status });
+      }
+
       const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const { success } = await env.REVENUE_AGENT_RUN_LIMITER.limit({
         key: `run:${clientIp}`,
@@ -207,3 +233,20 @@ export default {
     return new Response("Not Found", { status: 404 });
   },
 };
+
+async function validateWorkerAccess(request: Request, requiredKind: "admin" | "service", audience: string | undefined) {
+  const enabled = readEnv("CLOUDFLARE_ACCESS_ENABLED") === "true";
+  if (!enabled) return { ok: true as const };
+  return validateCloudflareAccessHeader(
+    request.headers.get("Cf-Access-Jwt-Assertion"),
+    {
+      enabled,
+      issuer: readEnv("CLOUDFLARE_ACCESS_ISSUER"),
+      audience,
+      certsUrl: readEnv("CLOUDFLARE_ACCESS_CERTS_URL"),
+      allowHumanForService: readEnv("CLOUDFLARE_ACCESS_ALLOW_HUMAN_RUN_API") === "true",
+      allowServiceForAdmin: readEnv("CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN") === "true",
+    },
+    requiredKind,
+  );
+}
