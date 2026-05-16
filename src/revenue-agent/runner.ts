@@ -16,7 +16,7 @@ type StepBody = () => Promise<Omit<RevenueAgentStepResult, "name" | "durationMs"
 export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<RevenueAgentRunReport> {
   const now = options.now ?? (() => new Date());
   const startedAtDate = now();
-  const id = toRunId(startedAtDate);
+  const id = options.runId ?? createRevenueAgentRunId(startedAtDate);
   const targetUrl = options.targetUrl;
   const steps: RevenueAgentStepResult[] = [];
   const outputs: Record<string, unknown> = {};
@@ -333,7 +333,7 @@ async function stripeStep(
   return { status: "passed", details: { paymentLinkId: paymentLink.id, url: paymentLink.url, purpose: "smoke_test_payment_link_only" } };
 }
 
-function toRunId(date: Date): string {
+export function createRevenueAgentRunId(date: Date = new Date()): string {
   return `${date.toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
 }
 

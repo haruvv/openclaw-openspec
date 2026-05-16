@@ -27,6 +27,7 @@ export interface RevenueAgentRunReport {
 }
 
 export interface RevenueAgentRunOptions {
+  runId?: string;
   targetUrl: string;
   source?: "api" | "telegram" | "manual" | string;
   metadata?: Record<string, unknown>;

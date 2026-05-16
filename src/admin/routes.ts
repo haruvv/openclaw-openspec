@@ -3,14 +3,15 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
-import { getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
+import { createAgentRun, getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
 import { runDailyDiscoveryJob } from "../discovery/job.js";
 import { applyDiscoverySettingsToEnv, getDiscoverySettings, saveDiscoverySettings } from "../discovery/settings.js";
-import { runRevenueAgent } from "../revenue-agent/runner.js";
+import { createRevenueAgentRunId, runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
 import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
+import { logger } from "../utils/logger.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
 import { getSideEffectSettings, saveSideEffectSettings } from "./side-effect-settings.js";
@@ -77,8 +78,8 @@ adminApiRouter.post("/seo-sales/runs", async (req, res) => {
     return;
   }
 
-  const report = await runManualRevenueAgent(safeUrl.url, {});
-  res.status(201).json({ runId: report.id, location: `/admin/seo-sales/runs/${encodeURIComponent(report.id)}`, report });
+  const run = await startManualRevenueAgent(safeUrl.url, {});
+  res.status(202).json({ runId: run.id, location: `/admin/seo-sales/runs/${encodeURIComponent(run.id)}` });
 });
 
 adminApiRouter.get("/seo-sales/runs/:id", async (req, res) => {
@@ -139,8 +140,8 @@ adminApiRouter.post("/seo-sales/runs/:id/retry", async (req, res) => {
     return;
   }
 
-  const report = await runManualRevenueAgent(targetUrl, { retryOf: prior?.id });
-  res.status(201).json({ runId: report.id, location: `/admin/seo-sales/runs/${encodeURIComponent(report.id)}`, report });
+  const run = await startManualRevenueAgent(targetUrl, { retryOf: prior?.id });
+  res.status(202).json({ runId: run.id, location: `/admin/seo-sales/runs/${encodeURIComponent(run.id)}` });
 });
 
 adminApiRouter.post("/seo-sales/discovery/run", async (_req, res) => {
@@ -244,10 +245,11 @@ adminRouter.get("*", (_req, res) => {
     .send(renderFallbackPage("管理画面を利用できません", "<p>管理画面のフロントエンドがまだビルドされていません。</p>"));
 });
 
-async function runManualRevenueAgent(targetUrl: string, metadata: Record<string, unknown>) {
+async function runManualRevenueAgent(targetUrl: string, metadata: Record<string, unknown>, runId?: string) {
   const requested = { sendEmail: false, sendTelegram: false, createPaymentLink: false };
   const allowed = applySideEffectPolicy(requested);
   return runRevenueAgent({
+    runId,
     targetUrl,
     source: "manual",
     metadata,
@@ -260,6 +262,29 @@ async function runManualRevenueAgent(targetUrl: string, metadata: Record<string,
       createPaymentLink: sideEffectPolicyReason("createPaymentLink"),
     },
   });
+}
+
+async function startManualRevenueAgent(targetUrl: string, metadata: Record<string, unknown>) {
+  const id = createRevenueAgentRunId();
+  await createAgentRun({
+    id,
+    agentType: "revenue_agent",
+    source: "manual",
+    input: {
+      targetUrl,
+      sendEmail: false,
+      sendTelegram: false,
+      createPaymentLink: false,
+    },
+    metadata,
+    startedAt: new Date(),
+  });
+
+  void runManualRevenueAgent(targetUrl, metadata, id).catch((error) => {
+    logger.error("Manual revenue agent run failed after async start", { id, error });
+  });
+
+  return { id };
 }
 
 function parseOutreachSendBody(body: unknown):
