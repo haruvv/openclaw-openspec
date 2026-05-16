@@ -16,7 +16,7 @@ import {
   markPaymentLinkSent,
 } from "./repository.js";
 import type { SalesActions, SalesOutreachDraft, SalesOutreachMessage, SalesPaymentLinkRecord } from "./types.js";
-import type { LlmRevenueAudit } from "../types/index.js";
+import type { ContactMethod, LlmRevenueAudit } from "../types/index.js";
 
 const OUTREACH_COOLDOWN_DAYS = Number(process.env.OUTREACH_COOLDOWN_DAYS ?? 30);
 const PAYMENT_LINK_VALIDITY_DAYS = 30;
@@ -31,7 +31,8 @@ export async function buildOutreachDraft(runId: string): Promise<SalesOutreachDr
 
   const context = await getSiteContextForRun(runId);
   const audit = readAudit(run.summary.llmRevenueAudit);
-  const recipientEmail = readString(run.summary.contactEmail);
+  const contactMethods = readContactMethods(run.summary.contactMethods);
+  const recipientEmail = readString(run.summary.contactEmail) ?? contactMethods.find((method) => method.type === "email")?.value;
   if (audit) {
     return {
       runId,
@@ -40,6 +41,7 @@ export async function buildOutreachDraft(runId: string): Promise<SalesOutreachDr
       targetUrl,
       domain,
       recipientEmail,
+      contactMethods,
       subject: audit.outreach.subject,
       bodyText: audit.outreach.firstEmail,
       source: "llm_revenue_audit",
@@ -54,6 +56,7 @@ export async function buildOutreachDraft(runId: string): Promise<SalesOutreachDr
     targetUrl,
     domain,
     recipientEmail,
+    contactMethods,
     subject: `ホームページの簡易診断について`,
     bodyText: `${domain} ご担当者様
 
@@ -315,6 +318,21 @@ function readAudit(value: unknown): LlmRevenueAudit | null {
   if (!value || typeof value !== "object") return null;
   const audit = value as LlmRevenueAudit;
   return typeof audit.outreach?.subject === "string" && typeof audit.outreach?.firstEmail === "string" ? audit : null;
+}
+
+function readContactMethods(value: unknown): ContactMethod[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isContactMethod).slice(0, 10);
+}
+
+function isContactMethod(value: unknown): value is ContactMethod {
+  if (!value || typeof value !== "object") return false;
+  const method = value as ContactMethod;
+  return ["email", "form", "phone", "contact_page"].includes(method.type)
+    && typeof method.value === "string"
+    && method.value.length > 0
+    && typeof method.sourceUrl === "string"
+    && ["low", "medium", "high"].includes(method.confidence);
 }
 
 function isEmail(value: string): boolean {

@@ -1,3 +1,5 @@
+import type { ContactMethod } from "../types/index.js";
+
 export type SalesOutreachStatus = "draft" | "sent" | "skipped" | "failed";
 export type SalesPaymentLinkStatus = "created" | "sent" | "failed" | "paid";
 
@@ -8,6 +10,7 @@ export interface SalesOutreachDraft {
   targetUrl: string;
   domain: string;
   recipientEmail?: string;
+  contactMethods: ContactMethod[];
   subject: string;
   bodyText: string;
   source: "llm_revenue_audit" | "fallback";

@@ -60,6 +60,7 @@ export async function crawlBatch(
       url,
       domain: crawled.domain,
       contactEmail: crawled.contactEmail,
+      contactMethods: crawled.contactMethods,
       industry: crawled.industry,
       seoScore: lhResult.seoScore,
       diagnostics: lhResult.diagnostics,

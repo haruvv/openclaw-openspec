@@ -5,7 +5,7 @@ import { apiCache, apiGet, apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../components/common";
 import { FindingsList, ProposalViewer, RunsTable } from "../components/tables";
 import { useApi } from "../hooks";
-import type { AgentRun, AgentRunDetail, LlmRevenueAudit, SalesActions, SalesOutreachDraft, SeoDiagnostic, SettingsPayload } from "../types";
+import type { AgentRun, AgentRunDetail, ContactMethod, LlmRevenueAudit, SalesActions, SalesOutreachDraft, SeoDiagnostic, SettingsPayload } from "../types";
 import { formatDate, formatDuration, formatRevenueAuditConfidence, formatRevenueAuditPriority, formatSource, formatStepName, getLlmRevenueAudit, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
@@ -243,6 +243,7 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
           {settingsError ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-bold text-amber-800">{settingsError}</p> : null}
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-3">
+              <ContactMethodsPanel methods={draft.contactMethods ?? []} onSelectEmail={setRecipientEmail} />
               <div>
                 <label className="text-sm font-black text-slate-700" htmlFor="outreach-recipient">宛先メール</label>
                 <input id="outreach-recipient" className="input mt-2 w-full" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder="info@example.com" />
@@ -302,6 +303,55 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
   );
 }
 
+function ContactMethodsPanel({ methods, onSelectEmail }: { methods: ContactMethod[]; onSelectEmail: (email: string) => void }) {
+  const emails = methods.filter((method) => method.type === "email");
+  const forms = methods.filter((method) => method.type === "form" || method.type === "contact_page");
+  const phones = methods.filter((method) => method.type === "phone");
+  if (methods.length === 0) {
+    return (
+      <div className="border border-amber-100 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+        公開メールや問い合わせフォームは検出できませんでした。会社概要や問い合わせページを手動確認してください。
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-slate-200 bg-slate-50 p-3">
+      <div className="text-sm font-black text-slate-800">連絡先候補</div>
+      {emails.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {emails.map((method) => (
+            <button
+              key={`${method.type}-${method.value}-${method.sourceUrl}`}
+              type="button"
+              className="btn-secondary"
+              onClick={() => onSelectEmail(method.value)}
+              title={`${formatContactConfidence(method.confidence)} / ${method.sourceUrl}`}
+            >
+              {method.value}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {forms.length > 0 ? (
+        <div className="mt-3 space-y-1">
+          <div className="text-xs font-black text-slate-500">問い合わせフォーム</div>
+          {forms.map((method) => (
+            <a key={`${method.type}-${method.value}`} className="table-link block break-all text-sm" href={method.value} target="_blank" rel="noreferrer">
+              {method.value}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {phones.length > 0 ? (
+        <div className="mt-3 text-sm font-semibold text-slate-600">
+          電話: {phones.map((method) => method.value).join(" / ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SalesActionHistory({ salesActions }: { salesActions: SalesActions }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -336,6 +386,10 @@ function SalesActionHistory({ salesActions }: { salesActions: SalesActions }) {
       </div>
     </div>
   );
+}
+
+function formatContactConfidence(value: ContactMethod["confidence"]): string {
+  return { high: "高信頼", medium: "中信頼", low: "低信頼" }[value];
 }
 
 function RevenueAuditView({ audit }: { audit: LlmRevenueAudit }) {

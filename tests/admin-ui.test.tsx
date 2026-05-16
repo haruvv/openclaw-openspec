@@ -32,6 +32,8 @@ describe("admin UI routing", () => {
     expect(screen.getByRole("heading", { name: "営業アクション" })).toBeInTheDocument();
     expect(screen.getByText(/CTA改善/)).toBeInTheDocument();
     expect(screen.getByText("ホームページの簡易診断について")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "info@example.com" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "https://example.com/contact" })).toBeInTheDocument();
     expect(screen.getByText("Document lacks title")).toBeInTheDocument();
     expect(screen.getAllByText("メール提案文").length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith("/api/admin/seo-sales/runs/run-1", { credentials: "same-origin" });
@@ -252,6 +254,22 @@ function createDraftResponse(runId: string) {
       targetUrl: "https://example.com",
       domain: "example.com",
       recipientEmail: "info@example.com",
+      contactMethods: [
+        {
+          type: "email",
+          value: "info@example.com",
+          sourceUrl: "https://example.com/contact",
+          confidence: "high",
+          label: "mailto",
+        },
+        {
+          type: "form",
+          value: "https://example.com/contact",
+          sourceUrl: "https://example.com/contact",
+          confidence: "high",
+          label: "問い合わせフォーム",
+        },
+      ],
       subject: "ホームページの簡易診断について",
       bodyText: "確認した範囲で気になった点がありました。必要でしたら共有します。",
       source: "llm_revenue_audit",

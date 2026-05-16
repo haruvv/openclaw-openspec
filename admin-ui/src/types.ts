@@ -1,6 +1,17 @@
 export type Status = "running" | "passed" | "failed" | "skipped";
 export type SalesOutreachStatus = "draft" | "sent" | "skipped" | "failed";
 export type SalesPaymentLinkStatus = "created" | "sent" | "failed" | "paid";
+export type ContactMethodType = "email" | "form" | "phone" | "contact_page";
+export type ContactMethodConfidence = "low" | "medium" | "high";
+
+export interface ContactMethod {
+  type: ContactMethodType;
+  value: string;
+  sourceUrl: string;
+  confidence: ContactMethodConfidence;
+  label?: string;
+  reason?: string;
+}
 
 export interface BusinessApp {
   id: string;
@@ -109,6 +120,7 @@ export interface SalesOutreachDraft {
   targetUrl: string;
   domain: string;
   recipientEmail?: string;
+  contactMethods: ContactMethod[];
   subject: string;
   bodyText: string;
   source: "llm_revenue_audit" | "fallback";

@@ -1,5 +1,4 @@
 import Stripe from "stripe";
-import sgMail from "@sendgrid/mail";
 import { randomUUID } from "node:crypto";
 import { crawlBatch } from "../site-crawler/crawler.js";
 import { generateProposal } from "../proposal-generator/generator.js";
@@ -66,6 +65,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.diagnostics = target.diagnostics;
       outputs.domain = target.domain;
       outputs.contactEmail = target.contactEmail;
+      outputs.contactMethods = target.contactMethods ?? [];
       return {
         status: "passed",
         details: {
@@ -73,6 +73,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
           seoScore: target.seoScore,
           opportunityScore: target.opportunityScore,
           opportunityFindings: target.opportunityFindings?.length ?? 0,
+          contactMethods: target.contactMethods?.length ?? 0,
           diagnostics: target.diagnostics.length,
         },
       };
@@ -218,21 +219,10 @@ async function sendGridStep(
 ): Promise<Omit<RevenueAgentStepResult, "name" | "durationMs">> {
   if (!target) return { status: "skipped", reason: "crawl_and_score did not produce a target" };
   if (!enabled) return { status: "skipped", reason: disabledReason ?? "sendEmail is not true" };
-  if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
-    return { status: "skipped", reason: "SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set" };
-  }
-  const to = process.env.SMOKE_EMAIL_TO || process.env.SENDGRID_FROM_EMAIL;
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  await sgMail.send({
-    to,
-    from: {
-      email: process.env.SENDGRID_FROM_EMAIL,
-      name: process.env.SENDGRID_FROM_NAME ?? "SEO Smoke Test",
-    },
-    subject: `[Smoke Test] SEO outreach pipeline for ${target.domain}`,
-    text: `Smoke test email for ${target.url}. SEO score: ${target.seoScore}/100.`,
-  });
-  return { status: "passed", details: { to, purpose: "smoke_test_email_only" } };
+  return {
+    status: "skipped",
+    reason: "direct pipeline email is disabled; use reviewed outreach from the admin UI",
+  };
 }
 
 async function telegramStep(
@@ -365,6 +355,7 @@ async function recordRunComplete(
         targetUrl: report.targetUrl,
         domain: report.outputs.domain,
         contactEmail: report.outputs.contactEmail,
+        contactMethods: report.outputs.contactMethods,
         seoScore: report.outputs.seoScore,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
@@ -405,6 +396,7 @@ async function recordSiteResult(
         targetUrl: report.targetUrl,
         domain: report.outputs.domain,
         contactEmail: report.outputs.contactEmail,
+        contactMethods: report.outputs.contactMethods,
         seoScore: report.outputs.seoScore,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,

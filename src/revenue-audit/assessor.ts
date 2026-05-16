@@ -32,6 +32,7 @@ export function buildRevenueAuditPayload(input: RevenueAuditAssessorInput): Reco
       contactChannel: target.contactEmail
         ? { type: "public_email", value: target.contactEmail }
         : { type: "unknown", value: null },
+      contactMethods: target.contactMethods ?? [],
       primaryContactPolicy: "public_email_first_human_review_required",
       firstOutreachGoal: "reply_acquisition",
     },

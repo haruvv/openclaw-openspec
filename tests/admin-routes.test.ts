@@ -131,6 +131,14 @@ describe("admin routes", () => {
         targetUrl: "https://example.com/",
         domain: "example.com",
         contactEmail: "info@example.com",
+        contactMethods: [
+          {
+            type: "email",
+            value: "contact@example.com",
+            sourceUrl: "https://example.com/contact",
+            confidence: "high",
+          },
+        ],
         llmRevenueAudit: {
           outreach: { subject: "簡易診断について", firstEmail: "必要でしたら要点を共有します。", followUpEmail: "" },
           caveats: ["アクセス数は未確認です。"],
@@ -143,12 +151,13 @@ describe("admin routes", () => {
     const response = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/outreach-draft?token=admin-test", "/api/admin");
 
     expect(response.status).toBe(200);
-    const body = JSON.parse(response.body) as { draft: { recipientEmail: string; subject: string; bodyText: string } };
+    const body = JSON.parse(response.body) as { draft: { recipientEmail: string; contactMethods: unknown[]; subject: string; bodyText: string } };
     expect(body.draft).toMatchObject({
       recipientEmail: "info@example.com",
       subject: "簡易診断について",
       bodyText: "必要でしたら要点を共有します。",
     });
+    expect(body.draft.contactMethods).toHaveLength(1);
   });
 
   it("rejects outreach send when email side effects are disabled", async () => {

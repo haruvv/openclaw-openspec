@@ -19,6 +19,7 @@ export interface CrawlResult {
   html: string;
   title: string;
   contactEmail?: string;
+  contactMethods?: ContactMethod[];
   industry?: string;
 }
 
@@ -76,6 +77,18 @@ export interface LlmRevenueAudit {
   caveats: string[];
 }
 
+export type ContactMethodType = "email" | "form" | "phone" | "contact_page";
+export type ContactMethodConfidence = "low" | "medium" | "high";
+
+export interface ContactMethod {
+  type: ContactMethodType;
+  value: string;
+  sourceUrl: string;
+  confidence: ContactMethodConfidence;
+  label?: string;
+  reason?: string;
+}
+
 export interface SeoOpportunityResult {
   opportunityScore: number;
   findings: SeoOpportunityFinding[];
@@ -86,6 +99,7 @@ export interface Target {
   url: string;
   domain: string;
   contactEmail?: string;
+  contactMethods?: ContactMethod[];
   industry?: string;
   seoScore: number;
   diagnostics: SeoDiagnostic[];

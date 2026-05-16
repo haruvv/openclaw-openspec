@@ -143,10 +143,13 @@ describe("runE2eSmoke", () => {
     const report = await runE2eSmoke({ targetUrl: "https://example.com", reportDir });
 
     expect(report.status).toBe("passed");
-    expect(report.steps.find((step) => step.name === "sendgrid_email")?.status).toBe("passed");
+    expect(report.steps.find((step) => step.name === "sendgrid_email")).toMatchObject({
+      status: "skipped",
+      reason: "direct pipeline email is disabled; use reviewed outreach from the admin UI",
+    });
     expect(report.steps.find((step) => step.name === "telegram_notification")?.status).toBe("passed");
     expect(report.steps.find((step) => step.name === "stripe_payment_link")?.status).toBe("passed");
     expect(report.outputs.paymentLinkUrl).toBe("https://buy.stripe.com/test");
-    expect(sgMail.send).toHaveBeenCalledOnce();
+    expect(sgMail.send).not.toHaveBeenCalled();
   });
 });
