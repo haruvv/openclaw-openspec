@@ -125,6 +125,18 @@ export interface SalesOutreachDraft {
   bodyText: string;
   source: "llm_revenue_audit" | "fallback";
   caveats: string[];
+  approval: SalesOutreachApprovalRecommendation;
+}
+
+export interface SalesOutreachApprovalRecommendation {
+  priority: RevenueAuditPriority;
+  confidence: RevenueAuditConfidence;
+  recommendedAmountJpy: number;
+  rationale: string[];
+  caveats: string[];
+  recipientSource: "detected_email" | "manual_required";
+  readyToSend: boolean;
+  nextStep: string;
 }
 
 export interface SalesOutreachMessage {

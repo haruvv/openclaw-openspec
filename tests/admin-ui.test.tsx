@@ -31,6 +31,9 @@ describe("admin UI routing", () => {
     expect(screen.getByRole("heading", { name: "営業提案書" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "営業アクション" })).toBeInTheDocument();
     expect(screen.getByText(/CTA改善/)).toBeInTheDocument();
+    expect(await screen.findByText("AI営業承認案")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "承認して営業メール送信" })).toBeInTheDocument();
+    expect(screen.getByText("50,000円")).toBeInTheDocument();
     expect(screen.getByText("ホームページの簡易診断について")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "info@example.com" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "https://example.com/contact" })).toBeInTheDocument();
@@ -171,7 +174,7 @@ describe("admin UI routing", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "レビュー済みメールを送信" }));
+    fireEvent.click(await screen.findByRole("button", { name: "承認して営業メール送信" }));
 
     expect(await screen.findByText(/info@example.com \/ sent/)).toBeInTheDocument();
   });
@@ -319,6 +322,19 @@ function createDraftResponse(runId: string) {
       bodyText: "確認した範囲で気になった点がありました。必要でしたら共有します。",
       source: "llm_revenue_audit",
       caveats: ["アクセス数は確認していません。"],
+      approval: {
+        priority: "medium",
+        confidence: "high",
+        recommendedAmountJpy: 50000,
+        rationale: [
+          "相談前に離脱している可能性があります。",
+          "CTA改善: 検出された課題に合っています。",
+        ],
+        caveats: ["アクセス数は確認していません。"],
+        recipientSource: "detected_email",
+        readyToSend: true,
+        nextStep: "承認すると営業メールだけを送信します。Payment Linkは返信や関心を確認してから別操作で作成します。",
+      },
     },
     salesActions: { outreachMessages: [], paymentLinks: [] },
   };

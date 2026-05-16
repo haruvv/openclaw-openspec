@@ -34,6 +34,7 @@ export async function buildOutreachDraft(runId: string): Promise<SalesOutreachDr
   const contactMethods = readContactMethods(run.summary.contactMethods);
   const recipientEmail = readString(run.summary.contactEmail) ?? contactMethods.find((method) => method.type === "email")?.value;
   if (audit) {
+    const caveats = audit.caveats;
     return {
       runId,
       siteId: context.siteId,
@@ -45,10 +46,12 @@ export async function buildOutreachDraft(runId: string): Promise<SalesOutreachDr
       subject: audit.outreach.subject,
       bodyText: audit.outreach.firstEmail,
       source: "llm_revenue_audit",
-      caveats: audit.caveats,
+      caveats,
+      approval: buildApprovalRecommendation({ audit, recipientEmail, caveats }),
     };
   }
 
+  const fallbackCaveats = ["LLM営業評価がないため、保守的な汎用文面を生成しています。"];
   return {
     runId,
     siteId: context.siteId,
@@ -64,9 +67,10 @@ export async function buildOutreachDraft(runId: string): Promise<SalesOutreachDr
 公開されているホームページを確認した範囲で、検索結果での見え方や問い合わせ導線について、いくつか簡単に共有できそうな点がありました。
 
 もしご迷惑でなければ、無料の簡易診断として要点だけお送りします。
-ご希望でしたら、このメールにご返信ください。`,
+    ご希望でしたら、このメールにご返信ください。`,
     source: "fallback",
-    caveats: ["LLM営業評価がないため、保守的な汎用文面を生成しています。"],
+    caveats: fallbackCaveats,
+    approval: buildApprovalRecommendation({ recipientEmail, caveats: fallbackCaveats }),
   };
 }
 
@@ -331,6 +335,52 @@ function readAudit(value: unknown): LlmRevenueAudit | null {
 function readContactMethods(value: unknown): ContactMethod[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isContactMethod).slice(0, 10);
+}
+
+function buildApprovalRecommendation(input: {
+  audit?: LlmRevenueAudit;
+  recipientEmail?: string;
+  caveats: string[];
+}): SalesOutreachDraft["approval"] {
+  const priority = input.audit?.salesPriority ?? "low";
+  const confidence = input.audit?.confidence ?? "medium";
+  const recommendedOffer = input.audit?.recommendedOffer;
+  const rationale = input.audit
+    ? [
+        readString(input.audit.businessImpactSummary),
+        recommendedOffer ? `${recommendedOffer.name}: ${recommendedOffer.reason}` : undefined,
+        ...(input.audit.prioritizedFindings ?? []).slice(0, 2).map((finding) => `${finding.title}: ${finding.salesAngle}`),
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [
+        "営業評価が未生成のため、無料の簡易診断共有として低リスクに接触します。",
+        "初回メールでは決済リンクを送らず、返信があった場合に次の提案へ進めます。",
+      ];
+  return {
+    priority,
+    confidence,
+    recommendedAmountJpy: parseRecommendedAmountJpy(recommendedOffer?.estimatedPriceRange) ?? 50000,
+    rationale,
+    caveats: input.caveats,
+    recipientSource: input.recipientEmail ? "detected_email" : "manual_required",
+    readyToSend: Boolean(input.recipientEmail),
+    nextStep: "承認すると営業メールだけを送信します。Payment Linkは返信や関心を確認してから別操作で作成します。",
+  };
+}
+
+function parseRecommendedAmountJpy(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const normalized = value.replace(/,/g, "");
+  const candidates: number[] = [];
+  for (const match of normalized.matchAll(/(\d+(?:\.\d+)?)\s*(万|万円|円)?/g)) {
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const unit = match[2];
+    candidates.push(unit === "万" || unit === "万円" ? Math.round(amount * 10000) : Math.round(amount));
+  }
+  const plausible = candidates.filter((amount) => amount >= 1000 && amount <= 10_000_000);
+  if (plausible.length === 0) return undefined;
+  plausible.sort((a, b) => a - b);
+  return plausible[Math.floor((plausible.length - 1) / 2)];
 }
 
 function isContactMethod(value: unknown): value is ContactMethod {

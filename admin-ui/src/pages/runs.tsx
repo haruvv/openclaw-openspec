@@ -169,9 +169,7 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
         setDraft(result.draft);
         setSalesActions(result.salesActions);
         setSettings(loadedSettings);
-        if (loadedSettings?.sales?.defaultPaymentAmountJpy) {
-          setAmountJpy(String(loadedSettings.sales.defaultPaymentAmountJpy));
-        }
+        setAmountJpy(String(result.draft.approval.recommendedAmountJpy || loadedSettings?.sales?.defaultPaymentAmountJpy || 50000));
         setRecipientEmail(result.draft.recipientEmail ?? "");
         setSubject(result.draft.subject);
         setBodyText(result.draft.bodyText);
@@ -193,7 +191,7 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
   }
 
   async function sendOutreach() {
-    if (!window.confirm("レビュー済みの営業メールを送信します。よろしいですか？")) return;
+    if (!window.confirm("AI営業承認案の内容で営業メールを送信します。よろしいですか？")) return;
     setSaving(true);
     setError(null);
     try {
@@ -241,6 +239,7 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
   const amountIsValid = Number.isInteger(Number(amountJpy)) && Number(amountJpy) > 0;
   const canSend = Boolean(recipientEmail.trim() && subject.trim() && bodyText.trim()) && !saving && !emailUnavailableReason;
   const canCreatePayment = amountIsValid && !saving && !paymentUnavailableReason && (!sendPaymentEmail || !emailUnavailableReason);
+  const latestSent = salesActions.outreachMessages.find((message) => message.status === "sent");
 
   return (
     <Panel title="営業アクション">
@@ -248,6 +247,34 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
         <div className="space-y-4">
           {error ? <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
           {settingsError ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-bold text-amber-800">{settingsError}</p> : null}
+          <div className="border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-sm font-black text-emerald-900">AI営業承認案</div>
+                <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">{draft.approval.nextStep}</p>
+              </div>
+              <button type="button" className="btn-primary shrink-0" disabled={!canSend || Boolean(latestSent)} onClick={sendOutreach}>
+                {latestSent ? "営業メール送信済み" : "承認して営業メール送信"}
+              </button>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              <Info label="営業優先度" value={formatRevenueAuditPriority(draft.approval.priority)} />
+              <Info label="信頼度" value={formatRevenueAuditConfidence(draft.approval.confidence)} />
+              <Info label="推奨金額" value={`${draft.approval.recommendedAmountJpy.toLocaleString("ja-JP")}円`} />
+              <Info label="宛先状態" value={formatRecipientSource(draft.approval.recipientSource)} />
+            </div>
+            {draft.approval.rationale.length > 0 ? (
+              <div className="mt-3">
+                <div className="text-xs font-black text-emerald-900">判断理由</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold leading-6 text-slate-700">
+                  {draft.approval.rationale.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            {!draft.approval.readyToSend ? (
+              <p className="mt-3 rounded-lg bg-white p-3 text-sm font-bold text-amber-800">宛先メールが未検出です。問い合わせフォームや会社概要を確認して宛先を入力してください。</p>
+            ) : null}
+          </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-3">
               <ContactMethodsPanel methods={draft.contactMethods ?? []} onSelectEmail={setRecipientEmail} />
@@ -264,7 +291,7 @@ function SalesActionsPanel({ runId, initialSalesActions }: { runId: string; init
                 <textarea id="outreach-body" className="textarea mt-2 min-h-56" value={bodyText} onChange={(event) => setBodyText(event.target.value)} />
               </div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn-primary" disabled={!canSend} onClick={sendOutreach}>レビュー済みメールを送信</button>
+                <button type="button" className="btn-secondary" disabled={!canSend || Boolean(latestSent)} onClick={sendOutreach}>この内容で承認送信</button>
                 {emailUnavailableReason ? <span className="self-center text-xs font-bold text-slate-500">{emailUnavailableReason}</span> : null}
               </div>
             </div>
@@ -397,6 +424,10 @@ function SalesActionHistory({ salesActions }: { salesActions: SalesActions }) {
 
 function formatContactConfidence(value: ContactMethod["confidence"]): string {
   return { high: "高信頼", medium: "中信頼", low: "低信頼" }[value];
+}
+
+function formatRecipientSource(value: SalesOutreachDraft["approval"]["recipientSource"]): string {
+  return value === "detected_email" ? "メール検出済み" : "手動入力が必要";
 }
 
 function RevenueAuditView({ audit }: { audit: LlmRevenueAudit }) {
