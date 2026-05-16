@@ -12,7 +12,7 @@ export interface RevenueAuditAssessorInput {
 export async function assessRevenueAudit(input: RevenueAuditAssessorInput): Promise<LlmRevenueAudit> {
   const prompt = JSON.stringify(buildRevenueAuditPayload(input), null, 2);
   const raw = await generateText(prompt, REVENUE_AUDIT_SYSTEM_PROMPT);
-  const audit = parseLlmRevenueAuditJson(raw);
+  const audit = normalizeRevenueAuditOutreach(parseLlmRevenueAuditJson(raw));
   logger.info("LLM revenue audit generated", {
     domain: input.target.domain,
     salesPriority: audit.salesPriority,
@@ -75,4 +75,33 @@ export function buildRevenueAuditPayload(input: RevenueAuditAssessorInput): Reco
       caveats: ["string"],
     },
   };
+}
+
+function normalizeRevenueAuditOutreach(audit: LlmRevenueAudit): LlmRevenueAudit {
+  return {
+    ...audit,
+    outreach: {
+      ...audit.outreach,
+      firstEmail: normalizeFirstEmailOpening(audit.outreach.firstEmail),
+    },
+  };
+}
+
+function normalizeFirstEmailOpening(value: string): string {
+  const requiredIntro = [
+    "お世話になります。",
+    "",
+    "当社では、中小企業向けにホームページの改善支援を行っています。",
+    "主に、問い合わせ導線や検索結果での見え方を整理し、Webサイトからの相談機会を増やすための改善を支援しています。",
+  ].join("\n");
+  const trimmed = value.trim();
+  const head = trimmed.slice(0, 160);
+  if (head.includes("当社では、中小企業向けにホームページの改善支援を行っています。")) {
+    return trimmed;
+  }
+
+  const withoutGreeting = trimmed
+    .replace(/^お世話になります。[ \t]*(?:\r?\n){1,2}/, "")
+    .replace(/^お世話になっております。[ \t]*(?:\r?\n){1,2}/, "");
+  return `${requiredIntro}\n\n${withoutGreeting}`;
 }

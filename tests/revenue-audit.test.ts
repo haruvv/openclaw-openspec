@@ -29,7 +29,7 @@ const validAudit = {
   }],
   outreach: {
     subject: "ホームページの簡易診断について",
-    firstEmail: "確認した範囲で気になった点がありました。必要でしたら共有します。",
+    firstEmail: "お世話になります。\n\n貴社のホームページを拝見し、問い合わせ導線に改善余地があると感じました。必要でしたら共有します。",
     followUpEmail: "先日の簡易診断の件で、必要でしたら要点だけお送りします。",
   },
   caveats: ["アクセス数は確認していません。"],
@@ -119,6 +119,8 @@ describe("assessRevenueAudit", () => {
 
     const audit = await assessRevenueAudit({ target, targetUrl: target.url });
     expect(audit.salesPriority).toBe("medium");
+    expect(audit.outreach.firstEmail).toMatch(/^お世話になります。\n\n当社では、中小企業向けにホームページの改善支援を行っています。/);
+    expect(audit.outreach.firstEmail).toContain("貴社のホームページを拝見し");
     expect(generateText).toHaveBeenCalledWith(
       expect.stringContaining('"deterministicResearch"'),
       expect.stringContaining("返答は必ずJSONオブジェクトのみ")
@@ -126,6 +128,10 @@ describe("assessRevenueAudit", () => {
     expect(generateText).toHaveBeenCalledWith(
       expect.stringContaining('"lighthouseSeoScore": 82'),
       expect.stringContaining("再計算しない")
+    );
+    expect(generateText).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("当社では、中小企業向けにホームページの改善支援を行っています。")
     );
   });
 });
