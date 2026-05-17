@@ -8,6 +8,7 @@ import {
   createStockAiDecision,
   createStockMarketSignal,
   getStockPortfolioMetrics,
+  getStockPosition,
   listStockLearningItemsForDecisionContext,
   listStockResearchItems,
   parseConfidenceThreshold,
@@ -97,7 +98,7 @@ export async function handleTradingViewStockWebhook(req: Request, res: Response)
 
 export async function processStockMarketSignal(input: CreateStockMarketSignalInput): Promise<ProcessStockSignalResult> {
   let signal = await createStockMarketSignal({ ...input, status: "received" });
-  if (signal.rawPayload.source !== "market_scanner_candidate") {
+  if (signal.rawPayload.source !== "market_scanner_candidate" && signal.rawPayload.source !== "position_exit_monitor") {
     await upsertStockMarketCandidate(buildCandidateFromSignal(signal));
   }
   const learningContext = await listStockLearningItemsForDecisionContext({
@@ -196,6 +197,47 @@ export async function processStockMarketSignal(input: CreateStockMarketSignalInp
     status: signal.status,
     message: "Paper execution created.",
   };
+}
+
+export async function reviewStockPositionExit(symbol: string): Promise<ProcessStockSignalResult> {
+  const position = await getStockPosition(symbol);
+  if (!position || position.quantity <= 0) {
+    throw new Error(`stock_open_position_not_found:${symbol.toUpperCase()}`);
+  }
+  const openedAtMs = Date.parse(position.openedAt);
+  const holdingDays = Number.isFinite(openedAtMs) ? Math.max(0, (Date.now() - openedAtMs) / 86_400_000) : 0;
+  const unrealizedPnlRate = position.averageEntryPrice > 0
+    ? position.unrealizedPnl / (position.averageEntryPrice * position.quantity)
+    : 0;
+  return processStockMarketSignal({
+    symbol: position.symbol,
+    timeframe: "position_exit",
+    price: position.lastMarkPrice,
+    strategyTag: "exit_monitor",
+    suggestedAction: "SELL",
+    indicators: {
+      averageEntryPrice: position.averageEntryPrice,
+      quantity: position.quantity,
+      marketValue: position.marketValue,
+      realizedPnl: position.realizedPnl,
+      unrealizedPnl: position.unrealizedPnl,
+      unrealizedPnlRate,
+      holdingDays,
+    },
+    rawPayload: {
+      source: "position_exit_monitor",
+      symbol: position.symbol,
+      averageEntryPrice: position.averageEntryPrice,
+      markPrice: position.lastMarkPrice,
+      quantity: position.quantity,
+      marketValue: position.marketValue,
+      realizedPnl: position.realizedPnl,
+      unrealizedPnl: position.unrealizedPnl,
+      unrealizedPnlRate,
+      holdingDays,
+      paperOnly: true,
+    },
+  });
 }
 
 function buildCandidateFromSignal(signal: StockMarketSignal) {

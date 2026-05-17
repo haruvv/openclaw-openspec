@@ -39,17 +39,34 @@ const TRADINGVIEW_ALERT_TEMPLATE = `{
 }`;
 
 export function StockTradingHome() {
-  const { data, loading, error } = useApi<StockTradingOverview>("/api/admin/stock-trading/overview");
+  const { data, loading, error, reload } = useApi<StockTradingOverview>("/api/admin/stock-trading/overview");
+  const [exitReviewError, setExitReviewError] = React.useState<string | null>(null);
+  const [exitReviewSymbol, setExitReviewSymbol] = React.useState<string | null>(null);
   if (loading) return <Loading />;
   if (error) return <ErrorState message={error} />;
   const portfolio = data?.portfolio;
+
+  async function reviewExit(position: StockPosition) {
+    setExitReviewSymbol(position.symbol);
+    setExitReviewError(null);
+    try {
+      await apiPost(`/api/admin/stock-trading/positions/${encodeURIComponent(position.symbol)}/exit-review`, {});
+      await reload();
+    } catch (err) {
+      setExitReviewError(err instanceof Error ? err.message : "Exit確認に失敗しました");
+    } finally {
+      setExitReviewSymbol(null);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <PaperOnlyBanner message={data?.safety.message ?? "内部ペーパー取引のみ"} />
       <PortfolioMetrics portfolio={portfolio} />
       <RunnerStatus runner={data?.runner} />
       <Panel title="保有ポジション">
-        <PositionList positions={portfolio?.positions ?? []} />
+        {exitReviewError ? <ErrorState message={exitReviewError} /> : null}
+        <PositionList positions={portfolio?.positions ?? []} busySymbol={exitReviewSymbol} onExitReview={(position) => void reviewExit(position)} />
       </Panel>
       <section className="grid gap-5 xl:grid-cols-2">
         <Panel title="AI候補銘柄" action={<Link className="link-action" to="/admin/stock-trading/candidates">すべて見る</Link>}>
@@ -517,11 +534,19 @@ function PortfolioMetrics({ portfolio }: { portfolio?: StockPortfolioMetrics }) 
   );
 }
 
-function PositionList({ positions }: { positions: StockPosition[] }) {
+function PositionList({
+  positions,
+  busySymbol,
+  onExitReview,
+}: {
+  positions: StockPosition[];
+  busySymbol?: string | null;
+  onExitReview?: (position: StockPosition) => void;
+}) {
   if (positions.length === 0) return <Empty title="内部ペーパー建玉はまだありません" description="TradingView signal から paper BUY が作成されると、ここに平均単価と含み損益が表示されます。" />;
   return (
     <table className="data-table">
-      <thead><tr><th>銘柄</th><th>数量</th><th>平均単価</th><th>現在値</th><th>評価額</th><th>含み損益</th><th>確定損益</th><th>更新</th></tr></thead>
+      <thead><tr><th>銘柄</th><th>数量</th><th>平均単価</th><th>現在値</th><th>評価額</th><th>含み損益</th><th>確定損益</th><th>更新</th>{onExitReview ? <th>Exit</th> : null}</tr></thead>
       <tbody>
         {positions.map((position) => (
           <tr key={position.id}>
@@ -533,6 +558,11 @@ function PositionList({ positions }: { positions: StockPosition[] }) {
             <td>{formatCurrency(position.unrealizedPnl)}</td>
             <td>{formatCurrency(position.realizedPnl)}</td>
             <td>{formatDate(position.lastMarkedAt)}</td>
+            {onExitReview ? (
+              <td>
+                <button className="btn-secondary" type="button" disabled={busySymbol === position.symbol} onClick={() => onExitReview(position)}>Exit確認</button>
+              </td>
+            ) : null}
           </tr>
         ))}
       </tbody>

@@ -264,6 +264,39 @@ describe("admin routes", () => {
     });
   });
 
+  it("triggers stock position exit reviews from authenticated API routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.STOCK_AI_DECISION_MODE = "deterministic";
+    const { applyPaperTradeWithLedger } = await import("../src/stock-trading/repository.js");
+    await applyPaperTradeWithLedger({
+      id: "exit-route-buy",
+      symbol: "NVDA",
+      side: "buy",
+      quantity: 10,
+      price: 100,
+      executionSource: "paper",
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const reviewed = await dispatch(adminApiRouter, "/stock-trading/positions/NVDA/exit-review?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {},
+    });
+    const missing = await dispatch(adminApiRouter, "/stock-trading/positions/TSLA/exit-review?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {},
+    });
+
+    expect(reviewed.status).toBe(201);
+    expect(JSON.parse(reviewed.body)).toMatchObject({
+      result: {
+        decision: { symbol: "NVDA", finalAction: "SELL", strategyTag: "exit_monitor" },
+      },
+    });
+    expect(missing.status).toBe(404);
+    expect(JSON.parse(missing.body).error).toContain("stock_open_position_not_found:TSLA");
+  });
+
   it("requires admin auth for stock trading API routes", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     const { adminApiRouter } = await import("../src/admin/routes.js");

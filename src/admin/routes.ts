@@ -12,7 +12,7 @@ import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
 import { runStockBacktest } from "../stock-trading/backtest-runner.js";
-import { processStockMarketSignal } from "../stock-trading/paper-runner.js";
+import { processStockMarketSignal, reviewStockPositionExit } from "../stock-trading/paper-runner.js";
 import {
   getStockBacktestRunDetail,
   createStockResearchItem,
@@ -224,6 +224,15 @@ adminApiRouter.get("/stock-trading/backtests/:id", async (req, res) => {
 
 adminApiRouter.get("/stock-trading/positions", async (_req, res) => {
   res.json({ positions: await listStockPositions({ openOnly: true, limit: 200 }) });
+});
+
+adminApiRouter.post("/stock-trading/positions/:symbol/exit-review", async (req, res) => {
+  try {
+    res.status(201).json({ result: await reviewStockPositionExit(req.params.symbol) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(message.startsWith("stock_open_position_not_found:") ? 404 : 400).json({ error: message });
+  }
 });
 
 adminApiRouter.get("/stock-trading/signals", async (_req, res) => {

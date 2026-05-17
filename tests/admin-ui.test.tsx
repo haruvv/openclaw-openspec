@@ -223,6 +223,39 @@ describe("admin UI routing", () => {
     expect(screen.getByText("ブレイク直後に飛び乗らない。")).toBeInTheDocument();
   });
 
+  it("triggers exit reviews from open positions", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/admin/stock-trading/positions/NVDA/exit-review") {
+        return createJsonResponse({ result: { decision: createStockDecision() } });
+      }
+      return createJsonResponse(createStockOverviewResponse({
+        portfolio: {
+          initialCapital: 1000000,
+          currentEquity: 1000200,
+          cashBalance: 999000,
+          realizedPnl: 0,
+          unrealizedPnl: 200,
+          winRate: null,
+          maximumDrawdown: null,
+          positions: [createStockPosition()],
+          history: [],
+        },
+      }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/stock-trading"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("NVDA")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Exit確認" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stock-trading/positions/NVDA/exit-review", expect.objectContaining({ method: "POST" })));
+  });
+
   it("renders stock research page and creates manual context", async () => {
     const fetchMock = createStockFetch();
     vi.stubGlobal("fetch", fetchMock);

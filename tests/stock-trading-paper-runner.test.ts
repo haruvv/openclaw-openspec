@@ -175,6 +175,39 @@ describe("stock trading paper runner", () => {
     ]));
   });
 
+  it("creates paper-only exit review decisions for open positions without creating candidates", async () => {
+    const { processStockMarketSignal, reviewStockPositionExit } = await import("../src/stock-trading/paper-runner.js");
+    const { listStockAiDecisions, listStockMarketCandidates, listStockMarketSignals, listStockTrades } = await import("../src/stock-trading/repository.js");
+
+    await processStockMarketSignal({
+      symbol: "NVDA",
+      timeframe: "5m",
+      price: 100,
+      strategyTag: "breakout_momentum",
+      suggestedAction: "BUY",
+      indicators: { rsi: 58, ema20: 98, ema50: 95 },
+      rawPayload: { symbol: "NVDA" },
+    });
+
+    const result = await reviewStockPositionExit("NVDA");
+
+    expect(result.status).toBe("blocked");
+    expect(result.trade).toBeUndefined();
+    expect(result.decision).toMatchObject({ symbol: "NVDA", finalAction: "SELL", strategyTag: "exit_monitor" });
+    await expect(listStockAiDecisions()).resolves.toHaveLength(2);
+    await expect(listStockTrades()).resolves.toHaveLength(1);
+    await expect(listStockMarketSignals()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: "NVDA", timeframe: "position_exit", status: "blocked" }),
+    ]));
+    await expect(listStockMarketCandidates()).resolves.toHaveLength(1);
+  });
+
+  it("rejects exit reviews when no open paper position exists", async () => {
+    const { reviewStockPositionExit } = await import("../src/stock-trading/paper-runner.js");
+
+    await expect(reviewStockPositionExit("NVDA")).rejects.toThrow("stock_open_position_not_found:NVDA");
+  });
+
   it("records low-confidence decisions without creating paper trades", async () => {
     process.env.STOCK_PAPER_TRADE_CONFIDENCE_THRESHOLD = "0.9";
     const { processStockMarketSignal } = await import("../src/stock-trading/paper-runner.js");
