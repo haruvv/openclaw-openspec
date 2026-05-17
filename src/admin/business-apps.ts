@@ -28,8 +28,12 @@ export const businessApps: BusinessApp[] = [
     entryPath: "/admin/stock-trading",
     primaryLinks: [
       { label: "ダッシュボード", href: "/admin/stock-trading" },
+      { label: "リサーチ材料", href: "/admin/stock-trading/research" },
+      { label: "市場シグナル", href: "/admin/stock-trading/signals" },
       { label: "AI判断", href: "/admin/stock-trading/decisions" },
       { label: "取引履歴", href: "/admin/stock-trading/trades" },
+      { label: "戦略成績", href: "/admin/stock-trading/strategies" },
+      { label: "バックテスト", href: "/admin/stock-trading/backtests" },
       { label: "学習ログ", href: "/admin/stock-trading/lessons" },
       { label: "連携設定", href: "/admin/stock-trading/settings" },
     ],

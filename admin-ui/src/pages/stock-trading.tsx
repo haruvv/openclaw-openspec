@@ -1,18 +1,41 @@
 import React from "react";
-import { BookOpen, ClipboardList, LineChart, ShieldCheck, TrendingUp, WalletCards } from "lucide-react";
+import { BookOpen, ClipboardList, Code2, FileText, KeyRound, Link2, LineChart, ShieldCheck, TrendingUp, WalletCards } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Metric, Panel, StatusPill } from "../components/common";
 import { useApi } from "../hooks";
 import type {
+  StockBacktestRun,
   StockAiDecision,
   StockAiDecisionDetail,
   StockIntegrationStatus,
   StockLearningItem,
+  StockMarketSignal,
   StockPortfolioMetrics,
+  StockPosition,
+  StockResearchCategory,
+  StockResearchItem,
+  StockResearchSentiment,
+  StockRunnerStatus,
+  StockStrategyPerformance,
   StockTrade,
   StockTradingOverview,
+  StockTradingSettings,
 } from "../types";
 import { formatCurrency, formatDate, formatPercent } from "../utils";
+
+const TRADINGVIEW_ALERT_TEMPLATE = `{
+  "symbol": "{{ticker}}",
+  "timeframe": "{{interval}}",
+  "price": {{close}},
+  "action": "BUY",
+  "strategy": "breakout_momentum",
+  "indicators": {
+    "rsi": "{{plot(\"RSI\")}}",
+    "ema20": "{{plot(\"EMA20\")}}",
+    "ema50": "{{plot(\"EMA50\")}}"
+  }
+}`;
 
 export function StockTradingHome() {
   const { data, loading, error } = useApi<StockTradingOverview>("/api/admin/stock-trading/overview");
@@ -23,12 +46,28 @@ export function StockTradingHome() {
     <div className="space-y-5">
       <PaperOnlyBanner message={data?.safety.message ?? "内部ペーパー取引のみ"} />
       <PortfolioMetrics portfolio={portfolio} />
+      <RunnerStatus runner={data?.runner} />
+      <Panel title="保有ポジション">
+        <PositionList positions={portfolio?.positions ?? []} />
+      </Panel>
       <section className="grid gap-5 xl:grid-cols-2">
+        <Panel title="リサーチ材料" action={<Link className="link-action" to="/admin/stock-trading/research">すべて見る</Link>}>
+          <ResearchList research={data?.recentResearch ?? []} compact />
+        </Panel>
+        <Panel title="市場シグナル" action={<Link className="link-action" to="/admin/stock-trading/signals">すべて見る</Link>}>
+          <SignalList signals={data?.recentSignals ?? []} compact />
+        </Panel>
         <Panel title="AI判断" action={<Link className="link-action" to="/admin/stock-trading/decisions">すべて見る</Link>}>
           <DecisionList decisions={data?.recentDecisions ?? []} compact />
         </Panel>
         <Panel title="取引履歴" action={<Link className="link-action" to="/admin/stock-trading/trades">すべて見る</Link>}>
           <TradeList trades={data?.recentTrades ?? []} compact />
+        </Panel>
+        <Panel title="戦略成績" action={<Link className="link-action" to="/admin/stock-trading/strategies">すべて見る</Link>}>
+          <StrategyPerformanceList strategies={data?.strategyPerformance ?? []} compact />
+        </Panel>
+        <Panel title="バックテスト" action={<Link className="link-action" to="/admin/stock-trading/backtests">すべて見る</Link>}>
+          <BacktestRunList runs={data?.recentBacktests ?? []} compact />
         </Panel>
         <Panel title="学習ログ" action={<Link className="link-action" to="/admin/stock-trading/lessons">すべて見る</Link>}>
           <LessonList lessons={data?.recentLessons ?? []} compact />
@@ -37,6 +76,85 @@ export function StockTradingHome() {
           <IntegrationList integrations={data?.integrations ?? []} />
         </Panel>
       </section>
+    </div>
+  );
+}
+
+export function StockSignalsPage() {
+  const { data, loading, error } = useApi<{ signals: StockMarketSignal[] }>("/api/admin/stock-trading/signals");
+  if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
+  return (
+    <Panel title="市場シグナル">
+      <SignalList signals={data?.signals ?? []} />
+    </Panel>
+  );
+}
+
+export function StockResearchPage() {
+  const { data, loading, error, reload } = useApi<{ research: StockResearchItem[] }>("/api/admin/stock-trading/research");
+  const [form, setForm] = React.useState({
+    symbol: "",
+    category: "news" as StockResearchCategory,
+    title: "",
+    summary: "",
+    source: "manual",
+    sourceUrl: "",
+    sentiment: "unknown" as StockResearchSentiment,
+    importance: "0.5",
+  });
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await apiPost("/api/admin/stock-trading/research", {
+        ...form,
+        symbol: form.symbol.trim() || undefined,
+        sourceUrl: form.sourceUrl.trim() || undefined,
+        importance: Number(form.importance),
+      });
+      setForm((current) => ({ ...current, symbol: "", title: "", summary: "", sourceUrl: "", sentiment: "unknown", importance: "0.5" }));
+      await reload();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Panel title="リサーチ材料を追加">
+        <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="grid gap-1 text-xs font-black text-slate-500">銘柄<input className="input w-full" value={form.symbol} placeholder="NVDA / 空欄で市場全体" onChange={(event) => setForm({ ...form, symbol: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">カテゴリ<select className="input w-full" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as StockResearchCategory })}>
+              {["news", "earnings", "disclosure", "fundamental", "macro", "sector", "operator_note"].map((value) => <option key={value} value={value}>{formatResearchCategory(value)}</option>)}
+            </select></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">センチメント<select className="input w-full" value={form.sentiment} onChange={(event) => setForm({ ...form, sentiment: event.target.value as StockResearchSentiment })}>
+              {["positive", "neutral", "negative", "mixed", "unknown"].map((value) => <option key={value} value={value}>{formatResearchSentiment(value)}</option>)}
+            </select></label>
+          </div>
+          <label className="grid gap-1 text-xs font-black text-slate-500">タイトル<input className="input w-full" value={form.title} required onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">要約<textarea className="textarea" value={form.summary} required onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_160px]">
+            <label className="grid gap-1 text-xs font-black text-slate-500">ソース<input className="input w-full" value={form.source} required onChange={(event) => setForm({ ...form, source: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">URL<input className="input w-full" value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">重要度<input className="input w-full" type="number" min="0" max="1" step="0.1" value={form.importance} onChange={(event) => setForm({ ...form, importance: event.target.value })} /></label>
+          </div>
+          {submitError ? <ErrorState message={submitError} /> : null}
+          <div><button className="btn-primary" type="submit" disabled={submitting}>{submitting ? "保存中..." : "保存"}</button></div>
+        </form>
+      </Panel>
+      <Panel title="リサーチ材料">
+        <ResearchList research={data?.research ?? []} />
+      </Panel>
     </div>
   );
 }
@@ -59,6 +177,7 @@ export function StockDecisionDetailPage() {
   if (error) return <ErrorState message={error} />;
   const decision = data?.decision;
   if (!decision) return <Empty title="AI判断が見つかりません" />;
+  const learningItems = decision.learningItems ?? [];
   return (
     <div className="space-y-5">
       <Panel title={`${decision.symbol} / ${decision.finalAction}`}>
@@ -78,7 +197,12 @@ export function StockDecisionDetailPage() {
           </div>
         ) : null}
       </Panel>
-      <Panel title="Agent意見">
+      <Panel title="AI投資会議">
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <Info label="保存Agent数" value={`${decision.agents.length}`} />
+          <Info label="実行モード" value="内部ペーパーのみ" />
+          <Info label="Risk veto" value="有効" />
+        </div>
         {decision.agents.length === 0 ? <Empty title="Agent意見はまだありません" /> : (
           <div className="grid gap-3">
             {decision.agents.map((agent) => {
@@ -102,6 +226,13 @@ export function StockDecisionDetailPage() {
           </div>
         )}
       </Panel>
+      <Panel title="判断に使った学習ログ">
+        {learningItems.length === 0 ? (
+          <Empty title="この判断に紐づいた学習ログはありません" description="学習ログが蓄積されると、次回以降のAI判断で参照されます。" />
+        ) : (
+          <LessonList lessons={learningItems} />
+        )}
+      </Panel>
     </div>
   );
 }
@@ -117,6 +248,111 @@ export function StockTradesPage() {
   );
 }
 
+export function StockStrategiesPage() {
+  const { data, loading, error } = useApi<{ strategies: StockStrategyPerformance[] }>("/api/admin/stock-trading/strategies");
+  if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
+  return (
+    <Panel title="戦略成績">
+      <StrategyPerformanceList strategies={data?.strategies ?? []} />
+    </Panel>
+  );
+}
+
+export function StockBacktestsPage() {
+  const { data, loading, error, reload } = useApi<{ runs: StockBacktestRun[] }>("/api/admin/stock-trading/backtests");
+  const [form, setForm] = React.useState({
+    symbol: "NVDA",
+    timeframe: "1d",
+    strategyTag: "breakout_momentum",
+    lookbackBars: "3",
+    volumeLookbackBars: "3",
+    takeProfitPct: "0.06",
+    stopLossPct: "0.03",
+    maxHoldingBars: "5",
+    notional: "100000",
+    feeBps: "0",
+    slippageBps: "5",
+  });
+  const [candlesJson, setCandlesJson] = React.useState("[\n  {\"timestamp\":\"2026-05-01T00:00:00.000Z\",\"open\":100,\"high\":102,\"low\":99,\"close\":101,\"volume\":1000}\n]");
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
+
+  async function importCandles() {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await apiPost("/api/admin/stock-trading/candles", {
+        symbol: form.symbol,
+        timeframe: form.timeframe,
+        source: "manual",
+        candles: JSON.parse(candlesJson) as unknown,
+      });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "ローソク足の保存に失敗しました");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function runBacktest() {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await apiPost("/api/admin/stock-trading/backtests", {
+        ...form,
+        strategyTag: "breakout_momentum",
+        lookbackBars: Number(form.lookbackBars),
+        volumeLookbackBars: Number(form.volumeLookbackBars),
+        takeProfitPct: Number(form.takeProfitPct),
+        stopLossPct: Number(form.stopLossPct),
+        maxHoldingBars: Number(form.maxHoldingBars),
+        notional: Number(form.notional),
+        feeBps: Number(form.feeBps),
+        slippageBps: Number(form.slippageBps),
+      });
+      await reload();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "バックテストに失敗しました");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Panel title="バックテスト実行">
+        <div className="grid gap-3">
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="grid gap-1 text-xs font-black text-slate-500">銘柄<input className="input w-full" value={form.symbol} onChange={(event) => setForm({ ...form, symbol: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">時間足<input className="input w-full" value={form.timeframe} onChange={(event) => setForm({ ...form, timeframe: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">利確率<input className="input w-full" type="number" step="0.01" value={form.takeProfitPct} onChange={(event) => setForm({ ...form, takeProfitPct: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">損切率<input className="input w-full" type="number" step="0.01" value={form.stopLossPct} onChange={(event) => setForm({ ...form, stopLossPct: event.target.value })} /></label>
+          </div>
+          <div className="grid gap-3 md:grid-cols-5">
+            <label className="grid gap-1 text-xs font-black text-slate-500">lookback<input className="input w-full" type="number" value={form.lookbackBars} onChange={(event) => setForm({ ...form, lookbackBars: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">出来高lookback<input className="input w-full" type="number" value={form.volumeLookbackBars} onChange={(event) => setForm({ ...form, volumeLookbackBars: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">最大保有本数<input className="input w-full" type="number" value={form.maxHoldingBars} onChange={(event) => setForm({ ...form, maxHoldingBars: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">手数料bps<input className="input w-full" type="number" value={form.feeBps} onChange={(event) => setForm({ ...form, feeBps: event.target.value })} /></label>
+            <label className="grid gap-1 text-xs font-black text-slate-500">スリッページbps<input className="input w-full" type="number" value={form.slippageBps} onChange={(event) => setForm({ ...form, slippageBps: event.target.value })} /></label>
+          </div>
+          <label className="grid gap-1 text-xs font-black text-slate-500">ローソク足JSON<textarea className="textarea min-h-40" value={candlesJson} onChange={(event) => setCandlesJson(event.target.value)} /></label>
+          {submitError ? <ErrorState message={submitError} /> : null}
+          <div className="flex flex-wrap gap-3">
+            <button className="btn-primary" type="button" disabled={submitting} onClick={() => void importCandles()}>ローソク足を保存</button>
+            <button className="btn-primary" type="button" disabled={submitting} onClick={() => void runBacktest()}>バックテスト実行</button>
+          </div>
+        </div>
+      </Panel>
+      <Panel title="バックテスト履歴">
+        <BacktestRunList runs={data?.runs ?? []} />
+      </Panel>
+    </div>
+  );
+}
+
 export function StockLessonsPage() {
   const { data, loading, error } = useApi<{ lessons: StockLearningItem[] }>("/api/admin/stock-trading/lessons");
   if (loading) return <Loading />;
@@ -129,16 +365,69 @@ export function StockLessonsPage() {
 }
 
 export function StockSettingsPage() {
-  const { data, loading, error } = useApi<{ integrations: StockIntegrationStatus[]; safety: StockTradingOverview["safety"] }>("/api/admin/stock-trading/settings");
+  const { data, loading, error } = useApi<StockTradingSettings>("/api/admin/stock-trading/settings");
   if (loading) return <Loading />;
   if (error) return <ErrorState message={error} />;
   return (
     <div className="space-y-5">
       <PaperOnlyBanner message={data?.safety.message ?? "内部ペーパー取引のみ"} />
+      <RunnerStatus runner={data?.runner} />
+      <TradingViewSetupGuide runner={data?.runner} setup={data?.tradingView} />
       <Panel title="連携設定">
         <IntegrationList integrations={data?.integrations ?? []} />
       </Panel>
     </div>
+  );
+}
+
+function TradingViewSetupGuide({ runner, setup }: { runner?: StockRunnerStatus; setup?: StockTradingSettings["tradingView"] }) {
+  const webhookPath = setup?.webhookPath ?? "/webhooks/stock-trading/tradingview";
+  const webhookUrl = typeof window === "undefined" ? webhookPath : `${window.location.origin}${webhookPath}`;
+  const latestSignal = setup?.latestSignal ?? null;
+  return (
+    <Panel title="TradingView Webhook設定">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Metric icon={<Link2 />} label="Webhook URL" value={<span className="block break-all text-base">{webhookUrl}</span>} />
+        <Metric icon={<KeyRound />} label="Secret header" value={<span className="text-base">{setup?.secretHeader ?? "x-tradingview-secret"}</span>} />
+        <Metric icon={<ShieldCheck />} label="Webhook" value={runner?.tradingViewWebhookConfigured ? "設定済み" : "未設定"} />
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="border border-slate-200 bg-slate-950 p-4 text-slate-100">
+          <div className="mb-3 flex items-center gap-2 text-xs font-black text-slate-300"><Code2 className="h-4 w-4" />Alert message JSON</div>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs font-semibold leading-6">{TRADINGVIEW_ALERT_TEMPLATE}</pre>
+        </div>
+        <div className="space-y-3">
+          <Info label="認証" value={`${setup?.secretHeader ?? "x-tradingview-secret"} に TRADINGVIEW_WEBHOOK_SECRET の値を設定`} />
+          <Info label="モード" value="paper-only / broker注文なし" />
+          {latestSignal ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Info label="最終受信" value={formatDate(latestSignal.receivedAt)} />
+              <Info label="銘柄" value={`${latestSignal.symbol} / ${latestSignal.timeframe}`} />
+              <Info label="価格" value={formatCurrency(latestSignal.price)} />
+              <Info label="状態" value={formatSignalStatus(latestSignal.status)} />
+            </div>
+          ) : (
+            <Empty title="TradingViewシグナルはまだ届いていません" description="alertを作成したら、この欄で最後の受信時刻と状態を確認できます。" />
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function RunnerStatus({ runner }: { runner?: StockRunnerStatus }) {
+  return (
+    <section className="grid gap-3 md:grid-cols-4">
+      <Metric icon={<ShieldCheck />} label="Runner" value={runner?.enabled ? "Webhook ready" : "未設定"} />
+      <Metric icon={<Code2 />} label="AI判断" value={formatDecisionMode(runner)} />
+      <Metric icon={<ClipboardList />} label="信頼度しきい値" value={formatPercent(runner?.confidenceThreshold)} />
+      <Metric icon={<WalletCards />} label="Paper notional" value={formatCurrency(runner?.paperTradeNotional)} />
+      {runner?.message ? (
+        <div className="md:col-span-4">
+          <Info label="Paper runner" value={runner.message} />
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -176,6 +465,54 @@ function PortfolioMetrics({ portfolio }: { portfolio?: StockPortfolioMetrics }) 
   );
 }
 
+function PositionList({ positions }: { positions: StockPosition[] }) {
+  if (positions.length === 0) return <Empty title="内部ペーパー建玉はまだありません" description="TradingView signal から paper BUY が作成されると、ここに平均単価と含み損益が表示されます。" />;
+  return (
+    <table className="data-table">
+      <thead><tr><th>銘柄</th><th>数量</th><th>平均単価</th><th>現在値</th><th>評価額</th><th>含み損益</th><th>確定損益</th><th>更新</th></tr></thead>
+      <tbody>
+        {positions.map((position) => (
+          <tr key={position.id}>
+            <td className="font-black">{position.symbol}</td>
+            <td>{position.quantity}</td>
+            <td>{formatCurrency(position.averageEntryPrice)}</td>
+            <td>{formatCurrency(position.lastMarkPrice)}</td>
+            <td>{formatCurrency(position.marketValue)}</td>
+            <td>{formatCurrency(position.unrealizedPnl)}</td>
+            <td>{formatCurrency(position.realizedPnl)}</td>
+            <td>{formatDate(position.lastMarkedAt)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ResearchList({ research, compact = false }: { research: StockResearchItem[]; compact?: boolean }) {
+  if (research.length === 0) return <Empty title="リサーチ材料はまだありません" description="ニュース、決算、開示、ファンダ情報を追加するとAI判断の材料として使われます。" />;
+  return (
+    <div className="space-y-3">
+      {research.map((item) => (
+        <article key={item.id} className="border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base font-black text-slate-950">{item.symbol ?? "市場全体"}</span>
+                <span className="border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-black text-slate-600">{formatResearchCategory(item.category)}</span>
+                <span className="border border-slate-200 bg-white px-2 py-0.5 text-xs font-black text-slate-600">{formatResearchSentiment(item.sentiment)}</span>
+              </div>
+              <div className="mt-2 text-sm font-black text-slate-900">{item.title}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-500">{item.source} / {formatDate(item.publishedAt)} / 重要度 {Math.round(item.importance * 100)}</div>
+            </div>
+            <FileText className="h-5 w-5 shrink-0 text-blue-700" />
+          </div>
+          {!compact ? <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{item.summary}</p> : null}
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function DecisionList({ decisions, compact = false }: { decisions: StockAiDecision[]; compact?: boolean }) {
   if (decisions.length === 0) return <Empty title="AI判断はまだありません" description="内部ペーパー用の判断ログが保存されるとここに表示されます。" />;
   return (
@@ -196,6 +533,28 @@ function DecisionList({ decisions, compact = false }: { decisions: StockAiDecisi
         </article>
       ))}
     </div>
+  );
+}
+
+function SignalList({ signals, compact = false }: { signals: StockMarketSignal[]; compact?: boolean }) {
+  if (signals.length === 0) return <Empty title="市場シグナルはまだありません" description="TradingView webhook からシグナルを受け取るとここに表示されます。" />;
+  return (
+    <table className="data-table">
+      <thead><tr><th>受信</th><th>銘柄</th><th>時間足</th><th>価格</th><th>戦略</th><th>状態</th><th>判断</th></tr></thead>
+      <tbody>
+        {signals.map((signal) => (
+          <tr key={signal.id}>
+            <td>{formatDate(signal.receivedAt)}</td>
+            <td className="font-black">{signal.symbol}</td>
+            <td>{signal.timeframe}</td>
+            <td>{formatCurrency(signal.price)}</td>
+            <td>{signal.strategyTag ?? "-"}</td>
+            <td><StatusPill status={signal.status === "executed" || signal.status === "processed" ? "passed" : signal.status === "blocked" ? "skipped" : "running"} label={formatSignalStatus(signal.status)} /></td>
+            <td>{signal.decisionId ? <Link className="table-link" to={`/admin/stock-trading/decisions/${signal.decisionId}`}>開く</Link> : compact ? "-" : (signal.statusReason ?? "-")}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -221,6 +580,114 @@ function TradeList({ trades, compact = false }: { trades: StockTrade[]; compact?
   );
 }
 
+function StrategyPerformanceList({ strategies, compact = false }: { strategies: StockStrategyPerformance[]; compact?: boolean }) {
+  if (strategies.length === 0) return <Empty title="戦略成績はまだありません" description="実現損益のある内部ペーパーSELLが記録されると、戦略タグごとの勝率、期待値、Profit Factorが表示されます。" />;
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {strategies.slice(0, 3).map((strategy) => (
+          <div key={strategy.strategyTag} className="grid gap-3 border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_120px_120px]">
+            <div>
+              <div className="text-sm font-black">{strategy.strategyTag}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-500">{formatStrategyStatus(strategy.status)} / {strategy.tradeCount} trades</div>
+            </div>
+            <Info label="損益" value={formatCurrency(strategy.realizedPnl)} />
+            <Info label="PF" value={strategy.profitFactor === null ? "-" : strategy.profitFactor.toFixed(2)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th>戦略</th>
+          <th>状態</th>
+          <th>取引数</th>
+          <th>勝率</th>
+          <th>実現損益</th>
+          <th>平均利益</th>
+          <th>平均損失</th>
+          <th>期待値</th>
+          <th>PF</th>
+          <th>最終取引</th>
+        </tr>
+      </thead>
+      <tbody>
+        {strategies.map((strategy) => (
+          <tr key={strategy.strategyTag}>
+            <td className="font-black">{strategy.strategyTag}</td>
+            <td>{formatStrategyStatus(strategy.status)}</td>
+            <td>{strategy.tradeCount}</td>
+            <td>{formatPercent(strategy.winRate)}</td>
+            <td>{formatCurrency(strategy.realizedPnl)}</td>
+            <td>{strategy.averageProfit === null ? "-" : formatCurrency(strategy.averageProfit)}</td>
+            <td>{strategy.averageLoss === null ? "-" : formatCurrency(strategy.averageLoss)}</td>
+            <td>{strategy.expectancy === null ? "-" : formatCurrency(strategy.expectancy)}</td>
+            <td>{strategy.profitFactor === null ? "-" : strategy.profitFactor.toFixed(2)}</td>
+            <td>{strategy.latestTradeAt ? formatDate(strategy.latestTradeAt) : "-"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function BacktestRunList({ runs, compact = false }: { runs: StockBacktestRun[]; compact?: boolean }) {
+  if (runs.length === 0) return <Empty title="バックテストはまだありません" description="ローソク足を保存してバックテストを実行すると、勝率、期待値、Profit Factor、最大ドローダウンが表示されます。" />;
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {runs.slice(0, 3).map((run) => (
+          <div key={run.id} className="grid gap-3 border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_120px_120px]">
+            <div>
+              <div className="text-sm font-black">{run.symbol} / {run.strategyTag}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-500">{run.timeframe} / {run.tradeCount} trades</div>
+            </div>
+            <Info label="損益" value={formatCurrency(run.realizedPnl)} />
+            <Info label="PF" value={run.profitFactor === null ? "-" : run.profitFactor.toFixed(2)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th>日時</th>
+          <th>銘柄</th>
+          <th>戦略</th>
+          <th>足</th>
+          <th>取引数</th>
+          <th>勝率</th>
+          <th>損益</th>
+          <th>期待値</th>
+          <th>PF</th>
+          <th>最大DD</th>
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((run) => (
+          <tr key={run.id}>
+            <td>{formatDate(run.createdAt)}</td>
+            <td className="font-black">{run.symbol}</td>
+            <td>{run.strategyTag}</td>
+            <td>{run.timeframe}</td>
+            <td>{run.tradeCount}</td>
+            <td>{formatPercent(run.winRate)}</td>
+            <td>{formatCurrency(run.realizedPnl)}</td>
+            <td>{run.expectancy === null ? "-" : formatCurrency(run.expectancy)}</td>
+            <td>{run.profitFactor === null ? "-" : run.profitFactor.toFixed(2)}</td>
+            <td>{run.maximumDrawdown === null ? "-" : formatCurrency(run.maximumDrawdown)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function LessonList({ lessons, compact = false }: { lessons: StockLearningItem[]; compact?: boolean }) {
   if (lessons.length === 0) return <Empty title="学習ログはまだありません" description="取引レビューから勝ちパターン、負けパターン、ルール候補が保存されるとここに表示されます。" />;
   return (
@@ -230,7 +697,10 @@ function LessonList({ lessons, compact = false }: { lessons: StockLearningItem[]
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="text-base font-black">{lesson.title}</div>
-              <div className="mt-1 text-xs font-semibold text-slate-500">{formatLearningCategory(lesson.category)} / {formatDate(lesson.createdAt)}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-500">
+                {formatLearningCategory(lesson.category)} / {formatDate(lesson.createdAt)}
+                {lesson.sourceTradeId ? ` / trade ${lesson.sourceTradeId}` : ""}
+              </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 md:w-72">
               <Info label="信頼度" value={formatPercent(lesson.confidence)} />
@@ -265,6 +735,10 @@ function formatExecutionSource(value: string): string {
   return { paper: "内部ペーパー", demo: "デモ", manual: "手入力" }[value] ?? value;
 }
 
+function formatStrategyStatus(value: StockStrategyPerformance["status"]): string {
+  return { adopt: "採用候補", watch: "継続監視", reject: "却下候補" }[value] ?? value;
+}
+
 function formatLearningCategory(value: string): string {
   return {
     winning_pattern: "勝ちパターン",
@@ -277,4 +751,37 @@ function formatLearningCategory(value: string): string {
 
 function formatIntegrationPurpose(value: string): string {
   return { market_data: "価格・市場データ", broker: "証券API", webhook: "Webhook" }[value] ?? value;
+}
+
+function formatSignalStatus(value: string): string {
+  return {
+    received: "受信",
+    processed: "判断済",
+    rejected: "拒否",
+    executed: "Paper約定",
+    blocked: "ブロック",
+  }[value] ?? value;
+}
+
+function formatResearchCategory(value: string): string {
+  return {
+    news: "ニュース",
+    earnings: "決算",
+    disclosure: "開示",
+    fundamental: "ファンダ",
+    macro: "マクロ",
+    sector: "セクター",
+    operator_note: "手入力メモ",
+  }[value] ?? value;
+}
+
+function formatResearchSentiment(value: string): string {
+  return { positive: "ポジティブ", neutral: "中立", negative: "ネガティブ", mixed: "混在", unknown: "不明" }[value] ?? value;
+}
+
+function formatDecisionMode(runner?: StockRunnerStatus): string {
+  if (!runner) return "-";
+  if (runner.decisionMode === "deterministic") return "ルール固定";
+  if (runner.decisionMode === "llm") return runner.llmConfigured ? "LLM" : "LLM未設定";
+  return runner.llmConfigured ? "LLM auto" : "ルールfallback";
 }

@@ -17,8 +17,12 @@ export const seoSalesNavItems = [
 
 export const stockTradingNavItems = [
   { label: "株取引 概要", href: "/admin/stock-trading", icon: TrendingUp },
+  { label: "リサーチ材料", href: "/admin/stock-trading/research", icon: BookOpen },
+  { label: "市場シグナル", href: "/admin/stock-trading/signals", icon: Activity },
   { label: "AI判断", href: "/admin/stock-trading/decisions", icon: ClipboardList },
   { label: "取引履歴", href: "/admin/stock-trading/trades", icon: LineChart },
+  { label: "戦略成績", href: "/admin/stock-trading/strategies", icon: LineChart },
+  { label: "バックテスト", href: "/admin/stock-trading/backtests", icon: LineChart },
   { label: "学習ログ", href: "/admin/stock-trading/lessons", icon: BookOpen },
   { label: "連携設定", href: "/admin/stock-trading/settings", icon: Settings },
 ];

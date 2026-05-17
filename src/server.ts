@@ -12,6 +12,7 @@ import { handleTelegramWebhook } from "./revenue-agent/telegram-webhook.js";
 import { adminApiRouter, adminAssetsRouter, adminRouter } from "./admin/routes.js";
 import { getStorageConfig } from "./storage/index.js";
 import { handleDailyDiscoveryJob } from "./discovery/http.js";
+import { handleTradingViewStockWebhook } from "./stock-trading/paper-runner.js";
 
 export const app = express();
 
@@ -47,6 +48,10 @@ app.post("/telegram/webhook", async (req, res) => {
 
 app.post("/internal/jobs/discover-targets", async (req, res) => {
   await handleDailyDiscoveryJob(req, res);
+});
+
+app.post("/webhooks/stock-trading/tradingview", async (req, res) => {
+  await handleTradingViewStockWebhook(req, res);
 });
 
 app.use("/api/admin", adminApiRouter);

@@ -190,9 +190,15 @@ describe("admin UI routing", () => {
 
     expect(screen.getByRole("heading", { name: "株自動売買" })).toBeInTheDocument();
     expect(await screen.findByText("Paper-only")).toBeInTheDocument();
+    expect(screen.getByText("Webhook ready")).toBeInTheDocument();
     expect(screen.getByText("内部ペーパー資産はまだありません")).toBeInTheDocument();
+    expect(screen.getByText("内部ペーパー建玉はまだありません")).toBeInTheDocument();
+    expect(screen.getByText("リサーチ材料はまだありません")).toBeInTheDocument();
+    expect(screen.getByText("市場シグナルはまだありません")).toBeInTheDocument();
     expect(screen.getByText("AI判断はまだありません")).toBeInTheDocument();
     expect(screen.getByText("内部ペーパー取引はまだありません")).toBeInTheDocument();
+    expect(screen.getByText("戦略成績はまだありません")).toBeInTheDocument();
+    expect(screen.getByText("バックテストはまだありません")).toBeInTheDocument();
     expect(screen.getByText("学習ログはまだありません")).toBeInTheDocument();
   });
 
@@ -206,8 +212,64 @@ describe("admin UI routing", () => {
     );
 
     expect(await screen.findByText("NVDA / WATCH")).toBeInTheDocument();
+    expect(screen.getByText("AI投資会議")).toBeInTheDocument();
+    expect(screen.getByText("11")).toBeInTheDocument();
     expect(screen.getByText("risk")).toBeInTheDocument();
+    expect(screen.getByText("knowledge-curator")).toBeInTheDocument();
     expect(screen.getByText("リスク過大")).toBeInTheDocument();
+    expect(screen.getByText("判断に使った学習ログ")).toBeInTheDocument();
+    expect(screen.getByText("初回押しを待つ")).toBeInTheDocument();
+    expect(screen.getByText("ブレイク直後に飛び乗らない。")).toBeInTheDocument();
+  });
+
+  it("renders stock research page and creates manual context", async () => {
+    const fetchMock = createStockFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/stock-trading/research"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("AI需要が強い")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("銘柄"), { target: { value: "nvda" } });
+    fireEvent.change(screen.getByLabelText("タイトル"), { target: { value: "好決算" } });
+    fireEvent.change(screen.getByLabelText("要約"), { target: { value: "売上と利益が市場予想を上回った。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stock-trading/research", expect.objectContaining({ method: "POST" })));
+  });
+
+  it("renders stock strategy performance page", async () => {
+    vi.stubGlobal("fetch", createStockFetch());
+
+    render(
+      <MemoryRouter initialEntries={["/admin/stock-trading/strategies"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("breakout_momentum")).toBeInTheDocument();
+    expect(screen.getByText("採用候補")).toBeInTheDocument();
+    expect(screen.getByText("2.50")).toBeInTheDocument();
+  });
+
+  it("renders stock backtests page and runs a backtest", async () => {
+    const fetchMock = createStockFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/stock-trading/backtests"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("バックテスト履歴")).toBeInTheDocument();
+    expect(screen.getByText("breakout_momentum")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "バックテスト実行" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stock-trading/backtests", expect.objectContaining({ method: "POST" })));
   });
 
   it("renders stock trading settings without secrets", async () => {
@@ -216,6 +278,21 @@ describe("admin UI routing", () => {
         { label: "moomoo OpenAPI", key: "MOOMOO_OPENAPI_HOST", configured: true, purpose: "market_data" },
         { label: "TradingView webhook", key: "TRADINGVIEW_WEBHOOK_SECRET", configured: false, purpose: "webhook" },
       ],
+      runner: {
+        enabled: true,
+        mode: "paper_only",
+        decisionMode: "auto",
+        llmConfigured: true,
+        confidenceThreshold: 0.7,
+        paperTradeNotional: 100000,
+        tradingViewWebhookConfigured: true,
+        message: "内部ペーパー判断だけを記録します。",
+      },
+      tradingView: {
+        webhookPath: "/webhooks/stock-trading/tradingview",
+        secretHeader: "x-tradingview-secret",
+        latestSignal: createStockSignal(),
+      },
       safety: { mode: "paper_only", realOrderPlacementEnabled: false, message: "内部ペーパー取引のみ" },
     })));
 
@@ -227,7 +304,12 @@ describe("admin UI routing", () => {
 
     expect(await screen.findByText("moomoo OpenAPI")).toBeInTheDocument();
     expect(screen.getByText("TradingView webhook")).toBeInTheDocument();
-    expect(screen.queryByText("secret")).not.toBeInTheDocument();
+    expect(screen.getByText("TradingView Webhook設定")).toBeInTheDocument();
+    expect(screen.getByText(/\/webhooks\/stock-trading\/tradingview/)).toBeInTheDocument();
+    expect(screen.getAllByText(/x-tradingview-secret/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/"symbol": "{{ticker}}"/)).toBeInTheDocument();
+    expect(screen.getByText("NVDA / 5m")).toBeInTheDocument();
+    expect(screen.queryByText("tradingview-secret")).not.toBeInTheDocument();
   });
 });
 
@@ -331,7 +413,7 @@ function createRunDetailFetch(run = createRunDetail()) {
 }
 
 function createStockFetch() {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path === "/api/admin/stock-trading/decisions/decision-1") {
       return createJsonResponse({ decision: createStockDecisionDetail() });
@@ -342,13 +424,34 @@ function createStockFetch() {
     if (path === "/api/admin/stock-trading/trades") {
       return createJsonResponse({ trades: [createStockTrade()] });
     }
+    if (path === "/api/admin/stock-trading/strategies") {
+      return createJsonResponse({ strategies: [createStockStrategyPerformance()] });
+    }
+    if (path === "/api/admin/stock-trading/candles") {
+      return createJsonResponse({ candles: [] });
+    }
+    if (path === "/api/admin/stock-trading/backtests") {
+      if (init?.method === "POST") return createJsonResponse({ run: createStockBacktestRun() });
+      return createJsonResponse({ runs: [createStockBacktestRun()] });
+    }
+    if (path === "/api/admin/stock-trading/signals") {
+      return createJsonResponse({ signals: [createStockSignal()] });
+    }
+    if (path === "/api/admin/stock-trading/research") {
+      if (init?.method === "POST") return createJsonResponse({ item: createStockResearch() });
+      return createJsonResponse({ research: [createStockResearch()] });
+    }
     if (path === "/api/admin/stock-trading/lessons") {
       return createJsonResponse({ lessons: [createStockLesson()] });
     }
     return createJsonResponse(createStockOverviewResponse({
+      recentSignals: [createStockSignal()],
       recentDecisions: [createStockDecision()],
       recentTrades: [createStockTrade()],
+      strategyPerformance: [createStockStrategyPerformance()],
+      recentBacktests: [createStockBacktestRun()],
       recentLessons: [createStockLesson()],
+      recentResearch: [createStockResearch()],
     }));
   });
 }
@@ -363,14 +466,81 @@ function createStockOverviewResponse(overrides: Record<string, unknown> = {}) {
       unrealizedPnl: 0,
       winRate: null,
       maximumDrawdown: null,
+      positions: [],
       history: [],
     },
     recentDecisions: [],
     recentTrades: [],
     recentLessons: [],
+    recentSignals: [],
+    recentResearch: [],
+    strategyPerformance: [],
+    recentBacktests: [],
     integrations: [{ label: "moomoo OpenAPI", key: "MOOMOO_OPENAPI_HOST", configured: false, purpose: "market_data" }],
+    runner: {
+      enabled: true,
+      mode: "paper_only",
+      decisionMode: "auto",
+      llmConfigured: true,
+      confidenceThreshold: 0.7,
+      paperTradeNotional: 100000,
+      tradingViewWebhookConfigured: true,
+      message: "内部ペーパー判断だけを記録します。",
+    },
     safety: { mode: "paper_only", realOrderPlacementEnabled: false, message: "内部ペーパー取引のみ" },
     ...overrides,
+  };
+}
+
+function createStockPosition() {
+  return {
+    id: "position-1",
+    symbol: "NVDA",
+    quantity: 10,
+    averageEntryPrice: 128,
+    realizedPnl: 0,
+    lastMarkPrice: 130,
+    lastMarkedAt: "2026-05-17T01:00:00.000Z",
+    marketValue: 1300,
+    unrealizedPnl: 20,
+    openedAt: "2026-05-17T00:00:00.000Z",
+    updatedAt: "2026-05-17T01:00:00.000Z",
+  };
+}
+
+function createStockResearch() {
+  return {
+    id: "research-1",
+    symbol: "NVDA",
+    category: "news",
+    title: "AI需要が強い",
+    summary: "半導体需要に関する手入力メモ。",
+    source: "manual",
+    sentiment: "positive",
+    importance: 0.8,
+    rawPayload: {},
+    publishedAt: "2026-05-17T00:15:00.000Z",
+    createdAt: "2026-05-17T00:16:00.000Z",
+  };
+}
+
+function createStockSignal() {
+  return {
+    id: "signal-1",
+    source: "tradingview",
+    sourceSignalId: "alert-1",
+    symbol: "NVDA",
+    timeframe: "5m",
+    price: 128,
+    strategyTag: "breakout_momentum",
+    suggestedAction: "BUY",
+    indicators: { rsi: 58 },
+    rawPayload: { symbol: "NVDA" },
+    status: "executed",
+    decisionId: "decision-1",
+    tradeId: "trade-1",
+    statusReason: "paper_execution_created",
+    receivedAt: "2026-05-17T00:30:00.000Z",
   };
 }
 
@@ -390,18 +560,20 @@ function createStockDecision() {
 }
 
 function createStockDecisionDetail() {
+  const agentNames = ["market-scanner", "fundamental", "news", "technical", "entry", "exit", "risk", "portfolio", "review-learning", "knowledge-curator", "judge"];
   return {
     ...createStockDecision(),
-    agents: [{
-      id: "agent-risk-1",
+    agents: agentNames.map((agentName) => ({
+      id: `agent-${agentName}`,
       aiDecisionId: "decision-1",
-      agentName: "risk",
-      score: 35,
-      stance: "reject",
-      summary: "リスク過大",
-      reasoning: "想定利益に対して損切り幅が広い。",
+      agentName,
+      score: agentName === "risk" ? 35 : 60,
+      stance: agentName === "risk" ? "reject" : "observe",
+      summary: agentName === "risk" ? "リスク過大" : `${agentName} summary`,
+      reasoning: agentName === "risk" ? "想定利益に対して損切り幅が広い。" : `${agentName} reasoning`,
       createdAt: "2026-05-17T00:00:00.000Z",
-    }],
+    })),
+    learningItems: [createStockLesson()],
   };
 }
 
@@ -418,6 +590,55 @@ function createStockTrade() {
     rawExecution: {},
     realizedPnl: 240,
     outcome: "win",
+    createdAt: "2026-05-17T01:00:00.000Z",
+  };
+}
+
+function createStockStrategyPerformance() {
+  return {
+    strategyTag: "breakout_momentum",
+    status: "adopt",
+    tradeCount: 8,
+    winCount: 5,
+    lossCount: 3,
+    flatCount: 0,
+    winRate: 0.625,
+    realizedPnl: 1200,
+    grossProfit: 2400,
+    grossLoss: -1200,
+    averageProfit: 480,
+    averageLoss: -400,
+    expectancy: 150,
+    profitFactor: 2.5,
+    bestTradePnl: 900,
+    worstTradePnl: -600,
+    latestTradeAt: "2026-05-17T01:00:00.000Z",
+  };
+}
+
+function createStockBacktestRun() {
+  return {
+    id: "backtest-1",
+    symbol: "NVDA",
+    timeframe: "1d",
+    strategyTag: "breakout_momentum",
+    params: { lookbackBars: 3 },
+    status: "completed",
+    candleCount: 6,
+    tradeCount: 1,
+    winRate: 1,
+    realizedPnl: 5800,
+    grossProfit: 5800,
+    grossLoss: 0,
+    averageProfit: 5800,
+    averageLoss: null,
+    expectancy: 5800,
+    profitFactor: null,
+    maximumDrawdown: 0,
+    from: "2026-05-01T00:00:00.000Z",
+    to: "2026-05-06T00:00:00.000Z",
+    startedAt: "2026-05-17T01:00:00.000Z",
+    completedAt: "2026-05-17T01:00:00.000Z",
     createdAt: "2026-05-17T01:00:00.000Z",
   };
 }

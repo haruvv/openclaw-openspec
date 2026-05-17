@@ -16,10 +16,17 @@ describe("stock trading repository", () => {
     const {
       createStockAiDecision,
       createStockLearningItem,
+      createStockMarketSignal,
       createStockPortfolioSnapshot,
+      createStockResearchItem,
       createStockTrade,
       getStockAiDecisionDetail,
+      getStockTrade,
       getStockTradingOverview,
+      listStockStrategyPerformance,
+      listStockLearningItemsBySourceTrade,
+      listStockMarketSignals,
+      listStockResearchItems,
       listStockTrades,
     } = await import("../src/stock-trading/repository.js");
 
@@ -70,6 +77,29 @@ describe("stock trading repository", () => {
       body: "ブレイク直後に飛び乗らない。",
       confidence: 0.68,
     });
+    await createStockMarketSignal({
+      id: "signal-1",
+      sourceSignalId: "alert-1",
+      symbol: "NVDA",
+      timeframe: "5m",
+      price: 128,
+      strategyTag: "breakout_momentum",
+      indicators: { rsi: 62 },
+      rawPayload: { symbol: "NVDA", secret: "should-not-exist" },
+      status: "processed",
+      decisionId: decision.id,
+    });
+    await createStockResearchItem({
+      id: "research-1",
+      symbol: "NVDA",
+      category: "news",
+      title: "AI半導体需要が堅調",
+      summary: "データセンター需要が引き続き強いという手入力メモ。",
+      source: "manual",
+      sentiment: "positive",
+      importance: 0.8,
+      publishedAt: new Date("2026-05-17T00:15:00.000Z"),
+    });
 
     await expect(getStockAiDecisionDetail("decision-1")).resolves.toMatchObject({
       symbol: "NVDA",
@@ -77,6 +107,10 @@ describe("stock trading repository", () => {
     });
     await expect(listStockTrades()).resolves.toMatchObject([
       { id: "trade-1", executionSource: "paper", rawExecution: {} },
+    ]);
+    await expect(getStockTrade("trade-1")).resolves.toMatchObject({ id: "trade-1", symbol: "NVDA" });
+    await expect(listStockLearningItemsBySourceTrade("trade-1")).resolves.toMatchObject([
+      { id: "lesson-1", sourceTradeId: "trade-1", category: "rule_candidate" },
     ]);
     await expect(getStockTradingOverview()).resolves.toMatchObject({
       portfolio: {
@@ -88,7 +122,16 @@ describe("stock trading repository", () => {
         mode: "paper_only",
         realOrderPlacementEnabled: false,
       },
+      recentResearch: [{ id: "research-1", symbol: "NVDA", category: "news" }],
+      recentSignals: [{ id: "signal-1", symbol: "NVDA", status: "processed", decisionId: "decision-1" }],
     });
+    await expect(listStockMarketSignals()).resolves.toMatchObject([
+      { id: "signal-1", sourceSignalId: "alert-1", indicators: { rsi: 62 } },
+    ]);
+    await expect(listStockResearchItems({ symbol: "NVDA" })).resolves.toMatchObject([
+      { id: "research-1", title: "AI半導体需要が堅調", sentiment: "positive", importance: 0.8 },
+    ]);
+    await expect(listStockStrategyPerformance()).resolves.toEqual([]);
   });
 
   it("rejects non-paper execution sources before persistence", async () => {
@@ -102,5 +145,286 @@ describe("stock trading repository", () => {
       price: 128,
       executionSource: "real" as "paper",
     })).rejects.toThrow("paper, demo, or manual");
+  });
+
+  it("persists decision learning refs without duplicates and selects bounded learning context", async () => {
+    const {
+      attachStockDecisionLearningItems,
+      createStockAiDecision,
+      createStockLearningItem,
+      createStockTrade,
+      getStockAiDecisionDetail,
+      listStockLearningItemsForDecision,
+      listStockLearningItemsForDecisionContext,
+    } = await import("../src/stock-trading/repository.js");
+
+    const decision = await createStockAiDecision({
+      id: "decision-learning-1",
+      symbol: "NVDA",
+      finalAction: "WATCH",
+      confidence: 0.72,
+      strategyTag: "breakout_momentum",
+      reasoning: "学習確認",
+      riskFactors: [],
+    });
+    const trade = await createStockTrade({
+      id: "trade-learning-1",
+      decisionId: decision.id,
+      symbol: "NVDA",
+      side: "sell",
+      quantity: 10,
+      price: 120,
+      executionSource: "paper",
+      realizedPnl: 200,
+      outcome: "win",
+    });
+    await createStockLearningItem({
+      id: "lesson-symbol-1",
+      sourceTradeId: trade.id,
+      category: "winning_pattern",
+      title: "NVDAは初回押しを待つ",
+      body: "NVDAのブレイク直後は押し目を待った方が良い。",
+      confidence: 0.81,
+    });
+    await createStockLearningItem({
+      id: "lesson-market-1",
+      category: "strategy_note",
+      title: "市場全体は過熱回避",
+      body: "指数が過熱している日は見送りを優先する。",
+      confidence: 0.7,
+    });
+
+    await attachStockDecisionLearningItems("decision-learning-1", ["lesson-symbol-1", "lesson-market-1", "lesson-symbol-1"], new Date("2026-05-18T00:00:00.000Z"));
+
+    await expect(listStockLearningItemsForDecision("decision-learning-1")).resolves.toMatchObject([
+      { id: "lesson-symbol-1", title: "NVDAは初回押しを待つ" },
+      { id: "lesson-market-1", title: "市場全体は過熱回避" },
+    ]);
+    await expect(getStockAiDecisionDetail("decision-learning-1")).resolves.toMatchObject({
+      learningItems: [
+        { id: "lesson-symbol-1" },
+        { id: "lesson-market-1" },
+      ],
+    });
+    await expect(listStockLearningItemsForDecisionContext({ symbol: "NVDA", strategyTag: "breakout_momentum", limit: 2 })).resolves.toMatchObject([
+      { id: "lesson-symbol-1" },
+      { id: "lesson-market-1" },
+    ]);
+  });
+
+  it("applies paper fills to positions and ledger-derived portfolio metrics", async () => {
+    const {
+      applyPaperTradeWithLedger,
+      getStockPortfolioMetrics,
+      getStockPosition,
+      listStockPositions,
+      listStockTrades,
+    } = await import("../src/stock-trading/repository.js");
+
+    await applyPaperTradeWithLedger({
+      id: "trade-buy-1",
+      symbol: "nvda",
+      side: "buy",
+      quantity: 10,
+      price: 100,
+      executionSource: "paper",
+      executedAt: new Date("2026-05-17T00:00:00.000Z"),
+    });
+    await applyPaperTradeWithLedger({
+      id: "trade-buy-2",
+      symbol: "NVDA",
+      side: "buy",
+      quantity: 10,
+      price: 120,
+      executionSource: "paper",
+      executedAt: new Date("2026-05-17T00:01:00.000Z"),
+    });
+    await applyPaperTradeWithLedger({
+      id: "trade-sell-1",
+      symbol: "NVDA",
+      side: "sell",
+      quantity: 5,
+      price: 130,
+      executionSource: "paper",
+      executedAt: new Date("2026-05-17T00:02:00.000Z"),
+    });
+
+    await expect(getStockPosition("NVDA")).resolves.toMatchObject({
+      symbol: "NVDA",
+      quantity: 15,
+      averageEntryPrice: 110,
+      lastMarkPrice: 130,
+      marketValue: 1950,
+      unrealizedPnl: 300,
+      realizedPnl: 100,
+    });
+    await expect(listStockPositions()).resolves.toHaveLength(1);
+    await expect(listStockTrades()).resolves.toMatchObject([
+      { id: "trade-sell-1", realizedPnl: 100, outcome: "win" },
+      { id: "trade-buy-2", outcome: "open" },
+      { id: "trade-buy-1", outcome: "open" },
+    ]);
+    await expect(getStockPortfolioMetrics()).resolves.toMatchObject({
+      currentEquity: 1000400,
+      cashBalance: 998450,
+      realizedPnl: 100,
+      unrealizedPnl: 300,
+      positions: [{ symbol: "NVDA", quantity: 15 }],
+    });
+
+    await expect(applyPaperTradeWithLedger({
+      id: "trade-sell-bad",
+      symbol: "NVDA",
+      side: "sell",
+      quantity: 99,
+      price: 130,
+      executionSource: "paper",
+    })).rejects.toThrow("paper_sell_exceeds_position:NVDA");
+  });
+
+  it("aggregates completed paper sell trades by strategy tag", async () => {
+    const {
+      createStockAiDecision,
+      createStockTrade,
+      listStockStrategyPerformance,
+    } = await import("../src/stock-trading/repository.js");
+
+    const breakout = await createStockAiDecision({
+      id: "decision-breakout",
+      symbol: "NVDA",
+      finalAction: "SELL",
+      confidence: 0.8,
+      strategyTag: "breakout_momentum",
+      reasoning: "決済判断。",
+    });
+    await createStockTrade({
+      id: "trade-open-buy",
+      decisionId: breakout.id,
+      symbol: "NVDA",
+      side: "buy",
+      quantity: 1,
+      price: 100,
+      executionSource: "paper",
+      outcome: "open",
+    });
+    await createStockTrade({
+      id: "trade-win",
+      decisionId: breakout.id,
+      symbol: "NVDA",
+      side: "sell",
+      quantity: 1,
+      price: 110,
+      executionSource: "paper",
+      realizedPnl: 100,
+      outcome: "win",
+      executedAt: new Date("2026-05-17T00:01:00.000Z"),
+    });
+    await createStockTrade({
+      id: "trade-loss",
+      decisionId: breakout.id,
+      symbol: "NVDA",
+      side: "sell",
+      quantity: 1,
+      price: 90,
+      executionSource: "paper",
+      realizedPnl: -40,
+      outcome: "loss",
+      executedAt: new Date("2026-05-17T00:02:00.000Z"),
+    });
+    await createStockTrade({
+      id: "trade-unclassified",
+      symbol: "TSLA",
+      side: "sell",
+      quantity: 1,
+      price: 50,
+      executionSource: "paper",
+      realizedPnl: 10,
+      outcome: "win",
+      executedAt: new Date("2026-05-17T00:03:00.000Z"),
+    });
+
+    await expect(listStockStrategyPerformance()).resolves.toMatchObject([
+      {
+        strategyTag: "breakout_momentum",
+        tradeCount: 2,
+        winCount: 1,
+        lossCount: 1,
+        winRate: 0.5,
+        realizedPnl: 60,
+        grossProfit: 100,
+        grossLoss: -40,
+        averageProfit: 100,
+        averageLoss: -40,
+        expectancy: 30,
+        profitFactor: 2.5,
+        bestTradePnl: 100,
+        worstTradePnl: -40,
+      },
+      {
+        strategyTag: "unclassified",
+        tradeCount: 1,
+        realizedPnl: 10,
+      },
+    ]);
+  });
+
+  it("upserts candles and persists backtest runs with simulated trades", async () => {
+    const {
+      createStockBacktestRun,
+      listStockBacktestRuns,
+      getStockBacktestRunDetail,
+      listStockCandles,
+      upsertStockCandles,
+    } = await import("../src/stock-trading/repository.js");
+
+    await upsertStockCandles([
+      { symbol: "nvda", timeframe: "1d", open: 100, high: 102, low: 99, close: 101, volume: 1000, timestamp: new Date("2026-05-01T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 101, high: 104, low: 100, close: 103, volume: 1200, timestamp: new Date("2026-05-02T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 101, high: 105, low: 100, close: 104, volume: 1300, timestamp: new Date("2026-05-02T00:00:00.000Z") },
+    ]);
+
+    await expect(listStockCandles({ symbol: "NVDA", timeframe: "1d" })).resolves.toMatchObject([
+      { symbol: "NVDA", close: 101 },
+      { symbol: "NVDA", close: 104, volume: 1300 },
+    ]);
+
+    const run = await createStockBacktestRun({
+      id: "backtest-1",
+      symbol: "NVDA",
+      timeframe: "1d",
+      strategyTag: "breakout_momentum",
+      params: { lookbackBars: 3 },
+      status: "completed",
+      candleCount: 2,
+      tradeCount: 1,
+      winRate: 1,
+      realizedPnl: 120,
+      grossProfit: 120,
+      grossLoss: 0,
+      averageProfit: 120,
+      averageLoss: null,
+      expectancy: 120,
+      profitFactor: null,
+      maximumDrawdown: 0,
+      from: new Date("2026-05-01T00:00:00.000Z"),
+      to: new Date("2026-05-02T00:00:00.000Z"),
+      trades: [{
+        entryAt: new Date("2026-05-01T00:00:00.000Z"),
+        exitAt: new Date("2026-05-02T00:00:00.000Z"),
+        entryPrice: 101,
+        exitPrice: 104,
+        quantity: 40,
+        grossPnl: 120,
+        fees: 0,
+        slippageCost: 0,
+        netPnl: 120,
+        outcome: "win",
+        holdingBars: 1,
+      }],
+    });
+
+    expect(run.trades).toHaveLength(1);
+    await expect(listStockBacktestRuns()).resolves.toMatchObject([{ id: "backtest-1", tradeCount: 1, realizedPnl: 120 }]);
+    await expect(getStockBacktestRunDetail("backtest-1")).resolves.toMatchObject({ id: "backtest-1", trades: [{ outcome: "win" }] });
   });
 });

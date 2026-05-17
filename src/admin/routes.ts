@@ -11,14 +11,26 @@ import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } 
 import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
+import { runStockBacktest } from "../stock-trading/backtest-runner.js";
 import {
+  getStockBacktestRunDetail,
+  createStockResearchItem,
   getStockAiDecisionDetail,
   getStockIntegrationStatus,
+  getStockRunnerStatus,
   getStockTradingOverview,
+  listStockBacktestRuns,
+  listStockCandles,
   listStockAiDecisions,
   listStockLearningItems,
+  listStockMarketSignals,
+  listStockPositions,
+  listStockResearchItems,
+  listStockStrategyPerformance,
   listStockTrades,
+  upsertStockCandles,
 } from "../stock-trading/repository.js";
+import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockResearchCategory, StockResearchSentiment } from "../stock-trading/types.js";
 import { logger } from "../utils/logger.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
@@ -96,13 +108,92 @@ adminApiRouter.get("/stock-trading/trades", async (_req, res) => {
   res.json({ trades: await listStockTrades(200) });
 });
 
+adminApiRouter.get("/stock-trading/strategies", async (_req, res) => {
+  res.json({ strategies: await listStockStrategyPerformance(200) });
+});
+
+adminApiRouter.get("/stock-trading/candles", async (req, res) => {
+  const symbol = typeof req.query.symbol === "string" ? req.query.symbol : "";
+  const timeframe = typeof req.query.timeframe === "string" ? req.query.timeframe : "";
+  if (!symbol || !timeframe) {
+    res.status(400).json({ error: "symbol_and_timeframe_required" });
+    return;
+  }
+  res.json({ candles: await listStockCandles({ symbol, timeframe, limit: 1000 }) });
+});
+
+adminApiRouter.post("/stock-trading/candles", async (req, res) => {
+  const parsed = parseStockCandleImportBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  res.status(201).json({ candles: await upsertStockCandles(parsed.value) });
+});
+
+adminApiRouter.get("/stock-trading/backtests", async (_req, res) => {
+  res.json({ runs: await listStockBacktestRuns(100) });
+});
+
+adminApiRouter.post("/stock-trading/backtests", async (req, res) => {
+  const parsed = parseStockBacktestBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  try {
+    res.status(201).json({ run: await runStockBacktest(parsed.value) });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+adminApiRouter.get("/stock-trading/backtests/:id", async (req, res) => {
+  const run = await getStockBacktestRunDetail(req.params.id);
+  if (!run) {
+    res.status(404).json({ error: "stock_backtest_not_found" });
+    return;
+  }
+  res.json({ run });
+});
+
+adminApiRouter.get("/stock-trading/positions", async (_req, res) => {
+  res.json({ positions: await listStockPositions({ openOnly: true, limit: 200 }) });
+});
+
+adminApiRouter.get("/stock-trading/signals", async (_req, res) => {
+  res.json({ signals: await listStockMarketSignals(200) });
+});
+
+adminApiRouter.get("/stock-trading/research", async (req, res) => {
+  const symbol = typeof req.query.symbol === "string" && req.query.symbol.trim().length > 0 ? req.query.symbol : undefined;
+  res.json({ research: await listStockResearchItems({ symbol, includeMarketWide: Boolean(symbol), limit: 200 }) });
+});
+
+adminApiRouter.post("/stock-trading/research", async (req, res) => {
+  const parsed = parseStockResearchBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  res.status(201).json({ item: await createStockResearchItem(parsed.value) });
+});
+
 adminApiRouter.get("/stock-trading/lessons", async (_req, res) => {
   res.json({ lessons: await listStockLearningItems(200) });
 });
 
 adminApiRouter.get("/stock-trading/settings", async (_req, res) => {
+  const latestSignals = await listStockMarketSignals(1);
   res.json({
     integrations: await getStockIntegrationStatus(),
+    runner: getStockRunnerStatus(),
+    tradingView: {
+      webhookPath: "/webhooks/stock-trading/tradingview",
+      secretHeader: "x-tradingview-secret",
+      latestSignal: latestSignals[0] ?? null,
+    },
     safety: {
       mode: "paper_only",
       realOrderPlacementEnabled: false,
@@ -376,6 +467,122 @@ function parsePaymentLinkBody(body: unknown):
       sendEmail: candidate.sendEmail,
     },
   };
+}
+
+function parseStockResearchBody(body: unknown):
+  | { ok: true; value: CreateStockResearchItemInput }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (candidate.symbol !== undefined && typeof candidate.symbol !== "string") return { ok: false, error: "symbol must be a string" };
+  if (!isStockResearchCategory(candidate.category)) return { ok: false, error: "category is invalid" };
+  if (typeof candidate.title !== "string" || candidate.title.trim().length === 0) return { ok: false, error: "title is required" };
+  if (typeof candidate.summary !== "string" || candidate.summary.trim().length === 0) return { ok: false, error: "summary is required" };
+  if (typeof candidate.source !== "string" || candidate.source.trim().length === 0) return { ok: false, error: "source is required" };
+  if (candidate.sourceUrl !== undefined && typeof candidate.sourceUrl !== "string") return { ok: false, error: "sourceUrl must be a string" };
+  if (candidate.sentiment !== undefined && !isStockResearchSentiment(candidate.sentiment)) return { ok: false, error: "sentiment is invalid" };
+  if (candidate.importance !== undefined && (typeof candidate.importance !== "number" || !Number.isFinite(candidate.importance))) {
+    return { ok: false, error: "importance must be a number" };
+  }
+  if (candidate.rawPayload !== undefined && (!candidate.rawPayload || typeof candidate.rawPayload !== "object" || Array.isArray(candidate.rawPayload))) {
+    return { ok: false, error: "rawPayload must be an object" };
+  }
+  const symbol = typeof candidate.symbol === "string" ? candidate.symbol.trim() : "";
+  const sourceUrl = typeof candidate.sourceUrl === "string" ? candidate.sourceUrl.trim() : "";
+  const publishedAt = typeof candidate.publishedAt === "string" && candidate.publishedAt ? new Date(candidate.publishedAt) : undefined;
+  return {
+    ok: true,
+    value: {
+      symbol: symbol || undefined,
+      category: candidate.category,
+      title: candidate.title.trim(),
+      summary: candidate.summary.trim(),
+      source: candidate.source.trim(),
+      sourceUrl: sourceUrl || undefined,
+      sentiment: candidate.sentiment,
+      importance: candidate.importance,
+      rawPayload: candidate.rawPayload as Record<string, unknown> | undefined,
+      publishedAt,
+    },
+  };
+}
+
+function parseStockCandleImportBody(body: unknown):
+  | { ok: true; value: CreateStockCandleInput[] }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.symbol !== "string" || candidate.symbol.trim().length === 0) return { ok: false, error: "symbol is required" };
+  if (typeof candidate.timeframe !== "string" || candidate.timeframe.trim().length === 0) return { ok: false, error: "timeframe is required" };
+  if (!Array.isArray(candidate.candles) || candidate.candles.length === 0) return { ok: false, error: "candles are required" };
+  const candles: CreateStockCandleInput[] = [];
+  for (const value of candidate.candles) {
+    if (!value || typeof value !== "object") return { ok: false, error: "each candle must be an object" };
+    const candle = value as Record<string, unknown>;
+    const timestampValue = typeof candle.timestamp === "string" || typeof candle.timestamp === "number" ? new Date(candle.timestamp) : null;
+    if (!timestampValue || Number.isNaN(timestampValue.getTime())) return { ok: false, error: "candle timestamp is invalid" };
+    const open = readFiniteNumber(candle.open);
+    const high = readFiniteNumber(candle.high);
+    const low = readFiniteNumber(candle.low);
+    const close = readFiniteNumber(candle.close);
+    const volume = readFiniteNumber(candle.volume);
+    if (open === null || high === null || low === null || close === null || volume === null) return { ok: false, error: "candle OHLCV values must be numbers" };
+    candles.push({
+      symbol: candidate.symbol.trim(),
+      timeframe: candidate.timeframe.trim(),
+      open,
+      high,
+      low,
+      close,
+      volume,
+      source: typeof candidate.source === "string" && candidate.source.trim() ? candidate.source.trim() : "manual",
+      timestamp: timestampValue,
+    });
+  }
+  return { ok: true, value: candles };
+}
+
+function parseStockBacktestBody(body: unknown):
+  | { ok: true; value: RunStockBacktestInput }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.symbol !== "string" || candidate.symbol.trim().length === 0) return { ok: false, error: "symbol is required" };
+  if (typeof candidate.timeframe !== "string" || candidate.timeframe.trim().length === 0) return { ok: false, error: "timeframe is required" };
+  if (candidate.strategyTag !== "breakout_momentum") return { ok: false, error: "strategyTag is invalid" };
+  return {
+    ok: true,
+    value: {
+      symbol: candidate.symbol.trim(),
+      timeframe: candidate.timeframe.trim(),
+      strategyTag: "breakout_momentum",
+      lookbackBars: readOptionalNumber(candidate.lookbackBars),
+      volumeLookbackBars: readOptionalNumber(candidate.volumeLookbackBars),
+      takeProfitPct: readOptionalNumber(candidate.takeProfitPct),
+      stopLossPct: readOptionalNumber(candidate.stopLossPct),
+      maxHoldingBars: readOptionalNumber(candidate.maxHoldingBars),
+      notional: readOptionalNumber(candidate.notional),
+      feeBps: readOptionalNumber(candidate.feeBps),
+      slippageBps: readOptionalNumber(candidate.slippageBps),
+    },
+  };
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  return value === undefined || value === "" ? undefined : readFiniteNumber(value) ?? undefined;
+}
+
+function isStockResearchCategory(value: unknown): value is StockResearchCategory {
+  return value === "news" || value === "earnings" || value === "disclosure" || value === "fundamental" || value === "macro" || value === "sector" || value === "operator_note";
+}
+
+function isStockResearchSentiment(value: unknown): value is StockResearchSentiment {
+  return value === "positive" || value === "neutral" || value === "negative" || value === "mixed" || value === "unknown";
 }
 
 async function requireAdminPageAuth(req: Request, res: Response, next: () => void): Promise<void> {

@@ -80,7 +80,7 @@ describe("admin routes", () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.MOOMOO_OPENAPI_HOST = "127.0.0.1:11111";
     process.env.MOOMOO_ACCOUNT_ID = "account-secret";
-    process.env.TRADINGVIEW_WEBHOOK_SECRET = "tradingview-secret";
+    process.env.TRADINGVIEW_WEBHOOK_SECRET = "super-private-tv-value";
     process.env.STOCK_NEWS_API_KEY = "news-secret";
     const { seedStockTradingFixtureData } = await import("../src/stock-trading/repository.js");
     await seedStockTradingFixtureData();
@@ -97,19 +97,76 @@ describe("admin routes", () => {
       portfolio: { currentEquity: 1002400, winRate: 1 },
       recentDecisions: [{ symbol: "NVDA", finalAction: "WATCH" }],
       recentTrades: [{ symbol: "NVDA", executionSource: "paper" }],
+      runner: { mode: "paper_only", tradingViewWebhookConfigured: true, decisionMode: "auto" },
       safety: { mode: "paper_only", realOrderPlacementEnabled: false },
     });
   });
 
   it("returns stock trading decisions, trades, lessons, and settings from authenticated API routes", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
-    const { seedStockTradingFixtureData } = await import("../src/stock-trading/repository.js");
+    process.env.TRADINGVIEW_WEBHOOK_SECRET = "tradingview-secret";
+    const { createStockMarketSignal, createStockResearchItem, createStockTrade, seedStockTradingFixtureData, upsertStockCandles } = await import("../src/stock-trading/repository.js");
     const { decision } = await seedStockTradingFixtureData();
+    await createStockTrade({
+      id: "strategy-trade-1",
+      decisionId: decision.id,
+      symbol: "NVDA",
+      side: "sell",
+      quantity: 1,
+      price: 130,
+      executionSource: "paper",
+      realizedPnl: 120,
+      outcome: "win",
+    });
+    await createStockMarketSignal({
+      id: "signal-1",
+      symbol: "NVDA",
+      timeframe: "5m",
+      price: 128,
+      status: "executed",
+      decisionId: decision.id,
+      receivedAt: new Date("2026-05-17T00:30:00.000Z"),
+    });
+    await createStockResearchItem({
+      id: "research-1",
+      symbol: "NVDA",
+      category: "news",
+      title: "AI需要が強い",
+      summary: "半導体需要に関する手入力メモ。",
+      source: "manual",
+      sentiment: "positive",
+      importance: 0.8,
+    });
+    await upsertStockCandles([
+      { symbol: "NVDA", timeframe: "1d", open: 100, high: 101, low: 99, close: 100, volume: 1000, timestamp: new Date("2026-05-01T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 100, high: 102, low: 99, close: 101, volume: 1000, timestamp: new Date("2026-05-02T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 101, high: 103, low: 100, close: 102, volume: 1000, timestamp: new Date("2026-05-03T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 102, high: 106, low: 101, close: 105, volume: 2200, timestamp: new Date("2026-05-04T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 105, high: 113, low: 104, close: 112, volume: 1800, timestamp: new Date("2026-05-05T00:00:00.000Z") },
+    ]);
     const { adminApiRouter } = await import("../src/admin/routes.js");
 
     const decisions = await dispatch(adminApiRouter, "/stock-trading/decisions?token=admin-test", "/api/admin");
     const detail = await dispatch(adminApiRouter, `/stock-trading/decisions/${decision.id}?token=admin-test`, "/api/admin");
     const trades = await dispatch(adminApiRouter, "/stock-trading/trades?token=admin-test", "/api/admin");
+    const strategies = await dispatch(adminApiRouter, "/stock-trading/strategies?token=admin-test", "/api/admin");
+    const candles = await dispatch(adminApiRouter, "/stock-trading/candles?symbol=NVDA&timeframe=1d&token=admin-test", "/api/admin");
+    const importedCandles = await dispatch(adminApiRouter, "/stock-trading/candles?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {
+        symbol: "NVDA",
+        timeframe: "1d",
+        candles: [{ timestamp: "2026-05-06T00:00:00.000Z", open: 112, high: 114, low: 110, close: 113, volume: 1600 }],
+      },
+    });
+    const backtest = await dispatch(adminApiRouter, "/stock-trading/backtests?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { symbol: "NVDA", timeframe: "1d", strategyTag: "breakout_momentum" },
+    });
+    const backtests = await dispatch(adminApiRouter, "/stock-trading/backtests?token=admin-test", "/api/admin");
+    const positions = await dispatch(adminApiRouter, "/stock-trading/positions?token=admin-test", "/api/admin");
+    const signals = await dispatch(adminApiRouter, "/stock-trading/signals?token=admin-test", "/api/admin");
+    const research = await dispatch(adminApiRouter, "/stock-trading/research?token=admin-test", "/api/admin");
     const lessons = await dispatch(adminApiRouter, "/stock-trading/lessons?token=admin-test", "/api/admin");
     const settings = await dispatch(adminApiRouter, "/stock-trading/settings?token=admin-test", "/api/admin");
 
@@ -118,10 +175,51 @@ describe("admin routes", () => {
     expect(detail.status).toBe(200);
     expect(JSON.parse(detail.body).decision.agents).toEqual(expect.arrayContaining([expect.objectContaining({ agentName: "risk" })]));
     expect(JSON.parse(trades.body).trades[0]).toMatchObject({ executionSource: "paper" });
+    expect(JSON.parse(strategies.body)).toMatchObject({ strategies: [{ strategyTag: "breakout_momentum", realizedPnl: 120 }] });
+    expect(JSON.parse(candles.body).candles).toHaveLength(5);
+    expect(importedCandles.status).toBe(201);
+    expect(JSON.parse(importedCandles.body).candles).toMatchObject([{ symbol: "NVDA", close: 113 }]);
+    expect(backtest.status).toBe(201);
+    expect(JSON.parse(backtest.body).run).toMatchObject({ symbol: "NVDA", status: "completed" });
+    expect(JSON.parse(backtests.body)).toMatchObject({ runs: [{ symbol: "NVDA", strategyTag: "breakout_momentum" }] });
+    expect(JSON.parse(positions.body)).toMatchObject({ positions: [] });
+    expect(signals.status).toBe(200);
+    expect(JSON.parse(signals.body)).toMatchObject({ signals: [{ id: "signal-1", symbol: "NVDA" }] });
+    expect(JSON.parse(research.body)).toMatchObject({ research: [{ id: "research-1", symbol: "NVDA", sentiment: "positive" }] });
     expect(JSON.parse(lessons.body).lessons[0]).toMatchObject({ category: "rule_candidate" });
+    expect(settings.body).not.toContain("super-private-tv-value");
     expect(JSON.parse(settings.body)).toMatchObject({
+      runner: { mode: "paper_only", decisionMode: "auto" },
+      tradingView: {
+        webhookPath: "/webhooks/stock-trading/tradingview",
+        secretHeader: "x-tradingview-secret",
+        latestSignal: { id: "signal-1", symbol: "NVDA", status: "executed" },
+      },
       safety: { mode: "paper_only", realOrderPlacementEnabled: false },
     });
+  });
+
+  it("creates stock research context from authenticated API routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const created = await dispatch(adminApiRouter, "/stock-trading/research?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {
+        symbol: "nvda",
+        category: "earnings",
+        title: "好決算",
+        summary: "売上と利益が市場予想を上回った。",
+        source: "manual",
+        sentiment: "positive",
+        importance: 0.9,
+      },
+    });
+    const listed = await dispatch(adminApiRouter, "/stock-trading/research?token=admin-test", "/api/admin");
+
+    expect(created.status).toBe(201);
+    expect(JSON.parse(created.body).item).toMatchObject({ symbol: "NVDA", category: "earnings", sentiment: "positive" });
+    expect(JSON.parse(listed.body)).toMatchObject({ research: [{ title: "好決算" }] });
   });
 
   it("requires admin auth for stock trading API routes", async () => {

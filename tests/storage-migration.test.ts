@@ -29,8 +29,15 @@ describe("operational storage migration", () => {
       "site_snapshots",
       "stock_agent_decisions",
       "stock_ai_decisions",
+      "stock_backtest_runs",
+      "stock_backtest_trades",
+      "stock_candles",
+      "stock_decision_learning_refs",
       "stock_learning_items",
+      "stock_market_signals",
       "stock_portfolio_snapshots",
+      "stock_positions",
+      "stock_research_items",
       "stock_trades",
       "targets",
     ]);
@@ -50,6 +57,31 @@ describe("operational storage migration", () => {
     const tradeColumns = db.prepare("PRAGMA table_info(stock_trades)").all() as { name: string }[];
     expect(tradeColumns.map((column) => column.name)).toContain("execution_source");
     expect(tradeColumns.map((column) => column.name)).toContain("raw_execution_json");
+
+    const signalColumns = db.prepare("PRAGMA table_info(stock_market_signals)").all() as { name: string }[];
+    expect(signalColumns.map((column) => column.name)).toContain("source_signal_id");
+    expect(signalColumns.map((column) => column.name)).toContain("indicators_json");
+    expect(signalColumns.map((column) => column.name)).toContain("raw_payload_json");
+
+    const positionColumns = db.prepare("PRAGMA table_info(stock_positions)").all() as { name: string }[];
+    expect(positionColumns.map((column) => column.name)).toContain("average_entry_price");
+    expect(positionColumns.map((column) => column.name)).toContain("last_mark_price");
+
+    const researchColumns = db.prepare("PRAGMA table_info(stock_research_items)").all() as { name: string }[];
+    expect(researchColumns.map((column) => column.name)).toContain("category");
+    expect(researchColumns.map((column) => column.name)).toContain("sentiment");
+
+    const candleColumns = db.prepare("PRAGMA table_info(stock_candles)").all() as { name: string }[];
+    expect(candleColumns.map((column) => column.name)).toContain("timestamp");
+    expect(candleColumns.map((column) => column.name)).toContain("timeframe");
+
+    const backtestColumns = db.prepare("PRAGMA table_info(stock_backtest_runs)").all() as { name: string }[];
+    expect(backtestColumns.map((column) => column.name)).toContain("profit_factor");
+    expect(backtestColumns.map((column) => column.name)).toContain("maximum_drawdown");
+
+    const decisionLearningColumns = db.prepare("PRAGMA table_info(stock_decision_learning_refs)").all() as { name: string }[];
+    expect(decisionLearningColumns.map((column) => column.name)).toContain("decision_id");
+    expect(decisionLearningColumns.map((column) => column.name)).toContain("learning_item_id");
 
     db.close();
   });

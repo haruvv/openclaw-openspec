@@ -37,6 +37,9 @@ const OPTIONAL_ENV = [
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID",
   "TELEGRAM_WEBHOOK_SECRET",
+  "TRADINGVIEW_WEBHOOK_SECRET",
+  "STOCK_PAPER_TRADE_NOTIONAL_JPY",
+  "STOCK_PAPER_TRADE_CONFIDENCE_THRESHOLD",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "HIL_APPROVAL_TOKEN_SECRET",
@@ -220,6 +223,10 @@ export default {
     }
 
     if (url.pathname === "/internal/jobs/discover-targets" && request.method === "POST") {
+      return container.fetch(request);
+    }
+
+    if (url.pathname === "/webhooks/stock-trading/tradingview" && request.method === "POST") {
       return container.fetch(request);
     }
 

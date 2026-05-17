@@ -253,6 +253,10 @@ export type StockTradeAction = "BUY" | "SELL" | "HOLD" | "WATCH" | "SKIP";
 export type StockTradeSide = "buy" | "sell";
 export type StockExecutionSource = "paper" | "demo" | "manual";
 export type StockLearningCategory = "winning_pattern" | "losing_pattern" | "rule_candidate" | "blocked_pattern" | "strategy_note";
+export type StockMarketSignalStatus = "received" | "processed" | "rejected" | "executed" | "blocked";
+export type StockResearchCategory = "news" | "earnings" | "disclosure" | "fundamental" | "macro" | "sector" | "operator_note";
+export type StockResearchSentiment = "positive" | "neutral" | "negative" | "mixed" | "unknown";
+export type StockBacktestStatus = "completed" | "failed";
 
 export interface StockAiDecision {
   id: string;
@@ -280,6 +284,7 @@ export interface StockAgentDecision {
 
 export interface StockAiDecisionDetail extends StockAiDecision {
   agents: StockAgentDecision[];
+  learningItems: StockLearningItem[];
 }
 
 export interface StockTrade {
@@ -307,6 +312,20 @@ export interface StockPortfolioSnapshot {
   capturedAt: string;
 }
 
+export interface StockPosition {
+  id: string;
+  symbol: string;
+  quantity: number;
+  averageEntryPrice: number;
+  realizedPnl: number;
+  lastMarkPrice: number;
+  lastMarkedAt: string;
+  marketValue: number;
+  unrealizedPnl: number;
+  openedAt: string;
+  updatedAt: string;
+}
+
 export interface StockLearningItem {
   id: string;
   sourceTradeId?: string;
@@ -325,6 +344,144 @@ export interface StockIntegrationStatus {
   purpose: "market_data" | "broker" | "webhook";
 }
 
+export interface StockMarketSignal {
+  id: string;
+  source: "tradingview";
+  sourceSignalId?: string;
+  symbol: string;
+  timeframe: string;
+  price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  strategyTag?: string;
+  suggestedAction?: StockTradeAction;
+  indicators: Record<string, unknown>;
+  rawPayload: Record<string, unknown>;
+  status: StockMarketSignalStatus;
+  decisionId?: string;
+  tradeId?: string;
+  statusReason?: string;
+  receivedAt: string;
+}
+
+export interface StockResearchItem {
+  id: string;
+  symbol?: string;
+  category: StockResearchCategory;
+  title: string;
+  summary: string;
+  source: string;
+  sourceUrl?: string;
+  sentiment: StockResearchSentiment;
+  importance: number;
+  rawPayload: Record<string, unknown>;
+  publishedAt: string;
+  createdAt: string;
+}
+
+export interface StockStrategyPerformance {
+  strategyTag: string;
+  status: "adopt" | "watch" | "reject";
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  flatCount: number;
+  winRate: number | null;
+  realizedPnl: number;
+  grossProfit: number;
+  grossLoss: number;
+  averageProfit: number | null;
+  averageLoss: number | null;
+  expectancy: number | null;
+  profitFactor: number | null;
+  bestTradePnl: number | null;
+  worstTradePnl: number | null;
+  latestTradeAt?: string;
+}
+
+export interface StockCandle {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  source: string;
+  timestamp: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockBacktestRun {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  strategyTag: string;
+  params: Record<string, unknown>;
+  status: StockBacktestStatus;
+  candleCount: number;
+  tradeCount: number;
+  winRate: number | null;
+  realizedPnl: number;
+  grossProfit: number;
+  grossLoss: number;
+  averageProfit: number | null;
+  averageLoss: number | null;
+  expectancy: number | null;
+  profitFactor: number | null;
+  maximumDrawdown: number | null;
+  from?: string;
+  to?: string;
+  error?: string;
+  startedAt: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface StockBacktestTrade {
+  id: string;
+  runId: string;
+  symbol: string;
+  entryAt: string;
+  exitAt: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  grossPnl: number;
+  fees: number;
+  slippageCost: number;
+  netPnl: number;
+  outcome: "win" | "loss" | "flat";
+  holdingBars: number;
+  createdAt: string;
+}
+
+export interface StockBacktestRunDetail extends StockBacktestRun {
+  trades: StockBacktestTrade[];
+}
+
+export interface StockRunnerStatus {
+  enabled: boolean;
+  mode: "paper_only";
+  decisionMode: "auto" | "llm" | "deterministic";
+  llmConfigured: boolean;
+  confidenceThreshold: number;
+  paperTradeNotional: number;
+  tradingViewWebhookConfigured: boolean;
+  message: string;
+}
+
+export interface StockTradingViewSetup {
+  webhookPath: string;
+  secretHeader: string;
+  latestSignal?: StockMarketSignal | null;
+}
+
 export interface StockPortfolioMetrics {
   initialCapital: number;
   currentEquity: number;
@@ -333,6 +490,7 @@ export interface StockPortfolioMetrics {
   unrealizedPnl: number;
   winRate: number | null;
   maximumDrawdown: number | null;
+  positions: StockPosition[];
   latestSnapshot?: StockPortfolioSnapshot;
   history: StockPortfolioSnapshot[];
 }
@@ -342,12 +500,24 @@ export interface StockTradingOverview {
   recentDecisions: StockAiDecision[];
   recentTrades: StockTrade[];
   recentLessons: StockLearningItem[];
+  recentSignals: StockMarketSignal[];
+  recentResearch: StockResearchItem[];
+  strategyPerformance: StockStrategyPerformance[];
+  recentBacktests: StockBacktestRun[];
   integrations: StockIntegrationStatus[];
+  runner: StockRunnerStatus;
   safety: {
     mode: "paper_only";
     realOrderPlacementEnabled: false;
     message: string;
   };
+}
+
+export interface StockTradingSettings {
+  integrations: StockIntegrationStatus[];
+  runner: StockRunnerStatus;
+  tradingView: StockTradingViewSetup;
+  safety: StockTradingOverview["safety"];
 }
 
 export interface DiscoveryFormState {
