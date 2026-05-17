@@ -234,7 +234,7 @@ describe("stock trading paper runner", () => {
     process.env.STOCK_AI_DECISION_MODE = "llm";
     const generateText = vi.fn().mockResolvedValue(JSON.stringify(createLlmDecision({ finalAction: "BUY" })));
     vi.doMock("../src/utils/llm-provider.js", () => ({ generateText }));
-    const { createStockLearningItem, createStockResearchItem, getStockAiDecisionDetail } = await import("../src/stock-trading/repository.js");
+    const { createStockLearningItem, createStockResearchItem, getStockAiDecisionDetail, updateStockTradingRuleStatus } = await import("../src/stock-trading/repository.js");
     await createStockResearchItem({
       symbol: "NVDA",
       category: "news",
@@ -252,6 +252,7 @@ describe("stock trading paper runner", () => {
       confidence: 0.77,
       appliedToSkill: false,
     });
+    await updateStockTradingRuleStatus("stock-rule-lesson-feedback-1", "active");
     const { processStockMarketSignal } = await import("../src/stock-trading/paper-runner.js");
     const { listStockAiDecisions, listStockTrades } = await import("../src/stock-trading/repository.js");
 
@@ -268,10 +269,12 @@ describe("stock trading paper runner", () => {
     const prompt = generateText.mock.calls[0][0] as string;
     expect(prompt).toContain("researchContext");
     expect(prompt).toContain("learningContext");
+    expect(prompt).toContain("rulebookContext");
     expect(prompt).toContain("review-learning");
     expect(prompt).toContain("knowledge-curator");
     expect(prompt).toContain("AI需要が強い");
     expect(prompt).toContain("初回押しを待つ");
+    expect(prompt).toContain("Operator-activated reusable paper-trading rules");
     expect(prompt).toContain("Historical internal paper-trade observations");
     expect(result.status).toBe("executed");
     expect(result.decision).toMatchObject({

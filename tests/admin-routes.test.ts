@@ -169,6 +169,11 @@ describe("admin routes", () => {
     const research = await dispatch(adminApiRouter, "/stock-trading/research?token=admin-test", "/api/admin");
     const candidates = await dispatch(adminApiRouter, "/stock-trading/candidates?token=admin-test", "/api/admin");
     const lessons = await dispatch(adminApiRouter, "/stock-trading/lessons?token=admin-test", "/api/admin");
+    const rules = await dispatch(adminApiRouter, "/stock-trading/rules?token=admin-test", "/api/admin");
+    const activatedRule = await dispatch(adminApiRouter, "/stock-trading/rules/stock-rule-stock-lesson-fixture-1?token=admin-test", "/api/admin", {
+      method: "PATCH",
+      body: { status: "active" },
+    });
     const settings = await dispatch(adminApiRouter, "/stock-trading/settings?token=admin-test", "/api/admin");
 
     expect(decisions.status).toBe(200);
@@ -189,6 +194,8 @@ describe("admin routes", () => {
     expect(JSON.parse(research.body)).toMatchObject({ research: [{ id: "research-1", symbol: "NVDA", sentiment: "positive" }] });
     expect(JSON.parse(candidates.body)).toMatchObject({ candidates: [{ symbol: "NVDA", source: "research", status: "watch" }] });
     expect(JSON.parse(lessons.body).lessons[0]).toMatchObject({ category: "rule_candidate" });
+    expect(JSON.parse(rules.body)).toMatchObject({ rules: [{ id: "stock-rule-stock-lesson-fixture-1", status: "candidate" }] });
+    expect(JSON.parse(activatedRule.body)).toMatchObject({ rule: { id: "stock-rule-stock-lesson-fixture-1", status: "active" } });
     expect(settings.body).not.toContain("super-private-tv-value");
     expect(JSON.parse(settings.body)).toMatchObject({
       runner: { mode: "paper_only", decisionMode: "auto" },

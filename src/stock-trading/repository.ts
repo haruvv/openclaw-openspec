@@ -40,6 +40,9 @@ import type {
   StockTradeAction,
   StockTradeSide,
   StockTradingOverview,
+  StockTradingRule,
+  StockTradingRuleCategory,
+  StockTradingRuleStatus,
 } from "./types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -116,6 +119,18 @@ type LearningItemRow = {
   confidence: number;
   applied_to_skill: number;
   created_at: number;
+};
+
+type TradingRuleRow = {
+  id: string;
+  source_learning_item_id: string | null;
+  category: StockTradingRuleCategory;
+  title: string;
+  rule_text: string;
+  status: StockTradingRuleStatus;
+  confidence: number;
+  created_at: number;
+  updated_at: number;
 };
 
 type MarketSignalRow = {
@@ -549,6 +564,7 @@ export async function createStockLearningItem(input: CreateStockLearningItemInpu
   }
   const item = (await listStockLearningItems(200)).find((value) => value.id === id);
   if (!item) throw new Error(`Failed to load stock learning item ${id}`);
+  await createStockTradingRuleCandidateFromLearningItem(item);
   return item;
 }
 
@@ -1164,6 +1180,51 @@ export async function listStockLearningItemsBySourceTrade(sourceTradeId: string)
   return rows.map(mapLearningItemRow);
 }
 
+export async function listStockTradingRules(options: {
+  status?: StockTradingRuleStatus;
+  limit?: number;
+} = {}): Promise<StockTradingRule[]> {
+  const params: unknown[] = [];
+  let where = "";
+  if (options.status) {
+    where = "WHERE status = ?";
+    params.push(options.status);
+  }
+  params.push(boundedLimit(options.limit ?? 100, 500));
+  const rows = await selectRows<TradingRuleRow>(
+    `SELECT * FROM stock_trading_rules
+      ${where}
+      ORDER BY
+        CASE status
+          WHEN 'active' THEN 0
+          WHEN 'candidate' THEN 1
+          WHEN 'rejected' THEN 2
+          ELSE 3
+        END ASC,
+        confidence DESC,
+        updated_at DESC
+      LIMIT ?`,
+    params,
+  );
+  return rows.map(mapTradingRuleRow);
+}
+
+export async function updateStockTradingRuleStatus(id: string, status: StockTradingRuleStatus): Promise<StockTradingRule> {
+  const updatedAt = Date.now();
+  const sql = "UPDATE stock_trading_rules SET status = ?, updated_at = ? WHERE id = ?";
+  const params = [status, updatedAt, id];
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
+  const rows = await selectRows<TradingRuleRow>("SELECT * FROM stock_trading_rules WHERE id = ? LIMIT 1", [id]);
+  if (!rows[0]) throw new Error(`Failed to load stock trading rule ${id}`);
+  return mapTradingRuleRow(rows[0]);
+}
+
 export async function listStockLearningItemsForDecision(decisionId: string): Promise<StockLearningItem[]> {
   const rows = await selectRows<LearningItemRow>(
     `SELECT li.*
@@ -1233,6 +1294,31 @@ export async function attachStockDecisionLearningItems(
     tx();
   }
   return listStockLearningItemsForDecision(decisionId);
+}
+
+async function createStockTradingRuleCandidateFromLearningItem(item: StockLearningItem): Promise<void> {
+  const now = Date.now();
+  const sql = `INSERT OR IGNORE INTO stock_trading_rules (
+    id, source_learning_item_id, category, title, rule_text, status, confidence, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const params = [
+    `stock-rule-${item.id}`,
+    item.id,
+    ruleCategoryForLearningItem(item),
+    item.title,
+    item.body,
+    "candidate",
+    item.confidence,
+    Date.parse(item.createdAt) || now,
+    now,
+  ];
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
 }
 
 export async function getStockIntegrationStatus(env: NodeJS.ProcessEnv = process.env): Promise<StockIntegrationStatus[]> {
@@ -1322,9 +1408,10 @@ async function calculateLedgerPortfolioMetrics(positions: StockPosition[], initi
 }
 
 export async function getStockTradingOverview(): Promise<StockTradingOverview> {
-  const [portfolio, recentCandidates, recentDecisions, recentTrades, recentLessons, recentSignals, recentResearch, strategyPerformance, recentBacktests, integrations] = await Promise.all([
+  const [portfolio, recentCandidates, recentRules, recentDecisions, recentTrades, recentLessons, recentSignals, recentResearch, strategyPerformance, recentBacktests, integrations] = await Promise.all([
     getStockPortfolioMetrics(),
     listStockMarketCandidates({ limit: 5 }),
+    listStockTradingRules({ limit: 5 }),
     listStockAiDecisions(5),
     listStockTrades(5),
     listStockLearningItems(5),
@@ -1337,6 +1424,7 @@ export async function getStockTradingOverview(): Promise<StockTradingOverview> {
   return {
     portfolio,
     recentCandidates,
+    recentRules,
     recentDecisions,
     recentTrades,
     recentLessons,
@@ -1509,6 +1597,20 @@ function mapLearningItemRow(row: LearningItemRow): StockLearningItem {
     confidence: row.confidence,
     appliedToSkill: row.applied_to_skill === 1,
     createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+function mapTradingRuleRow(row: TradingRuleRow): StockTradingRule {
+  return {
+    id: row.id,
+    sourceLearningItemId: row.source_learning_item_id ?? undefined,
+    category: row.category,
+    title: row.title,
+    ruleText: row.rule_text,
+    status: row.status,
+    confidence: row.confidence,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 
@@ -1751,6 +1853,12 @@ function scoreResearchCandidate(item: StockResearchItem): number {
     negative: -0.12,
   };
   return clampNumber(0.45 + item.importance * 0.35 + sentimentAdjustment[item.sentiment], 0, 1);
+}
+
+function ruleCategoryForLearningItem(item: StockLearningItem): StockTradingRuleCategory {
+  if (item.category === "blocked_pattern" || item.category === "losing_pattern") return "risk";
+  if (item.category === "winning_pattern" || item.category === "strategy_note") return "strategy";
+  return "entry";
 }
 
 function parseInitialCapital(): number {

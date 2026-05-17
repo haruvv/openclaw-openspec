@@ -40,6 +40,7 @@ describe("operational storage migration", () => {
       "stock_positions",
       "stock_research_items",
       "stock_trades",
+      "stock_trading_rules",
       "targets",
     ]);
 
@@ -88,6 +89,10 @@ describe("operational storage migration", () => {
     const decisionLearningColumns = db.prepare("PRAGMA table_info(stock_decision_learning_refs)").all() as { name: string }[];
     expect(decisionLearningColumns.map((column) => column.name)).toContain("decision_id");
     expect(decisionLearningColumns.map((column) => column.name)).toContain("learning_item_id");
+
+    const ruleColumns = db.prepare("PRAGMA table_info(stock_trading_rules)").all() as { name: string }[];
+    expect(ruleColumns.map((column) => column.name)).toContain("source_learning_item_id");
+    expect(ruleColumns.map((column) => column.name)).toContain("status");
 
     db.close();
   });

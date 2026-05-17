@@ -10,6 +10,7 @@ export {
   StockDecisionsPage,
   StockLessonsPage,
   StockResearchPage,
+  StockRulesPage,
   StockSignalsPage,
   StockSettingsPage,
   StockStrategiesPage,

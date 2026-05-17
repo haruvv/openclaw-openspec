@@ -11,6 +11,7 @@ import {
   getStockPosition,
   listStockLearningItemsForDecisionContext,
   listStockResearchItems,
+  listStockTradingRules,
   parseConfidenceThreshold,
   parsePaperTradeNotional,
   updateStockMarketSignalOutcome,
@@ -21,6 +22,7 @@ import type {
   ProcessStockSignalResult,
   StockMarketSignal,
   StockLearningItem,
+  StockTradingRule,
   StockTradeAction,
 } from "./types.js";
 
@@ -290,7 +292,8 @@ async function buildDecisionPlan(signal: StockMarketSignal, learningContext: Sto
   try {
     const portfolio = await getStockPortfolioMetrics();
     const research = await listStockResearchItems({ symbol: signal.symbol, includeMarketWide: true, limit: 8 });
-    const raw = await generateText(JSON.stringify(buildLlmDecisionPayload(signal, portfolio, research, learningContext), null, 2), STOCK_AGENT_SYSTEM_PROMPT);
+    const rules = await listStockTradingRules({ status: "active", limit: 8 });
+    const raw = await generateText(JSON.stringify(buildLlmDecisionPayload(signal, portfolio, research, learningContext, rules), null, 2), STOCK_AGENT_SYSTEM_PROMPT);
     return enforceRiskVeto(parseLlmDecisionPlan(raw), signal);
   } catch (error) {
     logger.warn("Stock LLM decision failed; falling back to deterministic paper decision", {
@@ -424,6 +427,7 @@ function buildLlmDecisionPayload(
   portfolio: Awaited<ReturnType<typeof getStockPortfolioMetrics>>,
   research: Awaited<ReturnType<typeof listStockResearchItems>>,
   learningContext: StockLearningItem[],
+  rulebookContext: StockTradingRule[],
 ) {
   return {
     instruction: "Return JSON matching outputSchema. Make a paper-trading decision for a swing-trading system. Do not recommend real-money trading.",
@@ -485,6 +489,18 @@ function buildLlmDecisionPayload(
           createdAt: item.createdAt,
         })),
       },
+      rulebookContext: {
+        framing: "Operator-activated reusable paper-trading rules. Treat as guidance and still apply current evidence and risk gates.",
+        activeRules: rulebookContext.map((rule) => ({
+          id: rule.id,
+          sourceLearningItemId: rule.sourceLearningItemId ?? null,
+          category: rule.category,
+          title: rule.title,
+          ruleText: rule.ruleText,
+          confidence: rule.confidence,
+          updatedAt: rule.updatedAt,
+        })),
+      },
       unavailableContext: [
         ...(research.length > 0
           ? ["live index breadth", "order book", "unprovided provider-specific raw fundamentals"]
@@ -498,6 +514,7 @@ function buildLlmDecisionPayload(
           "order book",
         ]),
         ...(learningContext.length > 0 ? [] : ["prior paper-trade lessons"]),
+        ...(rulebookContext.length > 0 ? [] : ["operator-activated trading rules"]),
       ],
     },
     requiredAgents: [

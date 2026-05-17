@@ -31,10 +31,12 @@ import {
   listStockResearchItems,
   listStockStrategyPerformance,
   listStockTrades,
+  listStockTradingRules,
   updateStockMarketCandidateStatus,
+  updateStockTradingRuleStatus,
   upsertStockCandles,
 } from "../stock-trading/repository.js";
-import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockMarketCandidateStatus, StockResearchCategory, StockResearchSentiment, StockTradeAction } from "../stock-trading/types.js";
+import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockMarketCandidateStatus, StockResearchCategory, StockResearchSentiment, StockTradeAction, StockTradingRuleStatus } from "../stock-trading/types.js";
 import { logger } from "../utils/logger.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
@@ -256,6 +258,28 @@ adminApiRouter.post("/stock-trading/research", async (req, res) => {
 
 adminApiRouter.get("/stock-trading/lessons", async (_req, res) => {
   res.json({ lessons: await listStockLearningItems(200) });
+});
+
+adminApiRouter.get("/stock-trading/rules", async (req, res) => {
+  const status = parseStockTradingRuleStatus(typeof req.query.status === "string" ? req.query.status : undefined);
+  if (typeof req.query.status === "string" && !status) {
+    res.status(400).json({ error: "invalid_rule_status" });
+    return;
+  }
+  res.json({ rules: await listStockTradingRules({ status, limit: 200 }) });
+});
+
+adminApiRouter.patch("/stock-trading/rules/:id", async (req, res) => {
+  const status = parseStockTradingRuleStatus(typeof req.body?.status === "string" ? req.body.status : undefined);
+  if (!status) {
+    res.status(400).json({ error: "invalid_rule_status" });
+    return;
+  }
+  try {
+    res.json({ rule: await updateStockTradingRuleStatus(req.params.id, status) });
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : "stock_rule_not_found" });
+  }
 });
 
 adminApiRouter.get("/stock-trading/settings", async (_req, res) => {
@@ -663,6 +687,10 @@ function parseStockCandidateStatus(value: string | undefined): StockMarketCandid
 function parseStockTradeAction(value: string | undefined): StockTradeAction | undefined {
   const upper = value?.toUpperCase();
   return upper === "BUY" || upper === "SELL" || upper === "HOLD" || upper === "WATCH" || upper === "SKIP" ? upper : undefined;
+}
+
+function parseStockTradingRuleStatus(value: string | undefined): StockTradingRuleStatus | undefined {
+  return value === "candidate" || value === "active" || value === "rejected" ? value : undefined;
 }
 
 function isStockResearchCategory(value: unknown): value is StockResearchCategory {

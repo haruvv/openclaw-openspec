@@ -13,6 +13,7 @@ import {
   StockDecisionsPage,
   StockLessonsPage,
   StockResearchPage,
+  StockRulesPage,
   StockSignalsPage,
   StockSettingsPage,
   StockStrategiesPage,
@@ -47,6 +48,7 @@ const adminRoutes: AdminRouteDefinition[] = [
   { path: "/admin/stock-trading/strategies", title: "戦略成績", description: "戦略タグごとの勝率、期待値、Profit Factorです。", element: <StockStrategiesPage /> },
   { path: "/admin/stock-trading/backtests", title: "バックテスト", description: "保存済みローソク足で戦略ルールを検証します。", element: <StockBacktestsPage /> },
   { path: "/admin/stock-trading/lessons", title: "学習ログ", description: "取引レビューから抽出した学習項目です。", element: <StockLessonsPage /> },
+  { path: "/admin/stock-trading/rules", title: "Knowledge Rulebook", description: "学習ログから抽出した再利用ルールです。", element: <StockRulesPage /> },
   { path: "/admin/stock-trading/settings", title: "連携設定", description: "価格データ、証券API、Webhookの準備状況です。", element: <StockSettingsPage /> },
 ];
 

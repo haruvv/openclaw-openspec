@@ -297,6 +297,19 @@ export function initSqliteSchema(db: Database.Database): void {
       FOREIGN KEY (source_trade_id) REFERENCES stock_trades(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS stock_trading_rules (
+      id TEXT PRIMARY KEY,
+      source_learning_item_id TEXT UNIQUE,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      rule_text TEXT NOT NULL,
+      status TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (source_learning_item_id) REFERENCES stock_learning_items(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS stock_decision_learning_refs (
       decision_id TEXT NOT NULL,
       learning_item_id TEXT NOT NULL,
@@ -438,6 +451,9 @@ export function initSqliteSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_stock_positions_updated_at ON stock_positions(updated_at);
     CREATE INDEX IF NOT EXISTS idx_stock_learning_items_created_at ON stock_learning_items(created_at);
     CREATE INDEX IF NOT EXISTS idx_stock_learning_items_category ON stock_learning_items(category);
+    CREATE INDEX IF NOT EXISTS idx_stock_trading_rules_status ON stock_trading_rules(status);
+    CREATE INDEX IF NOT EXISTS idx_stock_trading_rules_category ON stock_trading_rules(category);
+    CREATE INDEX IF NOT EXISTS idx_stock_trading_rules_updated_at ON stock_trading_rules(updated_at);
     CREATE INDEX IF NOT EXISTS idx_stock_decision_learning_refs_decision ON stock_decision_learning_refs(decision_id);
     CREATE INDEX IF NOT EXISTS idx_stock_decision_learning_refs_learning ON stock_decision_learning_refs(learning_item_id);
     CREATE INDEX IF NOT EXISTS idx_stock_decision_learning_refs_selected_at ON stock_decision_learning_refs(selected_at);

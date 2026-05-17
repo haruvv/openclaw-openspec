@@ -27,7 +27,9 @@ describe("stock trading repository", () => {
       listStockLearningItemsBySourceTrade,
       listStockMarketSignals,
       listStockResearchItems,
+      listStockTradingRules,
       listStockTrades,
+      updateStockTradingRuleStatus,
     } = await import("../src/stock-trading/repository.js");
 
     const decision = await createStockAiDecision({
@@ -112,12 +114,20 @@ describe("stock trading repository", () => {
     await expect(listStockLearningItemsBySourceTrade("trade-1")).resolves.toMatchObject([
       { id: "lesson-1", sourceTradeId: "trade-1", category: "rule_candidate" },
     ]);
+    await expect(listStockTradingRules()).resolves.toMatchObject([
+      { id: "stock-rule-lesson-1", sourceLearningItemId: "lesson-1", category: "entry", status: "candidate" },
+    ]);
+    await updateStockTradingRuleStatus("stock-rule-lesson-1", "active");
+    await expect(listStockTradingRules({ status: "active" })).resolves.toMatchObject([
+      { id: "stock-rule-lesson-1", status: "active" },
+    ]);
     await expect(getStockTradingOverview()).resolves.toMatchObject({
       portfolio: {
         currentEquity: 1_002_400,
         realizedPnl: 240,
         winRate: 1,
       },
+      recentRules: [{ id: "stock-rule-lesson-1", status: "active" }],
       safety: {
         mode: "paper_only",
         realOrderPlacementEnabled: false,

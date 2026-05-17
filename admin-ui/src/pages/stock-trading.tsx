@@ -21,6 +21,7 @@ import type {
   StockStrategyPerformance,
   StockTrade,
   StockTradingOverview,
+  StockTradingRule,
   StockTradingSettings,
 } from "../types";
 import { formatCurrency, formatDate, formatPercent } from "../utils";
@@ -92,6 +93,9 @@ export function StockTradingHome() {
         </Panel>
         <Panel title="学習ログ" action={<Link className="link-action" to="/admin/stock-trading/lessons">すべて見る</Link>}>
           <LessonList lessons={data?.recentLessons ?? []} compact />
+        </Panel>
+        <Panel title="Knowledge Rulebook" action={<Link className="link-action" to="/admin/stock-trading/rules">すべて見る</Link>}>
+          <RuleList rules={data?.recentRules ?? []} compact />
         </Panel>
         <Panel title="連携状態" action={<Link className="link-action" to="/admin/stock-trading/settings">確認する</Link>}>
           <IntegrationList integrations={data?.integrations ?? []} />
@@ -429,6 +433,40 @@ export function StockLessonsPage() {
   return (
     <Panel title="学習ログ">
       <LessonList lessons={data?.lessons ?? []} />
+    </Panel>
+  );
+}
+
+export function StockRulesPage() {
+  const { data, loading, error, reload } = useApi<{ rules: StockTradingRule[] }>("/api/admin/stock-trading/rules");
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
+
+  async function setRuleStatus(rule: StockTradingRule, status: "active" | "rejected" | "candidate") {
+    setBusyId(rule.id);
+    setActionError(null);
+    try {
+      await apiPatch(`/api/admin/stock-trading/rules/${encodeURIComponent(rule.id)}`, { status });
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "ルール更新に失敗しました");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Panel title="Knowledge Rulebook">
+      {actionError ? <ErrorState message={actionError} /> : null}
+      <RuleList
+        rules={data?.rules ?? []}
+        busyId={busyId}
+        onActivate={(rule) => void setRuleStatus(rule, "active")}
+        onReject={(rule) => void setRuleStatus(rule, "rejected")}
+        onCandidate={(rule) => void setRuleStatus(rule, "candidate")}
+      />
     </Panel>
   );
 }
@@ -869,6 +907,69 @@ function LessonList({ lessons, compact = false }: { lessons: StockLearningItem[]
   );
 }
 
+function RuleList({
+  rules,
+  compact = false,
+  busyId,
+  onActivate,
+  onReject,
+  onCandidate,
+}: {
+  rules: StockTradingRule[];
+  compact?: boolean;
+  busyId?: string | null;
+  onActivate?: (rule: StockTradingRule) => void;
+  onReject?: (rule: StockTradingRule) => void;
+  onCandidate?: (rule: StockTradingRule) => void;
+}) {
+  if (rules.length === 0) return <Empty title="再利用ルールはまだありません" description="学習ログからKnowledge Curatorのルール候補が作成されるとここに表示されます。" />;
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {rules.slice(0, 3).map((rule) => (
+          <article key={rule.id} className="border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-slate-950">{rule.title}</div>
+                <div className="mt-1 text-xs font-semibold text-slate-500">{formatRuleCategory(rule.category)} / {formatRuleStatus(rule.status)}</div>
+              </div>
+              <Info label="信頼度" value={formatPercent(rule.confidence)} />
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {rules.map((rule) => (
+        <article key={rule.id} className="border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base font-black text-slate-950">{rule.title}</span>
+                <span className="border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-black text-slate-600">{formatRuleCategory(rule.category)}</span>
+                <span className="border border-slate-200 bg-white px-2 py-0.5 text-xs font-black text-slate-600">{formatRuleStatus(rule.status)}</span>
+              </div>
+              <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{rule.ruleText}</p>
+              <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-500 md:grid-cols-3">
+                <Info label="source lesson" value={rule.sourceLearningItemId ?? "-"} />
+                <Info label="updated" value={formatDate(rule.updatedAt)} />
+                <Info label="信頼度" value={formatPercent(rule.confidence)} />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3 lg:w-80">
+              {onActivate ? <button className="btn-primary" type="button" disabled={busyId === rule.id} onClick={() => onActivate(rule)}>採用</button> : null}
+              {onReject ? <button className="btn-secondary" type="button" disabled={busyId === rule.id} onClick={() => onReject(rule)}>却下</button> : null}
+              {onCandidate ? <button className="btn-secondary" type="button" disabled={busyId === rule.id} onClick={() => onCandidate(rule)}>候補に戻す</button> : null}
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function IntegrationList({ integrations }: { integrations: StockIntegrationStatus[] }) {
   if (integrations.length === 0) return <Empty title="連携情報はまだありません" />;
   return (
@@ -919,6 +1020,24 @@ function formatLearningCategory(value: string): string {
     rule_candidate: "ルール候補",
     blocked_pattern: "禁止パターン",
     strategy_note: "戦略メモ",
+  }[value] ?? value;
+}
+
+function formatRuleCategory(value: string): string {
+  return {
+    entry: "Entry",
+    exit: "Exit",
+    risk: "Risk",
+    portfolio: "Portfolio",
+    strategy: "Strategy",
+  }[value] ?? value;
+}
+
+function formatRuleStatus(value: string): string {
+  return {
+    candidate: "候補",
+    active: "採用中",
+    rejected: "却下",
   }[value] ?? value;
 }
 

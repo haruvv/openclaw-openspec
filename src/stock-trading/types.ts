@@ -8,6 +8,8 @@ export type StockResearchSentiment = "positive" | "neutral" | "negative" | "mixe
 export type StockBacktestStatus = "completed" | "failed";
 export type StockMarketCandidateSource = "tradingview" | "research" | "manual" | "provider";
 export type StockMarketCandidateStatus = "watch" | "approved" | "rejected" | "converted_to_decision";
+export type StockTradingRuleCategory = "entry" | "exit" | "risk" | "portfolio" | "strategy";
+export type StockTradingRuleStatus = "candidate" | "active" | "rejected";
 
 export interface StockAiDecision {
   id: string;
@@ -151,6 +153,18 @@ export interface StockMarketCandidate {
   updatedAt: string;
 }
 
+export interface StockTradingRule {
+  id: string;
+  sourceLearningItemId?: string;
+  category: StockTradingRuleCategory;
+  title: string;
+  ruleText: string;
+  status: StockTradingRuleStatus;
+  confidence: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StockStrategyPerformance {
   strategyTag: string;
   status: "adopt" | "watch" | "reject";
@@ -261,6 +275,7 @@ export interface StockPortfolioMetrics {
 export interface StockTradingOverview {
   portfolio: StockPortfolioMetrics;
   recentCandidates: StockMarketCandidate[];
+  recentRules: StockTradingRule[];
   recentDecisions: StockAiDecision[];
   recentTrades: StockTrade[];
   recentLessons: StockLearningItem[];

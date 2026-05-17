@@ -36,6 +36,7 @@ export const businessApps: BusinessApp[] = [
       { label: "戦略成績", href: "/admin/stock-trading/strategies" },
       { label: "バックテスト", href: "/admin/stock-trading/backtests" },
       { label: "学習ログ", href: "/admin/stock-trading/lessons" },
+      { label: "Knowledge Rulebook", href: "/admin/stock-trading/rules" },
       { label: "連携設定", href: "/admin/stock-trading/settings" },
     ],
   },
