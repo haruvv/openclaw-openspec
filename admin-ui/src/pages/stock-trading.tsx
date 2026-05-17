@@ -486,6 +486,7 @@ export function StockMarketDataPage() {
   const [notes, setNotes] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [scanMessage, setScanMessage] = React.useState<string | null>(null);
   if (watchlistLoading || runsLoading) return <Loading />;
   if (watchlistError) return <ErrorState message={watchlistError} />;
   if (runsError) return <ErrorState message={runsError} />;
@@ -536,10 +537,33 @@ export function StockMarketDataPage() {
     }
   }
 
+  async function scan() {
+    setBusy(true);
+    setActionError(null);
+    setScanMessage(null);
+    try {
+      const result = await apiPost<{ scannedEntries: number; createdCandidates: number; skippedEntries: number }>("/api/admin/stock-trading/market-data/scan", {});
+      setScanMessage(`候補 ${result.createdCandidates}件 / skipped ${result.skippedEntries}件 / scanned ${result.scannedEntries}件`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "候補抽出に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {actionError ? <ErrorState message={actionError} /> : null}
-      <Panel title="Market Data Collector" action={<button className="btn-primary" type="button" disabled={busy} onClick={() => void collect()}>収集実行</button>}>
+      <Panel
+        title="Market Data Collector"
+        action={(
+          <div className="flex gap-2">
+            <button className="btn-secondary" type="button" disabled={busy} onClick={() => void scan()}>候補抽出</button>
+            <button className="btn-primary" type="button" disabled={busy} onClick={() => void collect()}>収集実行</button>
+          </div>
+        )}
+      >
+        {scanMessage ? <div className="mb-4 border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-900">{scanMessage}</div> : null}
         <div className="grid gap-3 lg:grid-cols-5">
           <label className="grid gap-1 text-xs font-black text-slate-500">銘柄<input className="input" value={symbol} onChange={(event) => setSymbol(event.target.value)} /></label>
           <label className="grid gap-1 text-xs font-black text-slate-500">時間足<input className="input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)} /></label>

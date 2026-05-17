@@ -331,6 +331,14 @@ describe("admin UI routing", () => {
     expect(await screen.findByText("Watchlist")).toBeInTheDocument();
     expect(screen.getByText("NVDA")).toBeInTheDocument();
     expect(screen.getByText("Collection Runs")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "候補抽出" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/stock-trading/market-data/scan",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText(/候補 1件/)).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "収集実行" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
@@ -570,6 +578,9 @@ function createStockFetch() {
     }
     if (path === "/api/admin/stock-trading/market-data/collect") {
       return createJsonResponse({ run: createStockMarketDataRun() });
+    }
+    if (path === "/api/admin/stock-trading/market-data/scan") {
+      return createJsonResponse({ scannedEntries: 1, createdCandidates: 1, skippedEntries: 0, candidates: [createStockCandidate()] });
     }
     return createJsonResponse(createStockOverviewResponse({
       recentSignals: [createStockSignal()],

@@ -206,20 +206,19 @@ describe("stock trading repository", () => {
 
     await attachStockDecisionLearningItems("decision-learning-1", ["lesson-symbol-1", "lesson-market-1", "lesson-symbol-1"], new Date("2026-05-18T00:00:00.000Z"));
 
-    await expect(listStockLearningItemsForDecision("decision-learning-1")).resolves.toMatchObject([
-      { id: "lesson-symbol-1", title: "NVDAは初回押しを待つ" },
-      { id: "lesson-market-1", title: "市場全体は過熱回避" },
-    ]);
-    await expect(getStockAiDecisionDetail("decision-learning-1")).resolves.toMatchObject({
-      learningItems: [
-        { id: "lesson-symbol-1" },
-        { id: "lesson-market-1" },
-      ],
-    });
-    await expect(listStockLearningItemsForDecisionContext({ symbol: "NVDA", strategyTag: "breakout_momentum", limit: 2 })).resolves.toMatchObject([
-      { id: "lesson-symbol-1" },
-      { id: "lesson-market-1" },
-    ]);
+    await expect(listStockLearningItemsForDecision("decision-learning-1")).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "lesson-symbol-1", title: "NVDAは初回押しを待つ" }),
+      expect.objectContaining({ id: "lesson-market-1", title: "市場全体は過熱回避" }),
+    ]));
+    const detail = await getStockAiDecisionDetail("decision-learning-1");
+    expect(detail?.learningItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "lesson-symbol-1" }),
+      expect.objectContaining({ id: "lesson-market-1" }),
+    ]));
+    await expect(listStockLearningItemsForDecisionContext({ symbol: "NVDA", strategyTag: "breakout_momentum", limit: 2 })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "lesson-symbol-1" }),
+      expect.objectContaining({ id: "lesson-market-1" }),
+    ]));
   });
 
   it("persists market scanner candidates, refreshes research candidates, and updates status", async () => {

@@ -172,6 +172,7 @@ describe("admin routes", () => {
     });
     const watchlist = await dispatch(adminApiRouter, "/stock-trading/market-data/watchlist?token=admin-test", "/api/admin");
     const collected = await dispatch(adminApiRouter, "/stock-trading/market-data/collect?token=admin-test", "/api/admin", { method: "POST", body: {} });
+    const scanned = await dispatch(adminApiRouter, "/stock-trading/market-data/scan?token=admin-test", "/api/admin", { method: "POST", body: {} });
     const marketDataRuns = await dispatch(adminApiRouter, "/stock-trading/market-data/runs?token=admin-test", "/api/admin");
     const backtest = await dispatch(adminApiRouter, "/stock-trading/backtests?token=admin-test", "/api/admin", {
       method: "POST",
@@ -203,6 +204,7 @@ describe("admin routes", () => {
     expect(JSON.parse(watchlistCreated.body)).toMatchObject({ entry: { symbol: "NVDA", timeframe: "1d", provider: "moomoo", enabled: true } });
     expect(JSON.parse(watchlist.body)).toMatchObject({ entries: [{ symbol: "NVDA", lookbackLimit: 3 }] });
     expect(JSON.parse(collected.body)).toMatchObject({ run: { status: "completed", requestedEntries: 1, upsertedCandles: 1 } });
+    expect(JSON.parse(scanned.body)).toMatchObject({ scannedEntries: 1, createdCandidates: 1, candidates: [{ symbol: "NVDA", source: "provider" }] });
     expect(JSON.parse(marketDataRuns.body)).toMatchObject({ runs: [{ status: "completed", upsertedCandles: 1 }] });
     expect(backtest.status).toBe(201);
     expect(JSON.parse(backtest.body).run).toMatchObject({ symbol: "NVDA", status: "completed" });
@@ -211,7 +213,10 @@ describe("admin routes", () => {
     expect(signals.status).toBe(200);
     expect(JSON.parse(signals.body)).toMatchObject({ signals: [{ id: "signal-1", symbol: "NVDA" }] });
     expect(JSON.parse(research.body)).toMatchObject({ research: [{ id: "research-1", symbol: "NVDA", sentiment: "positive" }] });
-    expect(JSON.parse(candidates.body)).toMatchObject({ candidates: [{ symbol: "NVDA", source: "research", status: "watch" }] });
+    expect(JSON.parse(candidates.body).candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: "NVDA", source: "research", status: "watch" }),
+      expect.objectContaining({ symbol: "NVDA", source: "provider", status: "watch" }),
+    ]));
     expect(JSON.parse(lessons.body).lessons[0]).toMatchObject({ category: "rule_candidate" });
     expect(JSON.parse(rules.body)).toMatchObject({ rules: [{ id: "stock-rule-stock-lesson-fixture-1", status: "candidate" }] });
     expect(JSON.parse(activatedRule.body)).toMatchObject({ rule: { id: "stock-rule-stock-lesson-fixture-1", status: "active" } });

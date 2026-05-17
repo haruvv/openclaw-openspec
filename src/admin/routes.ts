@@ -13,6 +13,7 @@ import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendRe
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
 import { runStockBacktest } from "../stock-trading/backtest-runner.js";
 import { runStockMarketDataCollector } from "../stock-trading/market-data-collector.js";
+import { scanStockMarketDataCandidates } from "../stock-trading/market-data-scanner.js";
 import { processStockMarketSignal, reviewStockPositionExit } from "../stock-trading/paper-runner.js";
 import {
   getStockBacktestRunDetail,
@@ -235,6 +236,10 @@ adminApiRouter.get("/stock-trading/market-data/runs", async (_req, res) => {
 
 adminApiRouter.post("/stock-trading/market-data/collect", async (_req, res) => {
   res.status(201).json({ run: await runStockMarketDataCollector() });
+});
+
+adminApiRouter.post("/stock-trading/market-data/scan", async (_req, res) => {
+  res.status(201).json(await scanStockMarketDataCandidates());
 });
 
 adminApiRouter.get("/stock-trading/backtests", async (_req, res) => {
