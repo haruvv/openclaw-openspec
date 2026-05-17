@@ -44,7 +44,12 @@ Required Cloudflare Access configuration when `CLOUDFLARE_ACCESS_ENABLED=true`:
 | `CLOUDFLARE_ACCESS_MACHINE_AUD` | Access audience tag for machine API access |
 | `CLOUDFLARE_ACCESS_ALLOW_SERVICE_ADMIN` | Set to `true` only when a Service Token is allowed to run admin smoke checks |
 
-`ADMIN_TOKEN` remains a local/development fallback. In production with Cloudflare Access enabled, query-token admin access is disabled unless `CLOUDFLARE_ACCESS_ALLOW_ADMIN_TOKEN_FALLBACK=true` is set temporarily for rollback.
+`ADMIN_TOKEN` is not the normal production admin auth mechanism. Production admin access is Cloudflare Access based:
+
+- The Worker validates Cloudflare Access before serving `/admin` and `/admin/*` assets/routes.
+- The Container app validates Cloudflare Access assertions for `/api/admin/*` and any admin page requests that reach Express.
+- `ADMIN_TOKEN` is only a local/development fallback, or an emergency rollback fallback when `CLOUDFLARE_ACCESS_ALLOW_ADMIN_TOKEN_FALLBACK=true` is explicitly enabled.
+- Do not document or test production admin flows as `?token=<ADMIN_TOKEN>` flows unless the task is specifically about that rollback fallback.
 
 Optional:
 
@@ -84,13 +89,21 @@ If Access rollout blocks production unexpectedly:
 
 ## Persistence
 
-Cloudflare Containers currently use ephemeral disk. The SQLite database at `DB_PATH` is therefore not durable in production. Treat the current database as operational cache only until D1/R2 bindings are enabled.
+Production persistence is D1/R2 through the Worker storage bridge, not Container-local SQLite.
 
-Durable storage migration is tracked by OpenSpec change `persist-operational-data`.
+The deployed topology is:
 
-### Clean durable start
+1. The Worker owns the durable bindings:
+   - D1 binding: `OPERATIONAL_DB`
+   - R2 binding: `OPERATIONAL_ARTIFACTS`
+2. The Worker exposes internal storage endpoints under `/internal/storage/*`.
+3. The Container receives `DURABLE_STORAGE_BASE_URL` and `DURABLE_STORAGE_TOKEN`.
+4. Repository code chooses durable-http mode when both durable storage env vars are present.
+5. `DB_PATH` remains available only for direct local Node runs, tests, or emergency fallback. It is not the production source of truth.
 
-Use this if current production history can be discarded.
+When reviewing or extending features, assume D1/R2 is the production path. SQLite-specific behavior should be treated as fallback compatibility, not the main architecture.
+
+### Durable storage setup
 
 1. Create a production D1 database and R2 bucket.
 2. Add the D1/R2 binding IDs to `wrangler.jsonc`.
@@ -128,9 +141,9 @@ npx wrangler d1 execute <database-name> --remote --file ./data/operational-expor
 4. Deploy production with durable storage enabled.
 5. Confirm the admin dashboard still shows the imported run/site history.
 
-### Rollback
+### Rollback To SQLite Fallback
 
-If durable storage rollout fails before data is trusted:
+Use only as an emergency fallback if D1/R2 or the storage bridge is unhealthy:
 
 1. Export any D1-only rows that must be preserved with `wrangler d1 execute` queries.
 2. Remove or unset `DURABLE_STORAGE_BASE_URL` and `DURABLE_STORAGE_TOKEN` from production configuration.

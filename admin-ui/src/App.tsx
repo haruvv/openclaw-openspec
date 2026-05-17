@@ -1,7 +1,6 @@
 import React from "react";
-import { TrendingUp } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
-import { SidebarGroup, navItems } from "./components/navigation";
+import { SidebarGroup, appNavItems, navItems, seoSalesNavItems, stockTradingNavItems } from "./components/navigation";
 import { AdminRoutes, getPageMeta } from "./routes";
 import { isActive, isAdminHome } from "./utils";
 
@@ -21,15 +20,9 @@ export function App() {
           </div>
         </Link>
         <nav className="space-y-7 px-4 py-5">
-          <SidebarGroup label="全体" items={navItems.slice(0, 1)} path={path} />
-          <SidebarGroup label="SEO営業" items={navItems.slice(1)} path={path} />
-          <div>
-            <div className="px-3 text-[11px] font-bold uppercase tracking-normal text-slate-500">準備中</div>
-            <div className="mt-2 flex items-center gap-3 border border-slate-800 px-3 py-2.5 text-sm font-bold text-slate-600">
-              <TrendingUp className="h-4 w-4" />
-              株自動売買
-            </div>
-          </div>
+          <SidebarGroup label="全体" items={appNavItems} path={path} />
+          <SidebarGroup label="SEO営業" items={seoSalesNavItems} path={path} />
+          <SidebarGroup label="株自動売買" items={stockTradingNavItems} path={path} />
         </nav>
       </aside>
       <div className="lg:pl-72">

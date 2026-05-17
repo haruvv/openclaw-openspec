@@ -27,6 +27,11 @@ describe("operational storage migration", () => {
       "sales_payment_links",
       "site_proposals",
       "site_snapshots",
+      "stock_agent_decisions",
+      "stock_ai_decisions",
+      "stock_learning_items",
+      "stock_portfolio_snapshots",
+      "stock_trades",
       "targets",
     ]);
 
@@ -41,6 +46,10 @@ describe("operational storage migration", () => {
     const paymentColumns = db.prepare("PRAGMA table_info(sales_payment_links)").all() as { name: string }[];
     expect(paymentColumns.map((column) => column.name)).toContain("payment_link_url");
     expect(paymentColumns.map((column) => column.name)).toContain("amount_jpy");
+
+    const tradeColumns = db.prepare("PRAGMA table_info(stock_trades)").all() as { name: string }[];
+    expect(tradeColumns.map((column) => column.name)).toContain("execution_source");
+    expect(tradeColumns.map((column) => column.name)).toContain("raw_execution_json");
 
     db.close();
   });

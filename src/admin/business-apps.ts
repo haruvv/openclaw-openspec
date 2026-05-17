@@ -23,10 +23,16 @@ export const businessApps: BusinessApp[] = [
   {
     id: "stock-trading",
     name: "株自動売買",
-    description: "戦略、売買ログ、損益、証券API接続を管理する予定の業務アプリです。",
-    status: "planned",
-    entryPath: "/admin",
-    primaryLinks: [],
+    description: "AI判断、内部ペーパー取引、損益、学習ログを管理します。",
+    status: "active",
+    entryPath: "/admin/stock-trading",
+    primaryLinks: [
+      { label: "ダッシュボード", href: "/admin/stock-trading" },
+      { label: "AI判断", href: "/admin/stock-trading/decisions" },
+      { label: "取引履歴", href: "/admin/stock-trading/trades" },
+      { label: "学習ログ", href: "/admin/stock-trading/lessons" },
+      { label: "連携設定", href: "/admin/stock-trading/settings" },
+    ],
   },
 ];
 

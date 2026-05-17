@@ -1,6 +1,19 @@
 import React from "react";
 import { Navigate, Route, Routes, matchPath } from "react-router-dom";
-import { PortalPage, RunDetailPage, RunsPage, SeoSalesHome, SettingsPage, SitesPage } from "./pages";
+import {
+  PortalPage,
+  RunDetailPage,
+  RunsPage,
+  SeoSalesHome,
+  SettingsPage,
+  SitesPage,
+  StockDecisionDetailPage,
+  StockDecisionsPage,
+  StockLessonsPage,
+  StockSettingsPage,
+  StockTradesPage,
+  StockTradingHome,
+} from "./pages";
 
 interface AdminRouteDefinition {
   path: string;
@@ -19,6 +32,12 @@ const adminRoutes: AdminRouteDefinition[] = [
   { path: "/admin/seo-sales/runs", title: "実行ログ", description: "解析の実行履歴です。", element: <RunsPage /> },
   { path: "/admin/seo-sales/runs/:id", title: "実行詳細", description: "", element: <RunDetailPage /> },
   { path: "/admin/seo-sales/settings", title: "外部サービス設定", description: "連携設定と実行ポリシーです。", element: <SettingsPage /> },
+  { path: "/admin/stock-trading", title: "株自動売買", description: "AI判断、内部ペーパー取引、損益、学習ログを確認します。", element: <StockTradingHome /> },
+  { path: "/admin/stock-trading/decisions", title: "AI判断", description: "AI投資会議の判断履歴です。", element: <StockDecisionsPage /> },
+  { path: "/admin/stock-trading/decisions/:id", title: "AI判断詳細", description: "", element: <StockDecisionDetailPage /> },
+  { path: "/admin/stock-trading/trades", title: "取引履歴", description: "内部ペーパー取引の履歴です。", element: <StockTradesPage /> },
+  { path: "/admin/stock-trading/lessons", title: "学習ログ", description: "取引レビューから抽出した学習項目です。", element: <StockLessonsPage /> },
+  { path: "/admin/stock-trading/settings", title: "連携設定", description: "価格データ、証券API、Webhookの準備状況です。", element: <StockSettingsPage /> },
 ];
 
 export function AdminRoutes() {

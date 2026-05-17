@@ -11,6 +11,14 @@ import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } 
 import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
+import {
+  getStockAiDecisionDetail,
+  getStockIntegrationStatus,
+  getStockTradingOverview,
+  listStockAiDecisions,
+  listStockLearningItems,
+  listStockTrades,
+} from "../stock-trading/repository.js";
 import { logger } from "../utils/logger.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
@@ -63,6 +71,43 @@ adminApiRouter.get("/seo-sales/overview", async (_req, res) => {
     },
     recentRuns: runs.slice(0, 5),
     recentSites: sites.slice(0, 5),
+  });
+});
+
+adminApiRouter.get("/stock-trading/overview", async (_req, res) => {
+  res.json(await getStockTradingOverview());
+});
+
+adminApiRouter.get("/stock-trading/decisions", async (_req, res) => {
+  res.json({ decisions: await listStockAiDecisions(100) });
+});
+
+adminApiRouter.get("/stock-trading/decisions/:id", async (req, res) => {
+  const decision = await getStockAiDecisionDetail(req.params.id);
+  if (!decision) {
+    res.status(404).json({ error: "stock_decision_not_found" });
+    return;
+  }
+
+  res.json({ decision });
+});
+
+adminApiRouter.get("/stock-trading/trades", async (_req, res) => {
+  res.json({ trades: await listStockTrades(200) });
+});
+
+adminApiRouter.get("/stock-trading/lessons", async (_req, res) => {
+  res.json({ lessons: await listStockLearningItems(200) });
+});
+
+adminApiRouter.get("/stock-trading/settings", async (_req, res) => {
+  res.json({
+    integrations: await getStockIntegrationStatus(),
+    safety: {
+      mode: "paper_only",
+      realOrderPlacementEnabled: false,
+      message: "株自動売買MVPは内部ペーパー取引のみを記録します。実弾注文、取消、資金移動は実行しません。",
+    },
   });
 });
 

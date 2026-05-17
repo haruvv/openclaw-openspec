@@ -76,6 +76,63 @@ describe("admin routes", () => {
     expect(JSON.parse(response.body)).toMatchObject({ runs: [] });
   });
 
+  it("returns stock trading overview without exposing provider secrets", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.MOOMOO_OPENAPI_HOST = "127.0.0.1:11111";
+    process.env.MOOMOO_ACCOUNT_ID = "account-secret";
+    process.env.TRADINGVIEW_WEBHOOK_SECRET = "tradingview-secret";
+    process.env.STOCK_NEWS_API_KEY = "news-secret";
+    const { seedStockTradingFixtureData } = await import("../src/stock-trading/repository.js");
+    await seedStockTradingFixtureData();
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/stock-trading/overview?token=admin-test", "/api/admin");
+
+    expect(response.status).toBe(200);
+    const text = response.body;
+    expect(text).not.toContain("account-secret");
+    expect(text).not.toContain("tradingview-secret");
+    expect(text).not.toContain("news-secret");
+    expect(JSON.parse(text)).toMatchObject({
+      portfolio: { currentEquity: 1002400, winRate: 1 },
+      recentDecisions: [{ symbol: "NVDA", finalAction: "WATCH" }],
+      recentTrades: [{ symbol: "NVDA", executionSource: "paper" }],
+      safety: { mode: "paper_only", realOrderPlacementEnabled: false },
+    });
+  });
+
+  it("returns stock trading decisions, trades, lessons, and settings from authenticated API routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { seedStockTradingFixtureData } = await import("../src/stock-trading/repository.js");
+    const { decision } = await seedStockTradingFixtureData();
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const decisions = await dispatch(adminApiRouter, "/stock-trading/decisions?token=admin-test", "/api/admin");
+    const detail = await dispatch(adminApiRouter, `/stock-trading/decisions/${decision.id}?token=admin-test`, "/api/admin");
+    const trades = await dispatch(adminApiRouter, "/stock-trading/trades?token=admin-test", "/api/admin");
+    const lessons = await dispatch(adminApiRouter, "/stock-trading/lessons?token=admin-test", "/api/admin");
+    const settings = await dispatch(adminApiRouter, "/stock-trading/settings?token=admin-test", "/api/admin");
+
+    expect(decisions.status).toBe(200);
+    expect(JSON.parse(decisions.body).decisions[0]).toMatchObject({ symbol: "NVDA" });
+    expect(detail.status).toBe(200);
+    expect(JSON.parse(detail.body).decision.agents).toEqual(expect.arrayContaining([expect.objectContaining({ agentName: "risk" })]));
+    expect(JSON.parse(trades.body).trades[0]).toMatchObject({ executionSource: "paper" });
+    expect(JSON.parse(lessons.body).lessons[0]).toMatchObject({ category: "rule_candidate" });
+    expect(JSON.parse(settings.body)).toMatchObject({
+      safety: { mode: "paper_only", realOrderPlacementEnabled: false },
+    });
+  });
+
+  it("requires admin auth for stock trading API routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/stock-trading/overview", "/api/admin");
+
+    expect(response.status).toBe(401);
+  });
+
   it("returns SEO sales site results from the admin API", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     const { createAgentRun } = await import("../src/agent-runs/repository.js");

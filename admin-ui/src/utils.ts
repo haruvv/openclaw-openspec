@@ -144,6 +144,16 @@ export function formatBytes(value?: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+export function formatCurrency(value?: number): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(value);
+}
+
+export function formatPercent(value?: number | null): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) return "-";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export function formatStatus(status: Status): string {
   return { running: "実行中", passed: "成功", failed: "失敗", skipped: "スキップ" }[status];
 }
