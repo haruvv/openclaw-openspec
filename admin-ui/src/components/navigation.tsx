@@ -17,6 +17,7 @@ export const seoSalesNavItems = [
 
 export const stockTradingNavItems = [
   { label: "株取引 概要", href: "/admin/stock-trading", icon: TrendingUp },
+  { label: "価格データ", href: "/admin/stock-trading/market-data", icon: Activity },
   { label: "リサーチ材料", href: "/admin/stock-trading/research", icon: BookOpen },
   { label: "市場シグナル", href: "/admin/stock-trading/signals", icon: Activity },
   { label: "AI判断", href: "/admin/stock-trading/decisions", icon: ClipboardList },

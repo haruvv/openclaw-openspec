@@ -202,6 +202,7 @@ describe("admin UI routing", () => {
     expect(screen.getByText("バックテストはまだありません")).toBeInTheDocument();
     expect(screen.getByText("学習ログはまだありません")).toBeInTheDocument();
     expect(screen.getByText("再利用ルールはまだありません")).toBeInTheDocument();
+    expect(screen.getByText("価格データ収集履歴はまだありません")).toBeInTheDocument();
   });
 
   it("renders stock trading populated pages", async () => {
@@ -314,6 +315,27 @@ describe("admin UI routing", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/admin/stock-trading/rules/stock-rule-lesson-1",
       expect.objectContaining({ method: "PATCH" }),
+    ));
+  });
+
+  it("renders stock market data page and runs collection", async () => {
+    const fetchMock = createStockFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/stock-trading/market-data"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Watchlist")).toBeInTheDocument();
+    expect(screen.getByText("NVDA")).toBeInTheDocument();
+    expect(screen.getByText("Collection Runs")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "収集実行" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/stock-trading/market-data/collect",
+      expect.objectContaining({ method: "POST" }),
     ));
   });
 
@@ -536,6 +558,19 @@ function createStockFetch() {
     if (path === "/api/admin/stock-trading/rules/stock-rule-lesson-1") {
       return createJsonResponse({ rule: { ...createStockRule(), status: "active" } });
     }
+    if (path === "/api/admin/stock-trading/market-data/watchlist") {
+      if (init?.method === "POST") return createJsonResponse({ entry: createStockMarketDataWatchlistEntry() });
+      return createJsonResponse({ entries: [createStockMarketDataWatchlistEntry()] });
+    }
+    if (path === "/api/admin/stock-trading/market-data/watchlist/watchlist-1") {
+      return createJsonResponse({ entry: { ...createStockMarketDataWatchlistEntry(), enabled: false } });
+    }
+    if (path === "/api/admin/stock-trading/market-data/runs") {
+      return createJsonResponse({ runs: [createStockMarketDataRun()] });
+    }
+    if (path === "/api/admin/stock-trading/market-data/collect") {
+      return createJsonResponse({ run: createStockMarketDataRun() });
+    }
     return createJsonResponse(createStockOverviewResponse({
       recentSignals: [createStockSignal()],
       recentCandidates: [createStockCandidate()],
@@ -545,6 +580,8 @@ function createStockFetch() {
       recentBacktests: [createStockBacktestRun()],
       recentLessons: [createStockLesson()],
       recentRules: [createStockRule()],
+      marketDataWatchlist: [createStockMarketDataWatchlistEntry()],
+      recentMarketDataRuns: [createStockMarketDataRun()],
       recentResearch: [createStockResearch()],
     }));
   });
@@ -572,6 +609,8 @@ function createStockOverviewResponse(overrides: Record<string, unknown> = {}) {
     recentResearch: [],
     strategyPerformance: [],
     recentBacktests: [],
+    marketDataWatchlist: [],
+    recentMarketDataRuns: [],
     integrations: [{ label: "moomoo OpenAPI", key: "MOOMOO_OPENAPI_HOST", configured: false, purpose: "market_data" }],
     runner: {
       enabled: true,
@@ -782,6 +821,35 @@ function createStockRule() {
     confidence: 0.68,
     createdAt: "2026-05-17T03:00:00.000Z",
     updatedAt: "2026-05-17T03:00:00.000Z",
+  };
+}
+
+function createStockMarketDataWatchlistEntry() {
+  return {
+    id: "watchlist-1",
+    symbol: "NVDA",
+    timeframe: "1d",
+    provider: "moomoo",
+    enabled: true,
+    lookbackLimit: 200,
+    notes: "AI半導体",
+    lastCollectedAt: "2026-05-17T04:00:00.000Z",
+    createdAt: "2026-05-17T03:30:00.000Z",
+    updatedAt: "2026-05-17T04:00:00.000Z",
+  };
+}
+
+function createStockMarketDataRun() {
+  return {
+    id: "market-data-run-1",
+    provider: "moomoo",
+    status: "completed",
+    requestedEntries: 1,
+    completedEntries: 1,
+    upsertedCandles: 2,
+    startedAt: "2026-05-17T04:00:00.000Z",
+    completedAt: "2026-05-17T04:00:02.000Z",
+    createdAt: "2026-05-17T04:00:00.000Z",
   };
 }
 

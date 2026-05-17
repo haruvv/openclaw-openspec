@@ -11,6 +11,8 @@ import type {
   StockIntegrationStatus,
   StockLearningItem,
   StockMarketCandidate,
+  StockMarketDataCollectionRun,
+  StockMarketDataWatchlistEntry,
   StockMarketSignal,
   StockPortfolioMetrics,
   StockPosition,
@@ -96,6 +98,9 @@ export function StockTradingHome() {
         </Panel>
         <Panel title="Knowledge Rulebook" action={<Link className="link-action" to="/admin/stock-trading/rules">すべて見る</Link>}>
           <RuleList rules={data?.recentRules ?? []} compact />
+        </Panel>
+        <Panel title="Market Data Collector" action={<Link className="link-action" to="/admin/stock-trading/market-data">開く</Link>}>
+          <MarketDataRunList runs={data?.recentMarketDataRuns ?? []} compact />
         </Panel>
         <Panel title="連携状態" action={<Link className="link-action" to="/admin/stock-trading/settings">確認する</Link>}>
           <IntegrationList integrations={data?.integrations ?? []} />
@@ -468,6 +473,91 @@ export function StockRulesPage() {
         onCandidate={(rule) => void setRuleStatus(rule, "candidate")}
       />
     </Panel>
+  );
+}
+
+export function StockMarketDataPage() {
+  const { data: watchlistData, loading: watchlistLoading, error: watchlistError, reload: reloadWatchlist } = useApi<{ entries: StockMarketDataWatchlistEntry[] }>("/api/admin/stock-trading/market-data/watchlist");
+  const { data: runData, loading: runsLoading, error: runsError, reload: reloadRuns } = useApi<{ runs: StockMarketDataCollectionRun[] }>("/api/admin/stock-trading/market-data/runs");
+  const [symbol, setSymbol] = React.useState("NVDA");
+  const [timeframe, setTimeframe] = React.useState("1d");
+  const [provider, setProvider] = React.useState("moomoo");
+  const [lookbackLimit, setLookbackLimit] = React.useState("200");
+  const [notes, setNotes] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  if (watchlistLoading || runsLoading) return <Loading />;
+  if (watchlistError) return <ErrorState message={watchlistError} />;
+  if (runsError) return <ErrorState message={runsError} />;
+
+  async function createEntry() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiPost("/api/admin/stock-trading/market-data/watchlist", {
+        symbol,
+        timeframe,
+        provider,
+        lookbackLimit: Number(lookbackLimit),
+        notes,
+      });
+      setNotes("");
+      await reloadWatchlist();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "監視銘柄の保存に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleEntry(entry: StockMarketDataWatchlistEntry) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiPatch(`/api/admin/stock-trading/market-data/watchlist/${encodeURIComponent(entry.id)}`, { enabled: !entry.enabled });
+      await reloadWatchlist();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "監視状態の更新に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function collect() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiPost("/api/admin/stock-trading/market-data/collect", {});
+      await Promise.all([reloadRuns(), reloadWatchlist()]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "価格データ収集に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {actionError ? <ErrorState message={actionError} /> : null}
+      <Panel title="Market Data Collector" action={<button className="btn-primary" type="button" disabled={busy} onClick={() => void collect()}>収集実行</button>}>
+        <div className="grid gap-3 lg:grid-cols-5">
+          <label className="grid gap-1 text-xs font-black text-slate-500">銘柄<input className="input" value={symbol} onChange={(event) => setSymbol(event.target.value)} /></label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">時間足<input className="input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)} /></label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">Provider<input className="input" value={provider} onChange={(event) => setProvider(event.target.value)} /></label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">取得本数<input className="input" type="number" min="1" value={lookbackLimit} onChange={(event) => setLookbackLimit(event.target.value)} /></label>
+          <label className="grid gap-1 text-xs font-black text-slate-500">メモ<input className="input" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button className="btn-secondary" type="button" disabled={busy} onClick={() => void createEntry()}>監視に追加</button>
+        </div>
+      </Panel>
+      <Panel title="Watchlist">
+        <MarketDataWatchlist entries={watchlistData?.entries ?? []} busy={busy} onToggle={(entry) => void toggleEntry(entry)} />
+      </Panel>
+      <Panel title="Collection Runs">
+        <MarketDataRunList runs={runData?.runs ?? []} />
+      </Panel>
+    </div>
   );
 }
 
@@ -966,6 +1056,84 @@ function RuleList({
           </div>
         </article>
       ))}
+    </div>
+  );
+}
+
+function MarketDataWatchlist({
+  entries,
+  busy,
+  onToggle,
+}: {
+  entries: StockMarketDataWatchlistEntry[];
+  busy?: boolean;
+  onToggle?: (entry: StockMarketDataWatchlistEntry) => void;
+}) {
+  if (entries.length === 0) return <Empty title="価格データ監視銘柄はまだありません" description="銘柄と時間足を追加すると、Market Data Collector がローソク足を保存できます。" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="data-table">
+        <thead><tr><th>銘柄</th><th>時間足</th><th>provider</th><th>状態</th><th>取得本数</th><th>最終収集</th><th>操作</th></tr></thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.id}>
+              <td className="font-black">{entry.symbol}</td>
+              <td>{entry.timeframe}</td>
+              <td>{entry.provider}</td>
+              <td><StatusPill status={entry.enabled ? "enabled" : "disabled"} /></td>
+              <td>{entry.lookbackLimit}</td>
+              <td>{entry.lastCollectedAt ? formatDate(entry.lastCollectedAt) : "-"}</td>
+              <td>{onToggle ? <button className="btn-secondary" type="button" disabled={busy} onClick={() => onToggle(entry)}>{entry.enabled ? "停止" : "有効化"}</button> : "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MarketDataRunList({ runs, compact = false }: { runs: StockMarketDataCollectionRun[]; compact?: boolean }) {
+  if (runs.length === 0) return <Empty title="価格データ収集履歴はまだありません" description="収集を実行すると、件数とエラーがここに残ります。" />;
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {runs.slice(0, 3).map((run) => (
+          <article key={run.id} className="border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-slate-950">{run.provider}</div>
+                <div className="mt-1 text-xs font-semibold text-slate-500">{formatDate(run.createdAt)}</div>
+              </div>
+              <StatusPill status={run.status} />
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <Info label="entries" value={`${run.completedEntries}/${run.requestedEntries}`} />
+              <Info label="candles" value={run.upsertedCandles} />
+              <Info label="error" value={run.error ?? "-"} />
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="data-table">
+        <thead><tr><th>provider</th><th>status</th><th>entries</th><th>candles</th><th>error</th><th>started</th><th>completed</th></tr></thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.id}>
+              <td className="font-black">{run.provider}</td>
+              <td><StatusPill status={run.status} /></td>
+              <td>{run.completedEntries}/{run.requestedEntries}</td>
+              <td>{run.upsertedCandles}</td>
+              <td>{run.error ?? "-"}</td>
+              <td>{formatDate(run.startedAt)}</td>
+              <td>{run.completedAt ? formatDate(run.completedAt) : "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

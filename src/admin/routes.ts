@@ -12,6 +12,7 @@ import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
 import { runStockBacktest } from "../stock-trading/backtest-runner.js";
+import { runStockMarketDataCollector } from "../stock-trading/market-data-collector.js";
 import { processStockMarketSignal, reviewStockPositionExit } from "../stock-trading/paper-runner.js";
 import {
   getStockBacktestRunDetail,
@@ -26,6 +27,8 @@ import {
   listStockAiDecisions,
   listStockLearningItems,
   listStockMarketCandidates,
+  listStockMarketDataCollectionRuns,
+  listStockMarketDataWatchlistEntries,
   listStockMarketSignals,
   listStockPositions,
   listStockResearchItems,
@@ -33,10 +36,12 @@ import {
   listStockTrades,
   listStockTradingRules,
   updateStockMarketCandidateStatus,
+  updateStockMarketDataWatchlistEntry,
   updateStockTradingRuleStatus,
+  upsertStockMarketDataWatchlistEntry,
   upsertStockCandles,
 } from "../stock-trading/repository.js";
-import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockMarketCandidateStatus, StockResearchCategory, StockResearchSentiment, StockTradeAction, StockTradingRuleStatus } from "../stock-trading/types.js";
+import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockMarketCandidateStatus, StockResearchCategory, StockResearchSentiment, StockTradeAction, StockTradingRuleStatus, UpdateStockMarketDataWatchlistInput, UpsertStockMarketDataWatchlistInput } from "../stock-trading/types.js";
 import { logger } from "../utils/logger.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
@@ -196,6 +201,40 @@ adminApiRouter.post("/stock-trading/candles", async (req, res) => {
     return;
   }
   res.status(201).json({ candles: await upsertStockCandles(parsed.value) });
+});
+
+adminApiRouter.get("/stock-trading/market-data/watchlist", async (_req, res) => {
+  res.json({ entries: await listStockMarketDataWatchlistEntries({ limit: 200 }) });
+});
+
+adminApiRouter.post("/stock-trading/market-data/watchlist", async (req, res) => {
+  const parsed = parseStockMarketDataWatchlistBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  res.status(201).json({ entry: await upsertStockMarketDataWatchlistEntry(parsed.value) });
+});
+
+adminApiRouter.patch("/stock-trading/market-data/watchlist/:id", async (req, res) => {
+  const parsed = parseStockMarketDataWatchlistPatchBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  try {
+    res.json({ entry: await updateStockMarketDataWatchlistEntry(req.params.id, parsed.value) });
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : "stock_market_data_watchlist_not_found" });
+  }
+});
+
+adminApiRouter.get("/stock-trading/market-data/runs", async (_req, res) => {
+  res.json({ runs: await listStockMarketDataCollectionRuns(100) });
+});
+
+adminApiRouter.post("/stock-trading/market-data/collect", async (_req, res) => {
+  res.status(201).json({ run: await runStockMarketDataCollector() });
 });
 
 adminApiRouter.get("/stock-trading/backtests", async (_req, res) => {
@@ -638,6 +677,69 @@ function parseStockCandleImportBody(body: unknown):
     });
   }
   return { ok: true, value: candles };
+}
+
+function parseStockMarketDataWatchlistBody(body: unknown):
+  | { ok: true; value: UpsertStockMarketDataWatchlistInput }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.symbol !== "string" || candidate.symbol.trim().length === 0) return { ok: false, error: "symbol is required" };
+  if (typeof candidate.timeframe !== "string" || candidate.timeframe.trim().length === 0) return { ok: false, error: "timeframe is required" };
+  if (candidate.provider !== undefined && (typeof candidate.provider !== "string" || candidate.provider.trim().length === 0)) {
+    return { ok: false, error: "provider must be a non-empty string" };
+  }
+  const lookbackLimit = readOptionalNumber(candidate.lookbackLimit);
+  if (lookbackLimit !== undefined && (!Number.isInteger(lookbackLimit) || lookbackLimit <= 0)) {
+    return { ok: false, error: "lookbackLimit must be a positive integer" };
+  }
+  if (candidate.enabled !== undefined && typeof candidate.enabled !== "boolean") return { ok: false, error: "enabled must be a boolean" };
+  if (candidate.notes !== undefined && typeof candidate.notes !== "string") return { ok: false, error: "notes must be a string" };
+  return {
+    ok: true,
+    value: {
+      symbol: candidate.symbol.trim(),
+      timeframe: candidate.timeframe.trim(),
+      provider: typeof candidate.provider === "string" ? candidate.provider.trim() : undefined,
+      enabled: candidate.enabled,
+      lookbackLimit,
+      notes: typeof candidate.notes === "string" ? candidate.notes.trim() : undefined,
+    },
+  };
+}
+
+function parseStockMarketDataWatchlistPatchBody(body: unknown):
+  | { ok: true; value: UpdateStockMarketDataWatchlistInput }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  const value: UpdateStockMarketDataWatchlistInput = {};
+  if (candidate.symbol !== undefined) {
+    if (typeof candidate.symbol !== "string" || candidate.symbol.trim().length === 0) return { ok: false, error: "symbol must be a non-empty string" };
+    value.symbol = candidate.symbol.trim();
+  }
+  if (candidate.timeframe !== undefined) {
+    if (typeof candidate.timeframe !== "string" || candidate.timeframe.trim().length === 0) return { ok: false, error: "timeframe must be a non-empty string" };
+    value.timeframe = candidate.timeframe.trim();
+  }
+  if (candidate.provider !== undefined) {
+    if (typeof candidate.provider !== "string" || candidate.provider.trim().length === 0) return { ok: false, error: "provider must be a non-empty string" };
+    value.provider = candidate.provider.trim();
+  }
+  if (candidate.enabled !== undefined) {
+    if (typeof candidate.enabled !== "boolean") return { ok: false, error: "enabled must be a boolean" };
+    value.enabled = candidate.enabled;
+  }
+  if (candidate.lookbackLimit !== undefined) {
+    const lookbackLimit = readFiniteNumber(candidate.lookbackLimit);
+    if (lookbackLimit === null || !Number.isInteger(lookbackLimit) || lookbackLimit <= 0) return { ok: false, error: "lookbackLimit must be a positive integer" };
+    value.lookbackLimit = lookbackLimit;
+  }
+  if (candidate.notes !== undefined) {
+    if (typeof candidate.notes !== "string") return { ok: false, error: "notes must be a string" };
+    value.notes = candidate.notes.trim();
+  }
+  return { ok: true, value };
 }
 
 function parseStockBacktestBody(body: unknown):

@@ -35,6 +35,8 @@ describe("operational storage migration", () => {
       "stock_decision_learning_refs",
       "stock_learning_items",
       "stock_market_candidates",
+      "stock_market_data_runs",
+      "stock_market_data_watchlist",
       "stock_market_signals",
       "stock_portfolio_snapshots",
       "stock_positions",
@@ -93,6 +95,14 @@ describe("operational storage migration", () => {
     const ruleColumns = db.prepare("PRAGMA table_info(stock_trading_rules)").all() as { name: string }[];
     expect(ruleColumns.map((column) => column.name)).toContain("source_learning_item_id");
     expect(ruleColumns.map((column) => column.name)).toContain("status");
+
+    const watchlistColumns = db.prepare("PRAGMA table_info(stock_market_data_watchlist)").all() as { name: string }[];
+    expect(watchlistColumns.map((column) => column.name)).toContain("lookback_limit");
+    expect(watchlistColumns.map((column) => column.name)).toContain("last_collected_at");
+
+    const marketDataRunColumns = db.prepare("PRAGMA table_info(stock_market_data_runs)").all() as { name: string }[];
+    expect(marketDataRunColumns.map((column) => column.name)).toContain("requested_entries");
+    expect(marketDataRunColumns.map((column) => column.name)).toContain("upserted_candles");
 
     db.close();
   });

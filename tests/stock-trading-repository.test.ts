@@ -455,9 +455,14 @@ describe("stock trading repository", () => {
   it("upserts candles and persists backtest runs with simulated trades", async () => {
     const {
       createStockBacktestRun,
+      createStockMarketDataCollectionRun,
       listStockBacktestRuns,
       getStockBacktestRunDetail,
       listStockCandles,
+      listStockMarketDataCollectionRuns,
+      listStockMarketDataWatchlistEntries,
+      updateStockMarketDataWatchlistEntry,
+      upsertStockMarketDataWatchlistEntry,
       upsertStockCandles,
     } = await import("../src/stock-trading/repository.js");
 
@@ -470,6 +475,33 @@ describe("stock trading repository", () => {
     await expect(listStockCandles({ symbol: "NVDA", timeframe: "1d" })).resolves.toMatchObject([
       { symbol: "NVDA", close: 101 },
       { symbol: "NVDA", close: 104, volume: 1300 },
+    ]);
+
+    const watchlist = await upsertStockMarketDataWatchlistEntry({
+      id: "watchlist-1",
+      symbol: "nvda",
+      timeframe: "1d",
+      provider: "moomoo",
+      lookbackLimit: 250,
+      notes: "AI半導体",
+    });
+    expect(watchlist).toMatchObject({ id: "watchlist-1", symbol: "NVDA", enabled: true, lookbackLimit: 250 });
+    await updateStockMarketDataWatchlistEntry("watchlist-1", { enabled: false, lastCollectedAt: new Date("2026-05-07T00:00:00.000Z") });
+    await expect(listStockMarketDataWatchlistEntries()).resolves.toMatchObject([
+      { id: "watchlist-1", symbol: "NVDA", enabled: false, lastCollectedAt: "2026-05-07T00:00:00.000Z" },
+    ]);
+    await createStockMarketDataCollectionRun({
+      id: "market-data-run-1",
+      provider: "moomoo",
+      status: "completed",
+      requestedEntries: 1,
+      completedEntries: 1,
+      upsertedCandles: 2,
+      startedAt: new Date("2026-05-07T00:00:00.000Z"),
+      completedAt: new Date("2026-05-07T00:00:02.000Z"),
+    });
+    await expect(listStockMarketDataCollectionRuns()).resolves.toMatchObject([
+      { id: "market-data-run-1", status: "completed", upsertedCandles: 2 },
     ]);
 
     const run = await createStockBacktestRun({

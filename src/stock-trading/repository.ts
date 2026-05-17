@@ -6,11 +6,16 @@ import type {
   CreateStockBacktestRunInput,
   CreateStockCandleInput,
   CreateStockLearningItemInput,
+  CreateStockMarketDataCollectionRunInput,
   CreateStockMarketSignalInput,
   CreateStockPortfolioSnapshotInput,
   CreateStockResearchItemInput,
   CreateStockTradeInput,
+  StockMarketDataCollectionRun,
+  StockMarketDataRunStatus,
+  StockMarketDataWatchlistEntry,
   UpsertStockMarketCandidateInput,
+  UpsertStockMarketDataWatchlistInput,
   UpsertStockPositionInput,
   StockAgentDecision,
   StockAiDecision,
@@ -43,6 +48,7 @@ import type {
   StockTradingRule,
   StockTradingRuleCategory,
   StockTradingRuleStatus,
+  UpdateStockMarketDataWatchlistInput,
 } from "./types.js";
 
 type JsonObject = Record<string, unknown>;
@@ -202,6 +208,32 @@ type CandleRow = {
   timestamp: number;
   created_at: number;
   updated_at: number;
+};
+
+type MarketDataWatchlistRow = {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  provider: string;
+  enabled: number;
+  lookback_limit: number;
+  notes: string | null;
+  last_collected_at: number | null;
+  created_at: number;
+  updated_at: number;
+};
+
+type MarketDataRunRow = {
+  id: string;
+  provider: string;
+  status: StockMarketDataRunStatus;
+  requested_entries: number;
+  completed_entries: number;
+  upserted_candles: number;
+  error: string | null;
+  started_at: number;
+  completed_at: number | null;
+  created_at: number;
 };
 
 type BacktestRunRow = {
@@ -1012,6 +1044,154 @@ export async function listStockCandles(options: { symbol: string; timeframe: str
   return rows.map(mapCandleRow);
 }
 
+export async function upsertStockMarketDataWatchlistEntry(input: UpsertStockMarketDataWatchlistInput): Promise<StockMarketDataWatchlistEntry> {
+  const now = Date.now();
+  const id = input.id ?? randomUUID();
+  const symbol = input.symbol.trim().toUpperCase();
+  const timeframe = input.timeframe.trim();
+  const provider = (input.provider ?? "moomoo").trim();
+  const lookbackLimit = boundedLimit(input.lookbackLimit ?? 200, 5000);
+  const createdAt = input.createdAt?.getTime() ?? now;
+  const updatedAt = input.updatedAt?.getTime() ?? now;
+  const params = [
+    id,
+    symbol,
+    timeframe,
+    provider,
+    input.enabled === false ? 0 : 1,
+    lookbackLimit,
+    input.notes ?? null,
+    input.lastCollectedAt?.getTime() ?? null,
+    createdAt,
+    updatedAt,
+  ];
+  const sql = `INSERT INTO stock_market_data_watchlist (
+    id, symbol, timeframe, provider, enabled, lookback_limit, notes, last_collected_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(symbol, timeframe, provider) DO UPDATE SET
+    enabled = excluded.enabled,
+    lookback_limit = excluded.lookback_limit,
+    notes = excluded.notes,
+    updated_at = excluded.updated_at`;
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
+  const entry = await getStockMarketDataWatchlistEntryBySymbolTimeframeProvider(symbol, timeframe, provider);
+  if (!entry) throw new Error(`Failed to load stock market data watchlist entry ${id}`);
+  return entry;
+}
+
+export async function listStockMarketDataWatchlistEntries(options: { enabled?: boolean; limit?: number } = {}): Promise<StockMarketDataWatchlistEntry[]> {
+  const params: unknown[] = [];
+  let where = "";
+  if (typeof options.enabled === "boolean") {
+    where = "WHERE enabled = ?";
+    params.push(options.enabled ? 1 : 0);
+  }
+  params.push(boundedLimit(options.limit ?? 200, 1000));
+  const rows = await selectRows<MarketDataWatchlistRow>(
+    `SELECT * FROM stock_market_data_watchlist ${where} ORDER BY enabled DESC, symbol ASC, timeframe ASC LIMIT ?`,
+    params,
+  );
+  return rows.map(mapMarketDataWatchlistRow);
+}
+
+export async function updateStockMarketDataWatchlistEntry(id: string, input: UpdateStockMarketDataWatchlistInput): Promise<StockMarketDataWatchlistEntry> {
+  const current = await getStockMarketDataWatchlistEntry(id);
+  if (!current) throw new Error(`Failed to load stock market data watchlist entry ${id}`);
+  const updatedAt = Date.now();
+  const params = [
+    input.symbol?.trim().toUpperCase() ?? current.symbol,
+    input.timeframe?.trim() ?? current.timeframe,
+    input.provider?.trim() ?? current.provider,
+    typeof input.enabled === "boolean" ? (input.enabled ? 1 : 0) : (current.enabled ? 1 : 0),
+    typeof input.lookbackLimit === "number" ? boundedLimit(input.lookbackLimit, 5000) : current.lookbackLimit,
+    input.notes === undefined ? current.notes ?? null : input.notes,
+    input.lastCollectedAt === undefined ? (current.lastCollectedAt ? Date.parse(current.lastCollectedAt) : null) : input.lastCollectedAt?.getTime() ?? null,
+    updatedAt,
+    id,
+  ];
+  const sql = `UPDATE stock_market_data_watchlist
+    SET symbol = ?, timeframe = ?, provider = ?, enabled = ?, lookback_limit = ?, notes = ?, last_collected_at = ?, updated_at = ?
+    WHERE id = ?`;
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
+  const updated = await getStockMarketDataWatchlistEntry(id);
+  if (!updated) throw new Error(`Failed to load stock market data watchlist entry ${id}`);
+  return updated;
+}
+
+export async function getStockMarketDataWatchlistEntry(id: string): Promise<StockMarketDataWatchlistEntry | null> {
+  const rows = await selectRows<MarketDataWatchlistRow>(
+    "SELECT * FROM stock_market_data_watchlist WHERE id = ? LIMIT 1",
+    [id],
+  );
+  return rows[0] ? mapMarketDataWatchlistRow(rows[0]) : null;
+}
+
+async function getStockMarketDataWatchlistEntryBySymbolTimeframeProvider(
+  symbol: string,
+  timeframe: string,
+  provider: string,
+): Promise<StockMarketDataWatchlistEntry | null> {
+  const rows = await selectRows<MarketDataWatchlistRow>(
+    "SELECT * FROM stock_market_data_watchlist WHERE symbol = ? AND timeframe = ? AND provider = ? LIMIT 1",
+    [symbol.toUpperCase(), timeframe, provider],
+  );
+  return rows[0] ? mapMarketDataWatchlistRow(rows[0]) : null;
+}
+
+export async function createStockMarketDataCollectionRun(input: CreateStockMarketDataCollectionRunInput): Promise<StockMarketDataCollectionRun> {
+  const now = Date.now();
+  const id = input.id ?? randomUUID();
+  const startedAt = input.startedAt?.getTime() ?? now;
+  const completedAt = input.completedAt?.getTime() ?? now;
+  const createdAt = input.createdAt?.getTime() ?? startedAt;
+  const sql = `INSERT INTO stock_market_data_runs (
+    id, provider, status, requested_entries, completed_entries, upserted_candles,
+    error, started_at, completed_at, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const params = [
+    id,
+    input.provider,
+    input.status,
+    input.requestedEntries,
+    input.completedEntries,
+    input.upsertedCandles,
+    input.error ?? null,
+    startedAt,
+    completedAt,
+    createdAt,
+  ];
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
+  const rows = await selectRows<MarketDataRunRow>("SELECT * FROM stock_market_data_runs WHERE id = ? LIMIT 1", [id]);
+  if (!rows[0]) throw new Error(`Failed to load stock market data run ${id}`);
+  return mapMarketDataRunRow(rows[0]);
+}
+
+export async function listStockMarketDataCollectionRuns(limit = 100): Promise<StockMarketDataCollectionRun[]> {
+  const rows = await selectRows<MarketDataRunRow>(
+    "SELECT * FROM stock_market_data_runs ORDER BY created_at DESC LIMIT ?",
+    [boundedLimit(limit, 500)],
+  );
+  return rows.map(mapMarketDataRunRow);
+}
+
 export async function listStockBacktestRuns(limit = 100): Promise<StockBacktestRun[]> {
   const rows = await selectRows<BacktestRunRow>(
     "SELECT * FROM stock_backtest_runs ORDER BY created_at DESC LIMIT ?",
@@ -1408,7 +1588,7 @@ async function calculateLedgerPortfolioMetrics(positions: StockPosition[], initi
 }
 
 export async function getStockTradingOverview(): Promise<StockTradingOverview> {
-  const [portfolio, recentCandidates, recentRules, recentDecisions, recentTrades, recentLessons, recentSignals, recentResearch, strategyPerformance, recentBacktests, integrations] = await Promise.all([
+  const [portfolio, recentCandidates, recentRules, recentDecisions, recentTrades, recentLessons, recentSignals, recentResearch, strategyPerformance, recentBacktests, marketDataWatchlist, recentMarketDataRuns, integrations] = await Promise.all([
     getStockPortfolioMetrics(),
     listStockMarketCandidates({ limit: 5 }),
     listStockTradingRules({ limit: 5 }),
@@ -1419,6 +1599,8 @@ export async function getStockTradingOverview(): Promise<StockTradingOverview> {
     listStockResearchItems({ limit: 5 }),
     listStockStrategyPerformance(5),
     listStockBacktestRuns(5),
+    listStockMarketDataWatchlistEntries({ limit: 5 }),
+    listStockMarketDataCollectionRuns(5),
     getStockIntegrationStatus(),
   ]);
   return {
@@ -1432,6 +1614,8 @@ export async function getStockTradingOverview(): Promise<StockTradingOverview> {
     recentResearch,
     strategyPerformance,
     recentBacktests,
+    marketDataWatchlist,
+    recentMarketDataRuns,
     integrations,
     runner: getStockRunnerStatus(),
     safety: {
@@ -1690,6 +1874,36 @@ function mapCandleRow(row: CandleRow): StockCandle {
     timestamp: new Date(row.timestamp).toISOString(),
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
+  };
+}
+
+function mapMarketDataWatchlistRow(row: MarketDataWatchlistRow): StockMarketDataWatchlistEntry {
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    timeframe: row.timeframe,
+    provider: row.provider,
+    enabled: row.enabled === 1,
+    lookbackLimit: row.lookback_limit,
+    notes: row.notes ?? undefined,
+    lastCollectedAt: row.last_collected_at ? new Date(row.last_collected_at).toISOString() : undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+  };
+}
+
+function mapMarketDataRunRow(row: MarketDataRunRow): StockMarketDataCollectionRun {
+  return {
+    id: row.id,
+    provider: row.provider,
+    status: row.status,
+    requestedEntries: row.requested_entries,
+    completedEntries: row.completed_entries,
+    upsertedCandles: row.upserted_candles,
+    error: row.error ?? undefined,
+    startedAt: new Date(row.started_at).toISOString(),
+    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : undefined,
+    createdAt: new Date(row.created_at).toISOString(),
   };
 }
 

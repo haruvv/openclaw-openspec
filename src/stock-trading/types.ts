@@ -10,6 +10,7 @@ export type StockMarketCandidateSource = "tradingview" | "research" | "manual" |
 export type StockMarketCandidateStatus = "watch" | "approved" | "rejected" | "converted_to_decision";
 export type StockTradingRuleCategory = "entry" | "exit" | "risk" | "portfolio" | "strategy";
 export type StockTradingRuleStatus = "candidate" | "active" | "rejected";
+export type StockMarketDataRunStatus = "completed" | "failed";
 
 export interface StockAiDecision {
   id: string;
@@ -200,6 +201,32 @@ export interface StockCandle {
   updatedAt: string;
 }
 
+export interface StockMarketDataWatchlistEntry {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  provider: string;
+  enabled: boolean;
+  lookbackLimit: number;
+  notes?: string;
+  lastCollectedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockMarketDataCollectionRun {
+  id: string;
+  provider: string;
+  status: StockMarketDataRunStatus;
+  requestedEntries: number;
+  completedEntries: number;
+  upsertedCandles: number;
+  error?: string;
+  startedAt: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
 export interface StockBacktestRun {
   id: string;
   symbol: string;
@@ -283,6 +310,8 @@ export interface StockTradingOverview {
   recentResearch: StockResearchItem[];
   strategyPerformance: StockStrategyPerformance[];
   recentBacktests: StockBacktestRun[];
+  marketDataWatchlist: StockMarketDataWatchlistEntry[];
+  recentMarketDataRuns: StockMarketDataCollectionRun[];
   integrations: StockIntegrationStatus[];
   runner: StockRunnerStatus;
   safety: {
@@ -431,6 +460,42 @@ export interface CreateStockCandleInput {
   timestamp: Date;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface UpsertStockMarketDataWatchlistInput {
+  id?: string;
+  symbol: string;
+  timeframe: string;
+  provider?: string;
+  enabled?: boolean;
+  lookbackLimit?: number;
+  notes?: string;
+  lastCollectedAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface UpdateStockMarketDataWatchlistInput {
+  symbol?: string;
+  timeframe?: string;
+  provider?: string;
+  enabled?: boolean;
+  lookbackLimit?: number;
+  notes?: string;
+  lastCollectedAt?: Date | null;
+}
+
+export interface CreateStockMarketDataCollectionRunInput {
+  id?: string;
+  provider: string;
+  status: StockMarketDataRunStatus;
+  requestedEntries: number;
+  completedEntries: number;
+  upsertedCandles: number;
+  error?: string;
+  startedAt?: Date;
+  completedAt?: Date;
+  createdAt?: Date;
 }
 
 export interface CreateStockBacktestRunInput {

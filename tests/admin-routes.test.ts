@@ -144,6 +144,13 @@ describe("admin routes", () => {
       { symbol: "NVDA", timeframe: "1d", open: 102, high: 106, low: 101, close: 105, volume: 2200, timestamp: new Date("2026-05-04T00:00:00.000Z") },
       { symbol: "NVDA", timeframe: "1d", open: 105, high: 113, low: 104, close: 112, volume: 1800, timestamp: new Date("2026-05-05T00:00:00.000Z") },
     ]);
+    process.env.STOCK_MARKET_DATA_PROVIDER_URL = "https://provider.example/candles";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      candles: [{ timestamp: "2026-05-07T00:00:00.000Z", open: 113, high: 116, low: 112, close: 115, volume: 1900 }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })));
     const { adminApiRouter } = await import("../src/admin/routes.js");
 
     const decisions = await dispatch(adminApiRouter, "/stock-trading/decisions?token=admin-test", "/api/admin");
@@ -159,6 +166,13 @@ describe("admin routes", () => {
         candles: [{ timestamp: "2026-05-06T00:00:00.000Z", open: 112, high: 114, low: 110, close: 113, volume: 1600 }],
       },
     });
+    const watchlistCreated = await dispatch(adminApiRouter, "/stock-trading/market-data/watchlist?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { symbol: "NVDA", timeframe: "1d", provider: "moomoo", lookbackLimit: 3 },
+    });
+    const watchlist = await dispatch(adminApiRouter, "/stock-trading/market-data/watchlist?token=admin-test", "/api/admin");
+    const collected = await dispatch(adminApiRouter, "/stock-trading/market-data/collect?token=admin-test", "/api/admin", { method: "POST", body: {} });
+    const marketDataRuns = await dispatch(adminApiRouter, "/stock-trading/market-data/runs?token=admin-test", "/api/admin");
     const backtest = await dispatch(adminApiRouter, "/stock-trading/backtests?token=admin-test", "/api/admin", {
       method: "POST",
       body: { symbol: "NVDA", timeframe: "1d", strategyTag: "breakout_momentum" },
@@ -185,6 +199,11 @@ describe("admin routes", () => {
     expect(JSON.parse(candles.body).candles).toHaveLength(5);
     expect(importedCandles.status).toBe(201);
     expect(JSON.parse(importedCandles.body).candles).toMatchObject([{ symbol: "NVDA", close: 113 }]);
+    expect(watchlistCreated.status).toBe(201);
+    expect(JSON.parse(watchlistCreated.body)).toMatchObject({ entry: { symbol: "NVDA", timeframe: "1d", provider: "moomoo", enabled: true } });
+    expect(JSON.parse(watchlist.body)).toMatchObject({ entries: [{ symbol: "NVDA", lookbackLimit: 3 }] });
+    expect(JSON.parse(collected.body)).toMatchObject({ run: { status: "completed", requestedEntries: 1, upsertedCandles: 1 } });
+    expect(JSON.parse(marketDataRuns.body)).toMatchObject({ runs: [{ status: "completed", upsertedCandles: 1 }] });
     expect(backtest.status).toBe(201);
     expect(JSON.parse(backtest.body).run).toMatchObject({ symbol: "NVDA", status: "completed" });
     expect(JSON.parse(backtests.body)).toMatchObject({ runs: [{ symbol: "NVDA", strategyTag: "breakout_momentum" }] });
