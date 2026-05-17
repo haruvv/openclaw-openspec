@@ -174,16 +174,12 @@ export default {
       }
     }
 
-    const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
-
-    if (url.pathname === "/admin/api" || url.pathname.startsWith("/admin/api/")) {
-      return container.fetch(request);
-    }
-
     const adminAssetResponse = await maybeServeAdminUiAsset(request, env);
     if (adminAssetResponse) {
       return adminAssetResponse;
     }
+
+    const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
 
     if (url.pathname === "/telegram/webhook" && request.method === "POST") {
       if (!isTelegramAuthorized(request)) {

@@ -50,7 +50,6 @@ app.post("/internal/jobs/discover-targets", async (req, res) => {
 });
 
 app.use("/api/admin", adminApiRouter);
-app.use("/admin/api", adminApiRouter);
 app.use("/admin/assets", adminAssetsRouter);
 app.use("/admin", adminRouter);
 app.use("/sites", (req, res) => {

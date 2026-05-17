@@ -42,7 +42,7 @@ describe("admin UI routing", () => {
     expect(screen.queryByText("Document lacks title")).not.toBeInTheDocument();
     expect(screen.queryByText("Title element is missing.")).not.toBeInTheDocument();
     expect(screen.getAllByText("メール提案文").length).toBeGreaterThan(0);
-    expect(fetch).toHaveBeenCalledWith("/admin/api/seo-sales/runs/run-1", { credentials: "same-origin" });
+    expect(fetch).toHaveBeenCalledWith("/api/admin/seo-sales/runs/run-1", { credentials: "same-origin" });
   });
 
   it("filters the run list by URL query", async () => {
@@ -85,17 +85,17 @@ describe("admin UI routing", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (init?.method === "POST") {
-        expect(path).toBe("/admin/api/seo-sales/runs");
+        expect(path).toBe("/api/admin/seo-sales/runs");
         expect(JSON.parse(String(init.body))).toEqual({ url: "https://example.com/" });
         return createJsonResponse({ runId: "run-new", location: "/admin/seo-sales/runs/run-new" });
       }
-      if (path === "/admin/api/seo-sales/runs/run-new") {
+      if (path === "/api/admin/seo-sales/runs/run-new") {
         return createJsonResponse({ run: createRunDetail({ id: "run-new" }) });
       }
-      if (path === "/admin/api/seo-sales/runs/run-new/outreach-draft") {
+      if (path === "/api/admin/seo-sales/runs/run-new/outreach-draft") {
         return createJsonResponse(createDraftResponse("run-new"));
       }
-      if (path === "/admin/api/seo-sales/settings") {
+      if (path === "/api/admin/seo-sales/settings") {
         return createJsonResponse(createSettingsResponse());
       }
       return createJsonResponse({
@@ -113,7 +113,7 @@ describe("admin UI routing", () => {
     fireEvent.click(await screen.findByRole("button", { name: "このURLを再解析" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/admin/api/seo-sales/runs",
+      "/api/admin/seo-sales/runs",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ url: "https://example.com/" }),
@@ -139,7 +139,7 @@ describe("admin UI routing", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
-      if (path === "/admin/api/seo-sales/runs/run-1/outreach/send" && init?.method === "POST") {
+      if (path === "/api/admin/seo-sales/runs/run-1/outreach/send" && init?.method === "POST") {
         expect(JSON.parse(String(init.body))).toMatchObject({
           recipientEmail: "info@example.com",
           subject: "ホームページの簡易診断について",
@@ -325,7 +325,7 @@ function createRunDetailFetch(run = createRunDetail()) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
     if (path.endsWith("/outreach-draft")) return createJsonResponse(createDraftResponse(run.id));
-    if (path === "/admin/api/seo-sales/settings") return createJsonResponse(createSettingsResponse());
+    if (path === "/api/admin/seo-sales/settings") return createJsonResponse(createSettingsResponse());
     return createJsonResponse({ run });
   });
 }
@@ -333,16 +333,16 @@ function createRunDetailFetch(run = createRunDetail()) {
 function createStockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
-    if (path === "/admin/api/stock-trading/decisions/decision-1") {
+    if (path === "/api/admin/stock-trading/decisions/decision-1") {
       return createJsonResponse({ decision: createStockDecisionDetail() });
     }
-    if (path === "/admin/api/stock-trading/decisions") {
+    if (path === "/api/admin/stock-trading/decisions") {
       return createJsonResponse({ decisions: [createStockDecision()] });
     }
-    if (path === "/admin/api/stock-trading/trades") {
+    if (path === "/api/admin/stock-trading/trades") {
       return createJsonResponse({ trades: [createStockTrade()] });
     }
-    if (path === "/admin/api/stock-trading/lessons") {
+    if (path === "/api/admin/stock-trading/lessons") {
       return createJsonResponse({ lessons: [createStockLesson()] });
     }
     return createJsonResponse(createStockOverviewResponse({
