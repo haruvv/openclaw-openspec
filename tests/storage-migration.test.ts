@@ -34,6 +34,7 @@ describe("operational storage migration", () => {
       "stock_candles",
       "stock_decision_learning_refs",
       "stock_learning_items",
+      "stock_market_candidates",
       "stock_market_signals",
       "stock_portfolio_snapshots",
       "stock_positions",
@@ -70,6 +71,11 @@ describe("operational storage migration", () => {
     const researchColumns = db.prepare("PRAGMA table_info(stock_research_items)").all() as { name: string }[];
     expect(researchColumns.map((column) => column.name)).toContain("category");
     expect(researchColumns.map((column) => column.name)).toContain("sentiment");
+
+    const candidateColumns = db.prepare("PRAGMA table_info(stock_market_candidates)").all() as { name: string }[];
+    expect(candidateColumns.map((column) => column.name)).toContain("symbol");
+    expect(candidateColumns.map((column) => column.name)).toContain("status");
+    expect(candidateColumns.map((column) => column.name)).toContain("converted_decision_id");
 
     const candleColumns = db.prepare("PRAGMA table_info(stock_candles)").all() as { name: string }[];
     expect(candleColumns.map((column) => column.name)).toContain("timestamp");

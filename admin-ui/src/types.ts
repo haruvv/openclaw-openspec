@@ -257,6 +257,8 @@ export type StockMarketSignalStatus = "received" | "processed" | "rejected" | "e
 export type StockResearchCategory = "news" | "earnings" | "disclosure" | "fundamental" | "macro" | "sector" | "operator_note";
 export type StockResearchSentiment = "positive" | "neutral" | "negative" | "mixed" | "unknown";
 export type StockBacktestStatus = "completed" | "failed";
+export type StockMarketCandidateSource = "tradingview" | "research" | "manual" | "provider";
+export type StockMarketCandidateStatus = "watch" | "approved" | "rejected" | "converted_to_decision";
 
 export interface StockAiDecision {
   id: string;
@@ -382,6 +384,24 @@ export interface StockResearchItem {
   createdAt: string;
 }
 
+export interface StockMarketCandidate {
+  id: string;
+  symbol: string;
+  theme?: string;
+  sector?: string;
+  strategyTag?: string;
+  reason: string;
+  score: number;
+  source: StockMarketCandidateSource;
+  status: StockMarketCandidateStatus;
+  sourceRefId?: string;
+  rawPayload: Record<string, unknown>;
+  lastScannedAt: string;
+  convertedDecisionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StockStrategyPerformance {
   strategyTag: string;
   status: "adopt" | "watch" | "reject";
@@ -497,6 +517,7 @@ export interface StockPortfolioMetrics {
 
 export interface StockTradingOverview {
   portfolio: StockPortfolioMetrics;
+  recentCandidates: StockMarketCandidate[];
   recentDecisions: StockAiDecision[];
   recentTrades: StockTrade[];
   recentLessons: StockLearningItem[];

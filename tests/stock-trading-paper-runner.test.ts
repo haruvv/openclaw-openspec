@@ -51,7 +51,7 @@ describe("stock trading paper runner", () => {
 
   it("creates a paper decision, paper trade, and portfolio snapshot for actionable signals", async () => {
     const { processStockMarketSignal } = await import("../src/stock-trading/paper-runner.js");
-    const { listStockAiDecisions, listStockMarketSignals, listStockPortfolioSnapshots, listStockPositions, listStockTrades } = await import("../src/stock-trading/repository.js");
+    const { listStockAiDecisions, listStockMarketCandidates, listStockMarketSignals, listStockPortfolioSnapshots, listStockPositions, listStockTrades } = await import("../src/stock-trading/repository.js");
 
     const result = await processStockMarketSignal({
       sourceSignalId: "alert-1",
@@ -82,6 +82,9 @@ describe("stock trading paper runner", () => {
     expect(result.trade).toMatchObject({ symbol: "NVDA", executionSource: "paper", side: "buy" });
     expect(result.learningItems).toEqual([]);
     await expect(listStockMarketSignals()).resolves.toMatchObject([{ status: "executed", tradeId: result.trade?.id }]);
+    await expect(listStockMarketCandidates()).resolves.toMatchObject([
+      { symbol: "NVDA", source: "tradingview", status: "watch", strategyTag: "breakout", reason: expect.stringContaining("TradingView signal") },
+    ]);
     await expect(listStockAiDecisions()).resolves.toHaveLength(1);
     await expect(listStockTrades()).resolves.toHaveLength(1);
     await expect(listStockPositions()).resolves.toMatchObject([{ symbol: "NVDA", quantity: 781.25, averageEntryPrice: 128 }]);

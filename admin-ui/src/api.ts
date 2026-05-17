@@ -31,6 +31,18 @@ export async function apiPut<T>(path: string, body: Record<string, unknown>): Pr
   return json;
 }
 
+export async function apiPatch<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
+  const json = (await readJsonResponse(res)) as T & { error?: string };
+  if (!res.ok) throw new Error(json.error ?? `API error: ${res.status}`);
+  return json;
+}
+
 async function readJsonResponse(res: Response): Promise<unknown> {
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) return res.json();

@@ -13,6 +13,7 @@ import {
   parseConfidenceThreshold,
   parsePaperTradeNotional,
   updateStockMarketSignalOutcome,
+  upsertStockMarketCandidate,
 } from "./repository.js";
 import type {
   CreateStockMarketSignalInput,
@@ -96,6 +97,9 @@ export async function handleTradingViewStockWebhook(req: Request, res: Response)
 
 export async function processStockMarketSignal(input: CreateStockMarketSignalInput): Promise<ProcessStockSignalResult> {
   let signal = await createStockMarketSignal({ ...input, status: "received" });
+  if (signal.rawPayload.source !== "market_scanner_candidate") {
+    await upsertStockMarketCandidate(buildCandidateFromSignal(signal));
+  }
   const learningContext = await listStockLearningItemsForDecisionContext({
     symbol: signal.symbol,
     strategyTag: signal.strategyTag,
@@ -192,6 +196,49 @@ export async function processStockMarketSignal(input: CreateStockMarketSignalInp
     status: signal.status,
     message: "Paper execution created.",
   };
+}
+
+function buildCandidateFromSignal(signal: StockMarketSignal) {
+  return {
+    symbol: signal.symbol,
+    theme: readTextFromObject(signal.rawPayload, "theme") ?? readTextFromObject(signal.indicators, "theme"),
+    sector: readTextFromObject(signal.rawPayload, "sector") ?? readTextFromObject(signal.indicators, "sector"),
+    strategyTag: signal.strategyTag,
+    reason: [
+      "TradingView signal",
+      signal.suggestedAction ? `action=${signal.suggestedAction}` : null,
+      signal.strategyTag ? `strategy=${signal.strategyTag}` : null,
+      `price=${signal.price}`,
+    ].filter(Boolean).join(" / "),
+    score: scoreSignalCandidate(signal),
+    source: "tradingview" as const,
+    sourceRefId: signal.id,
+    rawPayload: {
+      sourceSignalId: signal.sourceSignalId ?? null,
+      timeframe: signal.timeframe,
+      price: signal.price,
+      suggestedAction: signal.suggestedAction ?? null,
+      indicators: signal.indicators,
+    },
+    lastScannedAt: new Date(signal.receivedAt),
+  };
+}
+
+function scoreSignalCandidate(signal: StockMarketSignal): number {
+  let score = 0.52;
+  if (signal.suggestedAction === "BUY") score += 0.16;
+  if (signal.suggestedAction === "SELL") score += 0.08;
+  if (signal.strategyTag) score += 0.04;
+  if (typeof signal.volume === "number" && signal.volume > 0) score += 0.04;
+  const rsi = numericIndicator(signal, "rsi");
+  if (typeof rsi === "number" && rsi >= 45 && rsi <= 72) score += 0.04;
+  if (typeof rsi === "number" && rsi >= 82) score -= 0.08;
+  return Math.max(0, Math.min(1, Math.round(score * 100) / 100));
+}
+
+function readTextFromObject(value: Record<string, unknown>, key: string): string | undefined {
+  const raw = value[key];
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined;
 }
 
 async function buildDecisionPlan(signal: StockMarketSignal, learningContext: StockLearningItem[]): Promise<DecisionPlan> {

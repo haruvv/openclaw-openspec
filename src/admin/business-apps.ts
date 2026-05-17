@@ -28,6 +28,7 @@ export const businessApps: BusinessApp[] = [
     entryPath: "/admin/stock-trading",
     primaryLinks: [
       { label: "ダッシュボード", href: "/admin/stock-trading" },
+      { label: "AI候補銘柄", href: "/admin/stock-trading/candidates" },
       { label: "リサーチ材料", href: "/admin/stock-trading/research" },
       { label: "市場シグナル", href: "/admin/stock-trading/signals" },
       { label: "AI判断", href: "/admin/stock-trading/decisions" },

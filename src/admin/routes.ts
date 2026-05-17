@@ -12,25 +12,29 @@ import { getSiteDetail, listSites } from "../sites/repository.js";
 import { buildOutreachDraft, createReviewedPaymentLink, getRunSalesState, sendReviewedOutreach } from "../sales/service.js";
 import { getSalesOperationSettings, saveSalesOperationSettings } from "../sales/settings.js";
 import { runStockBacktest } from "../stock-trading/backtest-runner.js";
+import { processStockMarketSignal } from "../stock-trading/paper-runner.js";
 import {
   getStockBacktestRunDetail,
   createStockResearchItem,
   getStockAiDecisionDetail,
   getStockIntegrationStatus,
+  getStockMarketCandidate,
   getStockRunnerStatus,
   getStockTradingOverview,
   listStockBacktestRuns,
   listStockCandles,
   listStockAiDecisions,
   listStockLearningItems,
+  listStockMarketCandidates,
   listStockMarketSignals,
   listStockPositions,
   listStockResearchItems,
   listStockStrategyPerformance,
   listStockTrades,
+  updateStockMarketCandidateStatus,
   upsertStockCandles,
 } from "../stock-trading/repository.js";
-import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockResearchCategory, StockResearchSentiment } from "../stock-trading/types.js";
+import type { CreateStockCandleInput, CreateStockResearchItemInput, RunStockBacktestInput, StockMarketCandidateStatus, StockResearchCategory, StockResearchSentiment, StockTradeAction } from "../stock-trading/types.js";
 import { logger } from "../utils/logger.js";
 import { businessApps } from "./business-apps.js";
 import { authorizeAdminRequest, isAdminTokenConfigured } from "./auth.js";
@@ -92,6 +96,67 @@ adminApiRouter.get("/stock-trading/overview", async (_req, res) => {
 
 adminApiRouter.get("/stock-trading/decisions", async (_req, res) => {
   res.json({ decisions: await listStockAiDecisions(100) });
+});
+
+adminApiRouter.get("/stock-trading/candidates", async (req, res) => {
+  const status = parseStockCandidateStatus(typeof req.query.status === "string" ? req.query.status : undefined);
+  if (typeof req.query.status === "string" && !status) {
+    res.status(400).json({ error: "invalid_candidate_status" });
+    return;
+  }
+  res.json({ candidates: await listStockMarketCandidates({ status, limit: 200 }) });
+});
+
+adminApiRouter.patch("/stock-trading/candidates/:id", async (req, res) => {
+  const status = parseStockCandidateStatus(typeof req.body?.status === "string" ? req.body.status : undefined);
+  if (!status || status === "converted_to_decision") {
+    res.status(400).json({ error: "invalid_candidate_status" });
+    return;
+  }
+  try {
+    res.json({ candidate: await updateStockMarketCandidateStatus(req.params.id, status) });
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : "stock_candidate_not_found" });
+  }
+});
+
+adminApiRouter.post("/stock-trading/candidates/:id/convert", async (req, res) => {
+  const candidate = await getStockMarketCandidate(req.params.id);
+  if (!candidate) {
+    res.status(404).json({ error: "stock_candidate_not_found" });
+    return;
+  }
+  const price = readPositiveNumber(candidate.rawPayload.price) ?? readPositiveNumber(req.body?.price);
+  if (!price) {
+    res.status(400).json({ error: "candidate_price_required" });
+    return;
+  }
+  const action = parseStockTradeAction(typeof req.body?.suggestedAction === "string" ? req.body.suggestedAction : undefined)
+    ?? (candidate.score >= 0.7 ? "BUY" : "WATCH");
+  const result = await processStockMarketSignal({
+    symbol: candidate.symbol,
+    timeframe: "candidate",
+    price,
+    strategyTag: candidate.strategyTag ?? "market_scanner_candidate",
+    suggestedAction: action,
+    indicators: {
+      candidateScore: candidate.score,
+      candidateSource: candidate.source,
+      theme: candidate.theme,
+      sector: candidate.sector,
+    },
+    rawPayload: {
+      source: "market_scanner_candidate",
+      candidateId: candidate.id,
+      candidateReason: candidate.reason,
+      candidateStatus: candidate.status,
+      price,
+    },
+  });
+  const updated = await updateStockMarketCandidateStatus(candidate.id, "converted_to_decision", {
+    convertedDecisionId: result.decision?.id,
+  });
+  res.status(201).json({ candidate: updated, result });
 });
 
 adminApiRouter.get("/stock-trading/decisions/:id", async (req, res) => {
@@ -573,8 +638,22 @@ function readFiniteNumber(value: unknown): number | null {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function readPositiveNumber(value: unknown): number | null {
+  const numberValue = readFiniteNumber(value);
+  return numberValue !== null && numberValue > 0 ? numberValue : null;
+}
+
 function readOptionalNumber(value: unknown): number | undefined {
   return value === undefined || value === "" ? undefined : readFiniteNumber(value) ?? undefined;
+}
+
+function parseStockCandidateStatus(value: string | undefined): StockMarketCandidateStatus | undefined {
+  return value === "watch" || value === "approved" || value === "rejected" || value === "converted_to_decision" ? value : undefined;
+}
+
+function parseStockTradeAction(value: string | undefined): StockTradeAction | undefined {
+  const upper = value?.toUpperCase();
+  return upper === "BUY" || upper === "SELL" || upper === "HOLD" || upper === "WATCH" || upper === "SKIP" ? upper : undefined;
 }
 
 function isStockResearchCategory(value: unknown): value is StockResearchCategory {

@@ -212,6 +212,80 @@ describe("stock trading repository", () => {
     ]);
   });
 
+  it("persists market scanner candidates, refreshes research candidates, and updates status", async () => {
+    const {
+      createStockAiDecision,
+      createStockResearchItem,
+      getStockMarketCandidate,
+      getStockTradingOverview,
+      listStockMarketCandidates,
+      updateStockMarketCandidateStatus,
+      upsertStockMarketCandidate,
+    } = await import("../src/stock-trading/repository.js");
+
+    const candidate = await upsertStockMarketCandidate({
+      id: "candidate-1",
+      symbol: "nvda",
+      theme: "AI半導体",
+      sector: "semiconductor",
+      strategyTag: "breakout_momentum",
+      reason: "Market Scanner: 出来高急増とテーマ資金流入",
+      score: 0.82,
+      source: "manual",
+      rawPayload: { price: 128 },
+      lastScannedAt: new Date("2026-05-18T00:00:00.000Z"),
+    });
+    expect(candidate).toMatchObject({
+      id: "candidate-1",
+      symbol: "NVDA",
+      status: "watch",
+      score: 0.82,
+    });
+
+    await upsertStockMarketCandidate({
+      symbol: "NVDA",
+      theme: "AI半導体",
+      reason: "Market Scanner refresh",
+      score: 0.9,
+      source: "manual",
+      rawPayload: { price: 130 },
+    });
+    await expect(listStockMarketCandidates()).resolves.toMatchObject([
+      { id: "candidate-1", symbol: "NVDA", score: 0.9, reason: "Market Scanner refresh" },
+    ]);
+
+    await createStockResearchItem({
+      id: "research-candidate-1",
+      symbol: "tsla",
+      category: "news",
+      title: "ロボタクシー材料",
+      summary: "短期テーマとして注目。",
+      source: "manual",
+      sentiment: "positive",
+      importance: 0.8,
+    });
+    await expect(listStockMarketCandidates()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: "TSLA", source: "research", reason: "Research news: ロボタクシー材料" }),
+    ]));
+
+    await updateStockMarketCandidateStatus("candidate-1", "approved");
+    const decision = await createStockAiDecision({
+      id: "candidate-decision-1",
+      symbol: "NVDA",
+      finalAction: "WATCH",
+      confidence: 0.7,
+      reasoning: "候補から会議化",
+    });
+    await updateStockMarketCandidateStatus("candidate-1", "converted_to_decision", { convertedDecisionId: decision.id });
+    await expect(getStockMarketCandidate("candidate-1")).resolves.toMatchObject({
+      status: "converted_to_decision",
+      convertedDecisionId: "candidate-decision-1",
+    });
+    await expect(getStockTradingOverview()).resolves.toMatchObject({
+      recentCandidates: [expect.objectContaining({ symbol: "TSLA" }), expect.objectContaining({ symbol: "NVDA" })],
+    });
+  });
+
   it("applies paper fills to positions and ledger-derived portfolio metrics", async () => {
     const {
       applyPaperTradeWithLedger,

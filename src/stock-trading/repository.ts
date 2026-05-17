@@ -10,6 +10,7 @@ import type {
   CreateStockPortfolioSnapshotInput,
   CreateStockResearchItemInput,
   CreateStockTradeInput,
+  UpsertStockMarketCandidateInput,
   UpsertStockPositionInput,
   StockAgentDecision,
   StockAiDecision,
@@ -23,6 +24,9 @@ import type {
   StockIntegrationStatus,
   StockLearningCategory,
   StockLearningItem,
+  StockMarketCandidate,
+  StockMarketCandidateSource,
+  StockMarketCandidateStatus,
   StockMarketSignal,
   StockMarketSignalStatus,
   StockPortfolioMetrics,
@@ -150,6 +154,24 @@ type ResearchItemRow = {
   raw_payload_json: string;
   published_at: number;
   created_at: number;
+};
+
+type MarketCandidateRow = {
+  id: string;
+  symbol: string;
+  theme: string | null;
+  sector: string | null;
+  strategy_tag: string | null;
+  reason: string;
+  score: number;
+  source: StockMarketCandidateSource;
+  status: StockMarketCandidateStatus;
+  source_ref_id: string | null;
+  raw_payload_json: string;
+  last_scanned_at: number;
+  converted_decision_id: string | null;
+  created_at: number;
+  updated_at: number;
 };
 
 type CandleRow = {
@@ -618,7 +640,80 @@ export async function createStockResearchItem(input: CreateStockResearchItemInpu
   }
   const item = (await listStockResearchItems({ limit: 200 })).find((value) => value.id === id);
   if (!item) throw new Error(`Failed to load stock research item ${id}`);
+  if (item.symbol) {
+    await upsertStockMarketCandidate({
+      symbol: item.symbol,
+      theme: item.category === "sector" || item.category === "macro" ? item.title : undefined,
+      reason: `Research ${item.category}: ${item.title}`,
+      score: scoreResearchCandidate(item),
+      source: "research",
+      sourceRefId: item.id,
+      rawPayload: {
+        category: item.category,
+        sentiment: item.sentiment,
+        importance: item.importance,
+        title: item.title,
+        summary: item.summary,
+      },
+      lastScannedAt: new Date(Date.parse(item.publishedAt)),
+    });
+  }
   return item;
+}
+
+export async function upsertStockMarketCandidate(input: UpsertStockMarketCandidateInput): Promise<StockMarketCandidate> {
+  const symbol = input.symbol.toUpperCase();
+  const existing = await getStockMarketCandidateBySymbolSource(symbol, input.source);
+  const id = existing?.id ?? input.id ?? randomUUID();
+  const now = Date.now();
+  const createdAt = existing ? Date.parse(existing.createdAt) : input.createdAt?.getTime() ?? now;
+  const updatedAt = input.updatedAt?.getTime() ?? now;
+  const lastScannedAt = input.lastScannedAt?.getTime() ?? now;
+  const status = input.status ?? existing?.status ?? "watch";
+  const convertedDecisionId = input.convertedDecisionId ?? existing?.convertedDecisionId ?? null;
+  const params = [
+    id,
+    symbol,
+    input.theme ?? existing?.theme ?? null,
+    input.sector ?? existing?.sector ?? null,
+    input.strategyTag ?? existing?.strategyTag ?? null,
+    input.reason,
+    clampNumber(input.score, 0, 1),
+    input.source,
+    status,
+    input.sourceRefId ?? existing?.sourceRefId ?? null,
+    json(input.rawPayload ?? existing?.rawPayload ?? {}),
+    lastScannedAt,
+    convertedDecisionId,
+    createdAt,
+    updatedAt,
+  ];
+  const durable = getDurableClient();
+  const sql = `INSERT INTO stock_market_candidates (
+    id, symbol, theme, sector, strategy_tag, reason, score, source, status,
+    source_ref_id, raw_payload_json, last_scanned_at, converted_decision_id, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(symbol, source) DO UPDATE SET
+    theme = excluded.theme,
+    sector = excluded.sector,
+    strategy_tag = excluded.strategy_tag,
+    reason = excluded.reason,
+    score = excluded.score,
+    status = excluded.status,
+    source_ref_id = excluded.source_ref_id,
+    raw_payload_json = excluded.raw_payload_json,
+    last_scanned_at = excluded.last_scanned_at,
+    converted_decision_id = excluded.converted_decision_id,
+    updated_at = excluded.updated_at`;
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
+  const candidate = await getStockMarketCandidate(id) ?? await getStockMarketCandidateBySymbolSource(symbol, input.source);
+  if (!candidate) throw new Error(`Failed to load stock market candidate ${id}`);
+  return candidate;
 }
 
 export async function upsertStockCandles(inputs: CreateStockCandleInput[]): Promise<StockCandle[]> {
@@ -820,6 +915,77 @@ export async function listStockResearchItems(options: { symbol?: string; include
   params.push(limit);
   const rows = await selectRows<ResearchItemRow>(sql, params);
   return rows.map(mapResearchItemRow);
+}
+
+export async function listStockMarketCandidates(options: {
+  status?: StockMarketCandidateStatus;
+  limit?: number;
+} = {}): Promise<StockMarketCandidate[]> {
+  const params: unknown[] = [];
+  let where = "";
+  if (options.status) {
+    where = "WHERE status = ?";
+    params.push(options.status);
+  }
+  params.push(boundedLimit(options.limit ?? 100, 500));
+  const rows = await selectRows<MarketCandidateRow>(
+    `SELECT * FROM stock_market_candidates
+      ${where}
+      ORDER BY
+        CASE status
+          WHEN 'approved' THEN 0
+          WHEN 'watch' THEN 1
+          WHEN 'converted_to_decision' THEN 2
+          WHEN 'rejected' THEN 3
+          ELSE 4
+        END ASC,
+        score DESC,
+        last_scanned_at DESC
+      LIMIT ?`,
+    params,
+  );
+  return rows.map(mapMarketCandidateRow);
+}
+
+export async function getStockMarketCandidate(id: string): Promise<StockMarketCandidate | null> {
+  const rows = await selectRows<MarketCandidateRow>(
+    "SELECT * FROM stock_market_candidates WHERE id = ? LIMIT 1",
+    [id],
+  );
+  return rows[0] ? mapMarketCandidateRow(rows[0]) : null;
+}
+
+async function getStockMarketCandidateBySymbolSource(
+  symbol: string,
+  source: StockMarketCandidateSource,
+): Promise<StockMarketCandidate | null> {
+  const rows = await selectRows<MarketCandidateRow>(
+    "SELECT * FROM stock_market_candidates WHERE symbol = ? AND source = ? LIMIT 1",
+    [symbol.toUpperCase(), source],
+  );
+  return rows[0] ? mapMarketCandidateRow(rows[0]) : null;
+}
+
+export async function updateStockMarketCandidateStatus(
+  id: string,
+  status: StockMarketCandidateStatus,
+  options: { convertedDecisionId?: string } = {},
+): Promise<StockMarketCandidate> {
+  const updatedAt = Date.now();
+  const params = [status, options.convertedDecisionId ?? null, updatedAt, id];
+  const sql = `UPDATE stock_market_candidates
+    SET status = ?, converted_decision_id = COALESCE(?, converted_decision_id), updated_at = ?
+    WHERE id = ?`;
+  const durable = getDurableClient();
+  if (durable) {
+    await durable.executeSql([{ sql, params }]);
+  } else {
+    const db = await getDb();
+    db.prepare(sql).run(...params);
+  }
+  const candidate = await getStockMarketCandidate(id);
+  if (!candidate) throw new Error(`Failed to load stock market candidate ${id}`);
+  return candidate;
 }
 
 export async function listStockCandles(options: { symbol: string; timeframe: string; limit?: number }): Promise<StockCandle[]> {
@@ -1156,8 +1322,9 @@ async function calculateLedgerPortfolioMetrics(positions: StockPosition[], initi
 }
 
 export async function getStockTradingOverview(): Promise<StockTradingOverview> {
-  const [portfolio, recentDecisions, recentTrades, recentLessons, recentSignals, recentResearch, strategyPerformance, recentBacktests, integrations] = await Promise.all([
+  const [portfolio, recentCandidates, recentDecisions, recentTrades, recentLessons, recentSignals, recentResearch, strategyPerformance, recentBacktests, integrations] = await Promise.all([
     getStockPortfolioMetrics(),
+    listStockMarketCandidates({ limit: 5 }),
     listStockAiDecisions(5),
     listStockTrades(5),
     listStockLearningItems(5),
@@ -1169,6 +1336,7 @@ export async function getStockTradingOverview(): Promise<StockTradingOverview> {
   ]);
   return {
     portfolio,
+    recentCandidates,
     recentDecisions,
     recentTrades,
     recentLessons,
@@ -1386,6 +1554,26 @@ function mapResearchItemRow(row: ResearchItemRow): StockResearchItem {
   };
 }
 
+function mapMarketCandidateRow(row: MarketCandidateRow): StockMarketCandidate {
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    theme: row.theme ?? undefined,
+    sector: row.sector ?? undefined,
+    strategyTag: row.strategy_tag ?? undefined,
+    reason: row.reason,
+    score: row.score,
+    source: row.source,
+    status: row.status,
+    sourceRefId: row.source_ref_id ?? undefined,
+    rawPayload: parseJson(row.raw_payload_json),
+    lastScannedAt: new Date(row.last_scanned_at).toISOString(),
+    convertedDecisionId: row.converted_decision_id ?? undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+  };
+}
+
 function mapCandleRow(row: CandleRow): StockCandle {
   return {
     id: row.id,
@@ -1552,6 +1740,17 @@ function roundPrice(value: number): number {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function scoreResearchCandidate(item: StockResearchItem): number {
+  const sentimentAdjustment: Record<StockResearchSentiment, number> = {
+    positive: 0.16,
+    mixed: 0.04,
+    neutral: 0,
+    unknown: 0,
+    negative: -0.12,
+  };
+  return clampNumber(0.45 + item.importance * 0.35 + sentimentAdjustment[item.sentiment], 0, 1);
 }
 
 function parseInitialCapital(): number {

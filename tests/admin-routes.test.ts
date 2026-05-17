@@ -167,6 +167,7 @@ describe("admin routes", () => {
     const positions = await dispatch(adminApiRouter, "/stock-trading/positions?token=admin-test", "/api/admin");
     const signals = await dispatch(adminApiRouter, "/stock-trading/signals?token=admin-test", "/api/admin");
     const research = await dispatch(adminApiRouter, "/stock-trading/research?token=admin-test", "/api/admin");
+    const candidates = await dispatch(adminApiRouter, "/stock-trading/candidates?token=admin-test", "/api/admin");
     const lessons = await dispatch(adminApiRouter, "/stock-trading/lessons?token=admin-test", "/api/admin");
     const settings = await dispatch(adminApiRouter, "/stock-trading/settings?token=admin-test", "/api/admin");
 
@@ -186,6 +187,7 @@ describe("admin routes", () => {
     expect(signals.status).toBe(200);
     expect(JSON.parse(signals.body)).toMatchObject({ signals: [{ id: "signal-1", symbol: "NVDA" }] });
     expect(JSON.parse(research.body)).toMatchObject({ research: [{ id: "research-1", symbol: "NVDA", sentiment: "positive" }] });
+    expect(JSON.parse(candidates.body)).toMatchObject({ candidates: [{ symbol: "NVDA", source: "research", status: "watch" }] });
     expect(JSON.parse(lessons.body).lessons[0]).toMatchObject({ category: "rule_candidate" });
     expect(settings.body).not.toContain("super-private-tv-value");
     expect(JSON.parse(settings.body)).toMatchObject({
@@ -220,6 +222,46 @@ describe("admin routes", () => {
     expect(created.status).toBe(201);
     expect(JSON.parse(created.body).item).toMatchObject({ symbol: "NVDA", category: "earnings", sentiment: "positive" });
     expect(JSON.parse(listed.body)).toMatchObject({ research: [{ title: "好決算" }] });
+  });
+
+  it("manages and converts stock market scanner candidates from authenticated API routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.STOCK_AI_DECISION_MODE = "deterministic";
+    process.env.STOCK_PAPER_TRADE_CONFIDENCE_THRESHOLD = "0.9";
+    const { upsertStockMarketCandidate } = await import("../src/stock-trading/repository.js");
+    const candidate = await upsertStockMarketCandidate({
+      id: "candidate-route-1",
+      symbol: "NVDA",
+      theme: "AI半導体",
+      sector: "semiconductor",
+      strategyTag: "breakout_momentum",
+      reason: "Market Scanner: 出来高急増",
+      score: 0.82,
+      source: "manual",
+      rawPayload: { price: 128 },
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const approved = await dispatch(adminApiRouter, `/stock-trading/candidates/${candidate.id}?token=admin-test`, "/api/admin", {
+      method: "PATCH",
+      body: { status: "approved" },
+    });
+    const converted = await dispatch(adminApiRouter, `/stock-trading/candidates/${candidate.id}/convert?token=admin-test`, "/api/admin", {
+      method: "POST",
+      body: {},
+    });
+    const listed = await dispatch(adminApiRouter, "/stock-trading/candidates?token=admin-test", "/api/admin");
+
+    expect(approved.status).toBe(200);
+    expect(JSON.parse(approved.body)).toMatchObject({ candidate: { id: "candidate-route-1", status: "approved" } });
+    expect(converted.status).toBe(201);
+    expect(JSON.parse(converted.body)).toMatchObject({
+      candidate: { id: "candidate-route-1", status: "converted_to_decision" },
+      result: { decision: { symbol: "NVDA" }, status: "blocked" },
+    });
+    expect(JSON.parse(listed.body)).toMatchObject({
+      candidates: [expect.objectContaining({ id: "candidate-route-1", convertedDecisionId: expect.any(String) })],
+    });
   });
 
   it("requires admin auth for stock trading API routes", async () => {

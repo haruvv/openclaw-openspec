@@ -5,6 +5,7 @@ export { SitesPage } from "./sites";
 export { SettingsPage } from "./settings";
 export {
   StockBacktestsPage,
+  StockCandidatesPage,
   StockDecisionDetailPage,
   StockDecisionsPage,
   StockLessonsPage,

@@ -346,6 +346,26 @@ export function initSqliteSchema(db: Database.Database): void {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS stock_market_candidates (
+      id TEXT PRIMARY KEY,
+      symbol TEXT NOT NULL,
+      theme TEXT,
+      sector TEXT,
+      strategy_tag TEXT,
+      reason TEXT NOT NULL,
+      score REAL NOT NULL,
+      source TEXT NOT NULL,
+      status TEXT NOT NULL,
+      source_ref_id TEXT,
+      raw_payload_json TEXT NOT NULL DEFAULT '{}',
+      last_scanned_at INTEGER NOT NULL,
+      converted_decision_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(symbol, source),
+      FOREIGN KEY (converted_decision_id) REFERENCES stock_ai_decisions(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS stock_candles (
       id TEXT PRIMARY KEY,
       symbol TEXT NOT NULL,
@@ -429,6 +449,10 @@ export function initSqliteSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_stock_research_items_category ON stock_research_items(category);
     CREATE INDEX IF NOT EXISTS idx_stock_research_items_published_at ON stock_research_items(published_at);
     CREATE INDEX IF NOT EXISTS idx_stock_research_items_importance ON stock_research_items(importance);
+    CREATE INDEX IF NOT EXISTS idx_stock_market_candidates_symbol ON stock_market_candidates(symbol);
+    CREATE INDEX IF NOT EXISTS idx_stock_market_candidates_status ON stock_market_candidates(status);
+    CREATE INDEX IF NOT EXISTS idx_stock_market_candidates_score ON stock_market_candidates(score);
+    CREATE INDEX IF NOT EXISTS idx_stock_market_candidates_last_scanned ON stock_market_candidates(last_scanned_at);
     CREATE INDEX IF NOT EXISTS idx_stock_candles_symbol_time ON stock_candles(symbol, timeframe, timestamp);
     CREATE INDEX IF NOT EXISTS idx_stock_candles_timestamp ON stock_candles(timestamp);
     CREATE INDEX IF NOT EXISTS idx_stock_backtest_runs_created_at ON stock_backtest_runs(created_at);

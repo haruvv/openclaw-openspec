@@ -193,6 +193,7 @@ describe("admin UI routing", () => {
     expect(screen.getByText("Webhook ready")).toBeInTheDocument();
     expect(screen.getByText("内部ペーパー資産はまだありません")).toBeInTheDocument();
     expect(screen.getByText("内部ペーパー建玉はまだありません")).toBeInTheDocument();
+    expect(screen.getByText("AI候補銘柄はまだありません")).toBeInTheDocument();
     expect(screen.getByText("リサーチ材料はまだありません")).toBeInTheDocument();
     expect(screen.getByText("市場シグナルはまだありません")).toBeInTheDocument();
     expect(screen.getByText("AI判断はまだありません")).toBeInTheDocument();
@@ -239,6 +240,24 @@ describe("admin UI routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stock-trading/research", expect.objectContaining({ method: "POST" })));
+  });
+
+  it("renders stock candidates page and manages candidates", async () => {
+    const fetchMock = createStockFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/admin/stock-trading/candidates"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("NVDA")).toBeInTheDocument();
+    expect(screen.getByText("Market Scanner: 出来高急増")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "承認" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stock-trading/candidates/candidate-1", expect.objectContaining({ method: "PATCH" })));
+    fireEvent.click(screen.getByRole("button", { name: "AI投資会議へ" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stock-trading/candidates/candidate-1/convert", expect.objectContaining({ method: "POST" })));
   });
 
   it("renders stock strategy performance page", async () => {
@@ -421,6 +440,16 @@ function createStockFetch() {
     if (path === "/api/admin/stock-trading/decisions") {
       return createJsonResponse({ decisions: [createStockDecision()] });
     }
+    if (path === "/api/admin/stock-trading/candidates") {
+      if (init?.method === "PATCH") return createJsonResponse({ candidate: { ...createStockCandidate(), status: "approved" } });
+      return createJsonResponse({ candidates: [createStockCandidate()] });
+    }
+    if (path === "/api/admin/stock-trading/candidates/candidate-1") {
+      return createJsonResponse({ candidate: { ...createStockCandidate(), status: "approved" } });
+    }
+    if (path === "/api/admin/stock-trading/candidates/candidate-1/convert") {
+      return createJsonResponse({ candidate: { ...createStockCandidate(), status: "converted_to_decision", convertedDecisionId: "decision-1" }, result: { decision: createStockDecision() } });
+    }
     if (path === "/api/admin/stock-trading/trades") {
       return createJsonResponse({ trades: [createStockTrade()] });
     }
@@ -446,6 +475,7 @@ function createStockFetch() {
     }
     return createJsonResponse(createStockOverviewResponse({
       recentSignals: [createStockSignal()],
+      recentCandidates: [createStockCandidate()],
       recentDecisions: [createStockDecision()],
       recentTrades: [createStockTrade()],
       strategyPerformance: [createStockStrategyPerformance()],
@@ -470,6 +500,7 @@ function createStockOverviewResponse(overrides: Record<string, unknown> = {}) {
       history: [],
     },
     recentDecisions: [],
+    recentCandidates: [],
     recentTrades: [],
     recentLessons: [],
     recentSignals: [],
@@ -521,6 +552,25 @@ function createStockResearch() {
     rawPayload: {},
     publishedAt: "2026-05-17T00:15:00.000Z",
     createdAt: "2026-05-17T00:16:00.000Z",
+  };
+}
+
+function createStockCandidate() {
+  return {
+    id: "candidate-1",
+    symbol: "NVDA",
+    theme: "AI半導体",
+    sector: "semiconductor",
+    strategyTag: "breakout_momentum",
+    reason: "Market Scanner: 出来高急増",
+    score: 0.82,
+    source: "tradingview",
+    status: "watch",
+    sourceRefId: "signal-1",
+    rawPayload: { price: 128 },
+    lastScannedAt: "2026-05-17T00:30:00.000Z",
+    createdAt: "2026-05-17T00:30:00.000Z",
+    updatedAt: "2026-05-17T00:30:00.000Z",
   };
 }
 

@@ -1,7 +1,7 @@
 import React from "react";
-import { BookOpen, ClipboardList, Code2, FileText, KeyRound, Link2, LineChart, ShieldCheck, TrendingUp, WalletCards } from "lucide-react";
+import { BookOpen, ClipboardList, Code2, FileText, KeyRound, Link2, LineChart, Radar, ShieldCheck, TrendingUp, WalletCards } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-import { apiPost } from "../api";
+import { apiPatch, apiPost } from "../api";
 import { Empty, ErrorState, Info, Loading, Metric, Panel, StatusPill } from "../components/common";
 import { useApi } from "../hooks";
 import type {
@@ -10,6 +10,7 @@ import type {
   StockAiDecisionDetail,
   StockIntegrationStatus,
   StockLearningItem,
+  StockMarketCandidate,
   StockMarketSignal,
   StockPortfolioMetrics,
   StockPosition,
@@ -51,6 +52,9 @@ export function StockTradingHome() {
         <PositionList positions={portfolio?.positions ?? []} />
       </Panel>
       <section className="grid gap-5 xl:grid-cols-2">
+        <Panel title="AI候補銘柄" action={<Link className="link-action" to="/admin/stock-trading/candidates">すべて見る</Link>}>
+          <CandidateList candidates={data?.recentCandidates ?? []} compact />
+        </Panel>
         <Panel title="リサーチ材料" action={<Link className="link-action" to="/admin/stock-trading/research">すべて見る</Link>}>
           <ResearchList research={data?.recentResearch ?? []} compact />
         </Panel>
@@ -77,6 +81,54 @@ export function StockTradingHome() {
         </Panel>
       </section>
     </div>
+  );
+}
+
+export function StockCandidatesPage() {
+  const { data, loading, error, reload } = useApi<{ candidates: StockMarketCandidate[] }>("/api/admin/stock-trading/candidates");
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  if (loading) return <Loading />;
+  if (error) return <ErrorState message={error} />;
+
+  async function setStatus(candidate: StockMarketCandidate, status: "approved" | "rejected" | "watch") {
+    setBusyId(candidate.id);
+    setActionError(null);
+    try {
+      await apiPatch(`/api/admin/stock-trading/candidates/${encodeURIComponent(candidate.id)}`, { status });
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "候補ステータスの更新に失敗しました");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function convert(candidate: StockMarketCandidate) {
+    setBusyId(candidate.id);
+    setActionError(null);
+    try {
+      await apiPost(`/api/admin/stock-trading/candidates/${encodeURIComponent(candidate.id)}/convert`, {});
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "AI投資会議への変換に失敗しました");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Panel title="AI候補銘柄">
+      {actionError ? <ErrorState message={actionError} /> : null}
+      <CandidateList
+        candidates={data?.candidates ?? []}
+        busyId={busyId}
+        onApprove={(candidate) => void setStatus(candidate, "approved")}
+        onReject={(candidate) => void setStatus(candidate, "rejected")}
+        onWatch={(candidate) => void setStatus(candidate, "watch")}
+        onConvert={(candidate) => void convert(candidate)}
+      />
+    </Panel>
   );
 }
 
@@ -488,6 +540,79 @@ function PositionList({ positions }: { positions: StockPosition[] }) {
   );
 }
 
+function CandidateList({
+  candidates,
+  compact = false,
+  busyId,
+  onApprove,
+  onReject,
+  onWatch,
+  onConvert,
+}: {
+  candidates: StockMarketCandidate[];
+  compact?: boolean;
+  busyId?: string | null;
+  onApprove?: (candidate: StockMarketCandidate) => void;
+  onReject?: (candidate: StockMarketCandidate) => void;
+  onWatch?: (candidate: StockMarketCandidate) => void;
+  onConvert?: (candidate: StockMarketCandidate) => void;
+}) {
+  if (candidates.length === 0) return <Empty title="AI候補銘柄はまだありません" description="TradingView signal やリサーチ材料から、Market Scanner の監視候補がここに蓄積されます。" />;
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {candidates.slice(0, 4).map((candidate) => (
+          <article key={candidate.id} className="border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-base font-black text-slate-950">{candidate.symbol}</div>
+                <div className="mt-1 text-xs font-semibold text-slate-500">{formatCandidateSource(candidate.source)} / {formatCandidateStatus(candidate.status)} / {formatDate(candidate.lastScannedAt)}</div>
+              </div>
+              <Metric icon={<Radar />} label="score" value={formatPercent(candidate.score)} />
+            </div>
+            <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{candidate.reason}</p>
+          </article>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {candidates.map((candidate) => {
+        const canConvert = candidate.status !== "converted_to_decision";
+        return (
+          <article key={candidate.id} className="border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-lg font-black text-slate-950">{candidate.symbol}</span>
+                  <span className="border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-black text-slate-600">{formatCandidateStatus(candidate.status)}</span>
+                  <span className="border border-slate-200 bg-white px-2 py-0.5 text-xs font-black text-slate-600">{formatCandidateSource(candidate.source)}</span>
+                </div>
+                <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{candidate.reason}</p>
+                <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-500 md:grid-cols-4">
+                  <Info label="theme" value={candidate.theme ?? "-"} />
+                  <Info label="sector" value={candidate.sector ?? "-"} />
+                  <Info label="strategy" value={candidate.strategyTag ?? "-"} />
+                  <Info label="scan" value={formatDate(candidate.lastScannedAt)} />
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:w-80">
+                <Info label="score" value={formatPercent(candidate.score)} />
+                <Info label="decision" value={candidate.convertedDecisionId ? <Link className="table-link" to={`/admin/stock-trading/decisions/${candidate.convertedDecisionId}`}>開く</Link> : "-"} />
+                {onApprove ? <button className="btn-primary" type="button" disabled={busyId === candidate.id} onClick={() => onApprove(candidate)}>承認</button> : null}
+                {onReject ? <button className="btn-secondary" type="button" disabled={busyId === candidate.id} onClick={() => onReject(candidate)}>却下</button> : null}
+                {onWatch ? <button className="btn-secondary" type="button" disabled={busyId === candidate.id} onClick={() => onWatch(candidate)}>監視に戻す</button> : null}
+                {onConvert ? <button className="btn-primary sm:col-span-2" type="button" disabled={!canConvert || busyId === candidate.id} onClick={() => onConvert(candidate)}>AI投資会議へ</button> : null}
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function ResearchList({ research, compact = false }: { research: StockResearchItem[]; compact?: boolean }) {
   if (research.length === 0) return <Empty title="リサーチ材料はまだありません" description="ニュース、決算、開示、ファンダ情報を追加するとAI判断の材料として使われます。" />;
   return (
@@ -733,6 +858,24 @@ function IntegrationList({ integrations }: { integrations: StockIntegrationStatu
 
 function formatExecutionSource(value: string): string {
   return { paper: "内部ペーパー", demo: "デモ", manual: "手入力" }[value] ?? value;
+}
+
+function formatCandidateStatus(value: string): string {
+  return {
+    watch: "監視",
+    approved: "承認",
+    rejected: "却下",
+    converted_to_decision: "会議済",
+  }[value] ?? value;
+}
+
+function formatCandidateSource(value: string): string {
+  return {
+    tradingview: "TradingView",
+    research: "Research",
+    manual: "手入力",
+    provider: "外部データ",
+  }[value] ?? value;
 }
 
 function formatStrategyStatus(value: StockStrategyPerformance["status"]): string {
