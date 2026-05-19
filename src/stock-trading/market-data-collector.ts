@@ -60,6 +60,9 @@ export async function runStockMarketDataCollector(options: RunStockMarketDataCol
 }
 
 export function createHttpStockCandleProvider(env: NodeJS.ProcessEnv = process.env): StockCandleProvider {
+  if ((env.STOCK_MARKET_DATA_PROVIDER_KIND ?? "").toLowerCase() === "twelvedata") {
+    return createTwelveDataStockCandleProvider(env);
+  }
   const endpoint = env.STOCK_MARKET_DATA_PROVIDER_URL;
   const token = env.STOCK_MARKET_DATA_PROVIDER_TOKEN;
   return {
@@ -80,6 +83,27 @@ export function createHttpStockCandleProvider(env: NodeJS.ProcessEnv = process.e
   };
 }
 
+export function createTwelveDataStockCandleProvider(env: NodeJS.ProcessEnv = process.env): StockCandleProvider {
+  const apiKey = env.TWELVE_DATA_API_KEY;
+  const endpoint = env.TWELVE_DATA_API_BASE_URL ?? "https://api.twelvedata.com/time_series";
+  return {
+    async fetchCandles(entry) {
+      if (!apiKey) throw new Error("twelve_data_api_key_not_configured");
+      const url = new URL(endpoint);
+      url.searchParams.set("symbol", entry.symbol);
+      url.searchParams.set("interval", mapTwelveDataInterval(entry.timeframe));
+      url.searchParams.set("outputsize", String(entry.lookbackLimit));
+      url.searchParams.set("apikey", apiKey);
+      url.searchParams.set("format", "JSON");
+      url.searchParams.set("order", "asc");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`twelve_data_http_${response.status}`);
+      const payload = await response.json() as unknown;
+      return parseTwelveDataCandles(payload, entry);
+    },
+  };
+}
+
 export function parseProviderCandles(payload: unknown, entry: StockMarketDataWatchlistEntry): CreateStockCandleInput[] {
   const sourceCandles = Array.isArray(payload)
     ? payload
@@ -88,6 +112,19 @@ export function parseProviderCandles(payload: unknown, entry: StockMarketDataWat
       : null;
   if (!sourceCandles) throw new Error("stock_market_data_invalid_candles_response");
   return sourceCandles.map((value, index) => parseProviderCandle(value, index, entry));
+}
+
+export function parseTwelveDataCandles(payload: unknown, entry: StockMarketDataWatchlistEntry): CreateStockCandleInput[] {
+  if (!payload || typeof payload !== "object") throw new Error("twelve_data_invalid_response");
+  const record = payload as Record<string, unknown>;
+  if (typeof record.status === "string" && record.status.toLowerCase() === "error") {
+    const message = typeof record.message === "string" && record.message.trim()
+      ? record.message.trim()
+      : "unknown";
+    throw new Error(`twelve_data_api_error:${message}`);
+  }
+  if (!Array.isArray(record.values)) throw new Error("twelve_data_invalid_values_response");
+  return record.values.map((value, index) => parseTwelveDataCandle(value, index, entry));
 }
 
 function parseProviderCandle(value: unknown, index: number, entry: StockMarketDataWatchlistEntry): CreateStockCandleInput {
@@ -113,6 +150,52 @@ function parseProviderCandle(value: unknown, index: number, entry: StockMarketDa
     source: entry.provider,
     timestamp,
   };
+}
+
+function parseTwelveDataCandle(value: unknown, index: number, entry: StockMarketDataWatchlistEntry): CreateStockCandleInput {
+  if (!value || typeof value !== "object") throw new Error(`twelve_data_invalid_candle:${index}`);
+  const record = value as Record<string, unknown>;
+  const timestamp = parseTimestamp(record.datetime);
+  const open = readFiniteNumber(record.open);
+  const high = readFiniteNumber(record.high);
+  const low = readFiniteNumber(record.low);
+  const close = readFiniteNumber(record.close);
+  const volume = readFiniteNumber(record.volume ?? 0) ?? 0;
+  if (!timestamp || open === null || high === null || low === null || close === null) {
+    throw new Error(`twelve_data_invalid_candle:${index}`);
+  }
+  return {
+    symbol: entry.symbol,
+    timeframe: entry.timeframe,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    source: entry.provider,
+    timestamp,
+  };
+}
+
+function mapTwelveDataInterval(timeframe: string): string {
+  const normalized = timeframe.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    "1m": "1min",
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "45m": "45min",
+    "1h": "1h",
+    "2h": "2h",
+    "4h": "4h",
+    "1d": "1day",
+    "d": "1day",
+    "1w": "1week",
+    "w": "1week",
+    "1mo": "1month",
+    "1month": "1month",
+  };
+  return aliases[normalized] ?? normalized;
 }
 
 function parseTimestamp(value: unknown): Date | null {
