@@ -13,6 +13,7 @@ import type {
   StockMarketCandidate,
   StockMarketDataCollectionRun,
   StockMarketDataWatchlistEntry,
+  StockPaperCycleResult,
   StockMarketSignal,
   StockPortfolioMetrics,
   StockPosition,
@@ -487,6 +488,7 @@ export function StockMarketDataPage() {
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [scanMessage, setScanMessage] = React.useState<string | null>(null);
+  const [cycleResult, setCycleResult] = React.useState<StockPaperCycleResult | null>(null);
   if (watchlistLoading || runsLoading) return <Loading />;
   if (watchlistError) return <ErrorState message={watchlistError} />;
   if (runsError) return <ErrorState message={runsError} />;
@@ -551,6 +553,22 @@ export function StockMarketDataPage() {
     }
   }
 
+  async function runPaperCycle() {
+    setBusy(true);
+    setActionError(null);
+    setScanMessage(null);
+    setCycleResult(null);
+    try {
+      const result = await apiPost<StockPaperCycleResult>("/api/admin/stock-trading/automation/run", {});
+      setCycleResult(result);
+      await Promise.all([reloadRuns(), reloadWatchlist()]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "自動デモ売買サイクルに失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {actionError ? <ErrorState message={actionError} /> : null}
@@ -559,11 +577,17 @@ export function StockMarketDataPage() {
         action={(
           <div className="flex gap-2">
             <button className="btn-secondary" type="button" disabled={busy} onClick={() => void scan()}>候補抽出</button>
+            <button className="btn-secondary" type="button" disabled={busy} onClick={() => void runPaperCycle()}>自動サイクル実行</button>
             <button className="btn-primary" type="button" disabled={busy} onClick={() => void collect()}>収集実行</button>
           </div>
         )}
       >
         {scanMessage ? <div className="mb-4 border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-900">{scanMessage}</div> : null}
+        {cycleResult ? (
+          <div className="mb-4 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-950">
+            自動サイクル {cycleResult.status}: 収集 {cycleResult.collectionRun.status} / scan {cycleResult.scan.createdCandidates}件 / AI投入 {cycleResult.convertedCount}件 / skipped {cycleResult.skippedCount}件 / errors {cycleResult.errorCount}件
+          </div>
+        ) : null}
         <div className="grid gap-3 lg:grid-cols-5">
           <label className="grid gap-1 text-xs font-black text-slate-500">銘柄<input className="input" value={symbol} onChange={(event) => setSymbol(event.target.value)} /></label>
           <label className="grid gap-1 text-xs font-black text-slate-500">時間足<input className="input" value={timeframe} onChange={(event) => setTimeframe(event.target.value)} /></label>

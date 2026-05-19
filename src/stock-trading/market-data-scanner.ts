@@ -1,4 +1,5 @@
 import {
+  listStockMarketCandidates,
   listStockCandles,
   listStockMarketDataWatchlistEntries,
   upsertStockMarketCandidate,
@@ -18,12 +19,26 @@ const MIN_VOLUME_EXPANSION = 1.2;
 
 export async function scanStockMarketDataCandidates(): Promise<StockMarketDataScanResult> {
   const entries = await listStockMarketDataWatchlistEntries({ enabled: true, limit: 200 });
+  const existingProviderCandidates = new Map(
+    (await listStockMarketCandidates({ limit: 500 }))
+      .filter((candidate) => candidate.source === "provider")
+      .map((candidate) => [candidate.symbol, candidate]),
+  );
   const candidates: StockMarketCandidate[] = [];
   let skippedEntries = 0;
   for (const entry of entries) {
     const candles = await listStockCandles({ symbol: entry.symbol, timeframe: entry.timeframe, limit: 5000 });
     const candidateInput = buildCandidateFromCandles(entry, candles.slice(-Math.max(BREAKOUT_LOOKBACK, VOLUME_LOOKBACK) - 1));
     if (!candidateInput) {
+      skippedEntries += 1;
+      continue;
+    }
+    const existing = existingProviderCandidates.get(entry.symbol.toUpperCase());
+    if (
+      existing &&
+      existing.status !== "watch" &&
+      existing.rawPayload.latestCandleAt === candidateInput.rawPayload?.latestCandleAt
+    ) {
       skippedEntries += 1;
       continue;
     }

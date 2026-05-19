@@ -478,6 +478,37 @@ export interface StockMarketDataCollectionRun {
   createdAt: string;
 }
 
+export interface StockPaperCycleResult {
+  status: "completed" | "partial" | "failed";
+  collectionRun: StockMarketDataCollectionRun;
+  scan: {
+    scannedEntries: number;
+    createdCandidates: number;
+    skippedEntries: number;
+  };
+  threshold: number;
+  candidateLimit: number;
+  eligibleCandidates: number;
+  convertedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  conversions: Array<{
+    candidateId: string;
+    symbol: string;
+    candidateScore: number;
+    decisionId?: string;
+    finalAction?: string;
+    tradeId?: string;
+    status: string;
+    message: string;
+  }>;
+  errors: Array<{
+    candidateId?: string;
+    symbol?: string;
+    error: string;
+  }>;
+}
+
 export interface StockBacktestRun {
   id: string;
   symbol: string;

@@ -255,6 +255,43 @@ describe("admin routes", () => {
     expect(JSON.parse(listed.body)).toMatchObject({ research: [{ title: "好決算" }] });
   });
 
+  it("runs stock paper automation from admin and internal routes", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.STOCK_AI_DECISION_MODE = "deterministic";
+    process.env.STOCK_PAPER_TRADE_CONFIDENCE_THRESHOLD = "0.5";
+    process.env.STOCK_MARKET_DATA_PROVIDER_URL = "https://provider.example/candles";
+    vi.stubGlobal("fetch", vi.fn(async () => createStockAutomationCandleResponse()));
+    const { upsertStockMarketDataWatchlistEntry } = await import("../src/stock-trading/repository.js");
+    await upsertStockMarketDataWatchlistEntry({ id: "watchlist-1", symbol: "NVDA", timeframe: "1d", provider: "moomoo" });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const adminResponse = await dispatch(adminApiRouter, "/stock-trading/automation/run?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: {},
+    });
+
+    expect(adminResponse.status).toBe(201);
+    expect(JSON.parse(adminResponse.body)).toMatchObject({
+      collectionRun: { status: "completed" },
+      convertedCount: 1,
+      conversions: [{ symbol: "NVDA", finalAction: "BUY" }],
+    });
+
+    const { app } = await import("../src/server.js");
+    const unauthorized = await dispatch(app, "/internal/jobs/stock-trading-cycle", "/", { method: "POST" });
+    const authorized = await dispatch(app, "/internal/jobs/stock-trading-cycle", "/", {
+      method: "POST",
+      headers: { authorization: "Bearer integration-test" },
+    });
+
+    expect(unauthorized.status).toBe(401);
+    expect(authorized.status).toBe(200);
+    expect(JSON.parse(authorized.body)).toMatchObject({
+      collectionRun: { status: "completed" },
+      convertedCount: 0,
+    });
+  });
+
   it("manages and converts stock market scanner candidates from authenticated API routes", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.STOCK_AI_DECISION_MODE = "deterministic";
@@ -715,7 +752,7 @@ function dispatch(
   router: { handle: Function },
   url: string,
   mount = "/admin",
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; body: string; headers: Record<string, string> }> {
   return new Promise((resolve, reject) => {
     const req = new Readable({ read() {} }) as unknown as {
@@ -729,7 +766,10 @@ function dispatch(
     req.url = url;
     req.originalUrl = `${mount}${url}`;
     const bodyText = options.body === undefined ? "" : JSON.stringify(options.body);
-    req.headers = bodyText ? { "content-type": "application/json", "content-length": String(Buffer.byteLength(bodyText)) } : {};
+    req.headers = {
+      ...(bodyText ? { "content-type": "application/json", "content-length": String(Buffer.byteLength(bodyText)) } : {}),
+      ...(options.headers ?? {}),
+    };
     req.query = Object.fromEntries(new URL(`http://admin.test${url}`).searchParams.entries());
 
     const res = {
@@ -774,5 +814,21 @@ function dispatch(
     router.handle(req, res, reject);
     req.push(bodyText || null);
     if (bodyText) req.push(null);
+  });
+}
+
+function createStockAutomationCandleResponse(): Response {
+  return new Response(JSON.stringify({
+    candles: [
+      { timestamp: "2026-05-01T00:00:00.000Z", open: 100, high: 101, low: 99, close: 100, volume: 1000 },
+      { timestamp: "2026-05-02T00:00:00.000Z", open: 100, high: 102, low: 99, close: 101, volume: 1100 },
+      { timestamp: "2026-05-03T00:00:00.000Z", open: 101, high: 103, low: 100, close: 102, volume: 1000 },
+      { timestamp: "2026-05-04T00:00:00.000Z", open: 102, high: 104, low: 101, close: 103, volume: 1200 },
+      { timestamp: "2026-05-05T00:00:00.000Z", open: 103, high: 105, low: 102, close: 104, volume: 1000 },
+      { timestamp: "2026-05-06T00:00:00.000Z", open: 104, high: 110, low: 103, close: 109, volume: 2500 },
+    ],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
   });
 }

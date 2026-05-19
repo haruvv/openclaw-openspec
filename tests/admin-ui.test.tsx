@@ -339,6 +339,14 @@ describe("admin UI routing", () => {
     ));
     expect(await screen.findByText(/候補 1件/)).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "自動サイクル実行" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/stock-trading/automation/run",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText(/AI投入 1件/)).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "収集実行" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
@@ -581,6 +589,21 @@ function createStockFetch() {
     }
     if (path === "/api/admin/stock-trading/market-data/scan") {
       return createJsonResponse({ scannedEntries: 1, createdCandidates: 1, skippedEntries: 0, candidates: [createStockCandidate()] });
+    }
+    if (path === "/api/admin/stock-trading/automation/run") {
+      return createJsonResponse({
+        status: "completed",
+        collectionRun: createStockMarketDataRun(),
+        scan: { scannedEntries: 1, createdCandidates: 1, skippedEntries: 0 },
+        threshold: 0.7,
+        candidateLimit: 5,
+        eligibleCandidates: 1,
+        convertedCount: 1,
+        skippedCount: 0,
+        errorCount: 0,
+        conversions: [{ candidateId: "candidate-1", symbol: "NVDA", candidateScore: 0.8, finalAction: "BUY", status: "executed", message: "Paper execution created." }],
+        errors: [],
+      });
     }
     return createJsonResponse(createStockOverviewResponse({
       recentSignals: [createStockSignal()],

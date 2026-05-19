@@ -38,8 +38,13 @@ const OPTIONAL_ENV = [
   "TELEGRAM_CHAT_ID",
   "TELEGRAM_WEBHOOK_SECRET",
   "TRADINGVIEW_WEBHOOK_SECRET",
+  "STOCK_MARKET_DATA_PROVIDER_URL",
+  "STOCK_MARKET_DATA_PROVIDER_TOKEN",
   "STOCK_PAPER_TRADE_NOTIONAL_JPY",
   "STOCK_PAPER_TRADE_CONFIDENCE_THRESHOLD",
+  "STOCK_TRADING_AUTOMATION_ENABLED",
+  "STOCK_TRADING_AUTO_CANDIDATE_THRESHOLD",
+  "STOCK_TRADING_AUTO_CANDIDATE_LIMIT",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "HIL_APPROVAL_TOKEN_SECRET",
@@ -156,6 +161,17 @@ export default {
         }),
       ),
     );
+
+    if (readEnv("STOCK_TRADING_AUTOMATION_ENABLED") === "true") {
+      ctx.waitUntil(
+        container.fetch(
+          new Request("https://container.internal/internal/jobs/stock-trading-cycle", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ),
+      );
+    }
   },
 
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -223,6 +239,10 @@ export default {
     }
 
     if (url.pathname === "/internal/jobs/discover-targets" && request.method === "POST") {
+      return container.fetch(request);
+    }
+
+    if (url.pathname === "/internal/jobs/stock-trading-cycle" && request.method === "POST") {
       return container.fetch(request);
     }
 

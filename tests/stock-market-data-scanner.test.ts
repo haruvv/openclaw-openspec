@@ -54,4 +54,35 @@ describe("stock market data scanner", () => {
       skippedEntries: 1,
     });
   });
+
+  it("does not re-scan a converted provider candidate for the same latest candle", async () => {
+    const {
+      getStockMarketCandidate,
+      updateStockMarketCandidateStatus,
+      upsertStockCandles,
+      upsertStockMarketDataWatchlistEntry,
+    } = await import("../src/stock-trading/repository.js");
+    const { scanStockMarketDataCandidates } = await import("../src/stock-trading/market-data-scanner.js");
+    await upsertStockMarketDataWatchlistEntry({ id: "watchlist-1", symbol: "NVDA", timeframe: "1d", provider: "moomoo" });
+    await upsertStockCandles([
+      { symbol: "NVDA", timeframe: "1d", open: 100, high: 101, low: 99, close: 100, volume: 1000, source: "moomoo", timestamp: new Date("2026-05-01T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 100, high: 102, low: 99, close: 101, volume: 1100, source: "moomoo", timestamp: new Date("2026-05-02T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 101, high: 103, low: 100, close: 102, volume: 1000, source: "moomoo", timestamp: new Date("2026-05-03T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 102, high: 104, low: 101, close: 103, volume: 1200, source: "moomoo", timestamp: new Date("2026-05-04T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 103, high: 105, low: 102, close: 104, volume: 1000, source: "moomoo", timestamp: new Date("2026-05-05T00:00:00.000Z") },
+      { symbol: "NVDA", timeframe: "1d", open: 104, high: 110, low: 103, close: 109, volume: 2500, source: "moomoo", timestamp: new Date("2026-05-06T00:00:00.000Z") },
+    ]);
+
+    const first = await scanStockMarketDataCandidates();
+    await updateStockMarketCandidateStatus(first.candidates[0].id, "converted_to_decision");
+
+    await expect(scanStockMarketDataCandidates()).resolves.toMatchObject({
+      scannedEntries: 1,
+      createdCandidates: 0,
+      skippedEntries: 1,
+    });
+    await expect(getStockMarketCandidate(first.candidates[0].id)).resolves.toMatchObject({
+      status: "converted_to_decision",
+    });
+  });
 });
