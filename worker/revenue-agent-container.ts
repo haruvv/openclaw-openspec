@@ -19,6 +19,8 @@ type WorkerEnv = {
 };
 
 const DEFAULT_CONTAINER_INSTANCE_NAME = "production-local";
+const DEFAULT_CONTAINER_SLEEP_AFTER = "1m";
+const CONTAINER_STOP_PATH = "/internal/container/stop";
 
 const REQUIRED_ENV = [
   "REVENUE_AGENT_INTEGRATION_TOKEN",
@@ -131,8 +133,18 @@ function sanitizeContainerInstanceName(value: string): string {
 
 export class RevenueAgentContainer extends Container {
   defaultPort = 3000;
-  sleepAfter = readEnv("REVENUE_AGENT_CONTAINER_SLEEP_AFTER") ?? "10m";
+  sleepAfter = readEnv("REVENUE_AGENT_CONTAINER_SLEEP_AFTER") ?? DEFAULT_CONTAINER_SLEEP_AFTER;
   envVars = buildContainerEnvVars();
+
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === CONTAINER_STOP_PATH && request.method === "POST") {
+      await this.stop();
+      return Response.json({ status: "stopping" });
+    }
+
+    return this.containerFetch(request);
+  }
 
   override onStart() {
     console.log("RevenueAgentPlatform container started");
@@ -144,6 +156,12 @@ export class RevenueAgentContainer extends Container {
 
   override onError(error: unknown) {
     console.error("RevenueAgentPlatform container error", error);
+  }
+
+  override async onActivityExpired() {
+    const state = await this.getState();
+    console.log("RevenueAgentPlatform container idle timeout expired; stopping", { status: state.status });
+    await this.stop();
   }
 }
 
@@ -186,6 +204,13 @@ export default {
 
     if (url.pathname.startsWith("/internal/storage/")) {
       return handleInternalStorage(request, env, url, readEnv("DURABLE_STORAGE_TOKEN"));
+    }
+
+    if (url.pathname === CONTAINER_STOP_PATH && request.method === "POST") {
+      const auth = authorizeInternalContainerRequest(request);
+      if (auth) return auth;
+      const container = getContainer(env.REVENUE_AGENT_CONTAINER, resolveContainerInstanceName(env));
+      return container.fetch(new Request(`${url.origin}${CONTAINER_STOP_PATH}`, { method: "POST" }));
     }
 
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
@@ -282,4 +307,17 @@ async function validateWorkerAccess(request: Request, requiredKind: "admin" | "s
     },
     requiredKind,
   );
+}
+
+function authorizeInternalContainerRequest(request: Request): Response | null {
+  const token = readEnv("REVENUE_AGENT_INTEGRATION_TOKEN");
+  if (!token) {
+    return Response.json({ error: "internal_stop_unconfigured" }, { status: 503 });
+  }
+
+  if (request.headers.get("Authorization") !== `Bearer ${token}`) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  return null;
 }
