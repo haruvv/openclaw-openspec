@@ -1,12 +1,11 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { promisify } from "node:util";
 import { logger } from "../utils/logger.js";
 import type { LighthouseResult, SeoDiagnostic } from "../types/index.js";
 import { buildFailureDiagnostic, type FailureDiagnostic } from "../utils/failure-diagnostics.js";
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 90_000;
+const DEFAULT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const CHROME_PATH = process.env.CHROME_PATH ?? defaultChromePath();
 
 export type LighthouseMeasurement =
@@ -17,20 +16,7 @@ export async function measureSeo(url: string): Promise<LighthouseMeasurement> {
   const started = Date.now();
   const timeoutMs = lighthouseTimeoutMs();
   try {
-    const { stdout } = await Promise.race([
-      execFileAsync("npx", [
-        "lighthouse",
-        url,
-        "--chrome-path",
-        CHROME_PATH,
-        "--output=json",
-        "--only-categories=seo",
-        "--quiet",
-        "--no-enable-error-reporting",
-        "--chrome-flags=--headless --no-sandbox --disable-gpu --disable-dev-shm-usage",
-      ]),
-      timeout(timeoutMs, url),
-    ]);
+    const { stdout } = await runLighthouse(url, timeoutMs);
 
     let report: LhReport;
     try {
@@ -60,15 +46,75 @@ export async function measureSeo(url: string): Promise<LighthouseMeasurement> {
   }
 }
 
-function timeout(ms: number, url: string): Promise<never> {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Lighthouse timeout after ${ms}ms for ${url}`)), ms)
-  );
+function runLighthouse(url: string, timeoutMs: number): Promise<{ stdout: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "npx",
+      [
+        "lighthouse",
+        url,
+        "--chrome-path",
+        CHROME_PATH,
+        "--output=json",
+        "--only-categories=seo",
+        "--quiet",
+        "--no-enable-error-reporting",
+        "--chrome-flags=--headless --no-sandbox --disable-gpu --disable-dev-shm-usage",
+      ],
+      {
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+        maxBuffer: lighthouseMaxBufferBytes(),
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(withLighthouseProcessContext(error, { url, timeoutMs, stdout, stderr }));
+          return;
+        }
+
+        resolve({ stdout: String(stdout) });
+      },
+    );
+  });
 }
 
 function lighthouseTimeoutMs(): number {
   const value = Number(process.env.LIGHTHOUSE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
+}
+
+function lighthouseMaxBufferBytes(): number {
+  const value = Number(process.env.LIGHTHOUSE_MAX_BUFFER_BYTES ?? DEFAULT_MAX_BUFFER_BYTES);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_MAX_BUFFER_BYTES;
+}
+
+function withLighthouseProcessContext(
+  error: Error,
+  context: { url: string; timeoutMs: number; stdout: string | Buffer; stderr: string | Buffer },
+): Error {
+  const record = error as Error & {
+    code?: string | number;
+    killed?: boolean;
+    signal?: string;
+    stdout?: string;
+    stderr?: string;
+  };
+
+  const output = {
+    code: record.code,
+    signal: record.signal,
+    stdout: String(context.stdout),
+    stderr: String(context.stderr),
+  };
+
+  if (record.killed || record.code === "ETIMEDOUT") {
+    const timeout = new Error(`Lighthouse timeout after ${context.timeoutMs}ms for ${context.url}`);
+    Object.assign(timeout, output, { name: "LighthouseTimeoutError" });
+    return timeout;
+  }
+
+  Object.assign(record, output);
+  return record;
 }
 
 function extractDiagnostics(report: LhReport): SeoDiagnostic[] {
