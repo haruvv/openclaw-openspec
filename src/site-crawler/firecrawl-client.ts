@@ -166,7 +166,28 @@ function extractPhones(html: string): string[] {
 function normalizeEmail(value: string): string | null {
   const email = value.trim().toLowerCase();
   if (!email || email.includes("example.com")) return null;
+  const [local, domain] = email.split("@");
+  if (!local || !domain || isBlockedEmailDomain(domain) || !isPlausibleEmailDomain(domain)) return null;
   return email;
+}
+
+function isBlockedEmailDomain(domain: string): boolean {
+  const blocked = new Set([
+    "localhost",
+    "mhtml.blink",
+  ]);
+  if (blocked.has(domain)) return true;
+  return domain.endsWith(".localhost")
+    || domain.endsWith(".local")
+    || domain.endsWith(".invalid")
+    || domain.endsWith(".test")
+    || domain.endsWith(".mhtml.blink");
+}
+
+function isPlausibleEmailDomain(domain: string): boolean {
+  const labels = domain.split(".");
+  if (labels.length < 2) return false;
+  return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
 }
 
 function scoreEmailConfidence(email: string, sourceUrl: string, fromMailto: boolean): ContactMethod["confidence"] {

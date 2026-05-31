@@ -43,6 +43,15 @@ describe("scrapeUrl contact discovery", () => {
           html: `<html><body>電話 03-1234-5678</body></html>`,
         };
       }
+      if (url === "https://noise.com") {
+        return {
+          success: true,
+          html: `<html><body>
+            <div>frame-6e1bf3ae0b2856fc7573880f173c0b88@mhtml.blink</div>
+            <form><input name="email"></form>
+          </body></html>`,
+        };
+      }
       return { success: false, error: "not found" };
     });
   });
@@ -71,6 +80,20 @@ describe("scrapeUrl contact discovery", () => {
         expect.objectContaining({
           type: "phone",
           value: "03-1234-5678",
+        }),
+      ]),
+    );
+  });
+
+  it("ignores Chromium MHTML frame identifiers that look like email addresses", async () => {
+    const result = await scrapeUrl("https://noise.com");
+
+    expect(result?.contactEmail).toBeUndefined();
+    expect(result?.contactMethods ?? []).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "email",
+          value: "frame-6e1bf3ae0b2856fc7573880f173c0b88@mhtml.blink",
         }),
       ]),
     );
