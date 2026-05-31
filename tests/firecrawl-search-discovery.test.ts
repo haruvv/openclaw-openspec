@@ -48,6 +48,8 @@ describe("discoverFirecrawlSearchCandidates", () => {
       FIRECRAWL_API_KEY: "firecrawl-test",
       REVENUE_AGENT_DISCOVERY_QUERIES: "税理士 公式サイト",
       REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT: "8",
+      REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "1",
+      REVENUE_AGENT_DISCOVERY_SEARCH_OVERFETCH_FACTOR: "1",
       REVENUE_AGENT_DISCOVERY_SEARCH_COUNTRY: "jp",
       REVENUE_AGENT_DISCOVERY_SEARCH_LANG: "ja",
       REVENUE_AGENT_DISCOVERY_SEARCH_LOCATION: "Tokyo",
@@ -60,6 +62,20 @@ describe("discoverFirecrawlSearchCandidates", () => {
       location: "Tokyo",
       scrapeOptions: { formats: [] },
     });
+  });
+
+  it("overfetches search candidates so skipped URLs do not consume the analysis quota", async () => {
+    searchMock.mockClear();
+    const { discoverFirecrawlSearchCandidates } = await import("../src/discovery/firecrawl-search.js");
+
+    await discoverFirecrawlSearchCandidates({
+      FIRECRAWL_API_KEY: "firecrawl-test",
+      REVENUE_AGENT_DISCOVERY_QUERIES: "税理士 公式サイト",
+      REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "3",
+      REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT: "3",
+    } as NodeJS.ProcessEnv);
+
+    expect(searchMock).toHaveBeenCalledWith("税理士 公式サイト", expect.objectContaining({ limit: 30 }));
   });
 
   it("does not call Firecrawl without queries or an API key", async () => {

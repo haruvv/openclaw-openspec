@@ -122,7 +122,7 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setFormValue("dailyQuota", event.target.value)} /></label>
-          <label className="block text-sm font-black text-slate-700">検索件数/キーワード<input className="input mt-2 w-full" type="number" min="1" max="20" value={searchLimit} onChange={(event) => setFormValue("searchLimit", event.target.value)} /></label>
+          <label className="block text-sm font-black text-slate-700">検索件数/キーワード<input className="input mt-2 w-full" type="number" min="1" max="50" value={searchLimit} onChange={(event) => setFormValue("searchLimit", event.target.value)} /></label>
         </div>
         <fieldset>
           <legend className="text-sm font-black text-slate-700">検索対象</legend>

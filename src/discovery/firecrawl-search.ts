@@ -10,7 +10,7 @@ export async function discoverFirecrawlSearchCandidates(env: NodeJS.ProcessEnv =
 
   for (const query of queries) {
     const response = await app.search(query, {
-      limit: readLimit(env.REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT),
+      limit: readLimit(env),
       country: env.REVENUE_AGENT_DISCOVERY_SEARCH_COUNTRY ?? "jp",
       lang: env.REVENUE_AGENT_DISCOVERY_SEARCH_LANG ?? "ja",
       location: env.REVENUE_AGENT_DISCOVERY_SEARCH_LOCATION,
@@ -42,8 +42,13 @@ function readList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function readLimit(value: string | undefined): number {
-  const parsed = Number(value ?? 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 10;
-  return Math.min(Math.floor(parsed), 20);
+function readLimit(env: NodeJS.ProcessEnv): number {
+  const configured = Number(env.REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT ?? 10);
+  const parsed = Number.isFinite(configured) && configured > 0 ? configured : 10;
+  const quota = Number(env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA ?? 3);
+  const overfetchFactor = Number(env.REVENUE_AGENT_DISCOVERY_SEARCH_OVERFETCH_FACTOR ?? 10);
+  const overfetchTarget = Number.isFinite(quota) && Number.isFinite(overfetchFactor)
+    ? Math.max(1, Math.floor(quota) * Math.max(1, Math.floor(overfetchFactor)))
+    : 30;
+  return Math.min(Math.max(Math.floor(parsed), overfetchTarget), 50);
 }
