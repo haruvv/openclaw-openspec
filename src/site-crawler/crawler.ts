@@ -20,7 +20,7 @@ export interface CrawlBatchResult {
 
 export interface CrawlSkipDetail {
   url: string;
-  stage: "crawl" | "opportunity";
+  stage: "crawl" | "contact" | "opportunity";
   reason: string;
 }
 
@@ -30,7 +30,7 @@ export interface CrawlWarningDetail extends FailureDiagnostic {
 
 export async function crawlBatch(
   urls: string[],
-  options: { threshold?: number; opportunityThreshold?: number } = {}
+  options: { threshold?: number; opportunityThreshold?: number; requireContactEmail?: boolean } = {}
 ): Promise<CrawlBatchResult> {
   const threshold = options.threshold ?? DEFAULT_THRESHOLD;
   const opportunityThreshold = options.opportunityThreshold ?? DEFAULT_OPPORTUNITY_THRESHOLD;
@@ -48,6 +48,16 @@ export async function crawlBatch(
       skipped.push(url);
       skipDetails.push({ url, stage: "crawl", reason: "crawl_failed" });
       logger.warn("Skipping URL (crawl failed)", { url });
+      continue;
+    }
+
+    if (options.requireContactEmail === true && !crawled.contactEmail) {
+      skipped.push(url);
+      skipDetails.push({ url, stage: "contact", reason: "missing_contact_email" });
+      logger.info("Skipping URL (public contact email not found)", {
+        url,
+        contactMethods: crawled.contactMethods?.length ?? 0,
+      });
       continue;
     }
 

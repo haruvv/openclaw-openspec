@@ -177,7 +177,9 @@ export function formatDiscoverySummary(report: DiscoveryReport): string {
 export function formatSkipReason(reason: string): string {
   return {
     already_analyzed: "解析済み",
+    crawl_failed: "クロール失敗",
     discovery_sources_empty: "検索条件なし",
+    missing_contact_email: "公開メールなし",
     no_candidates_found: "検索結果なし",
     "REVENUE_AGENT_DISCOVERY_SEED_URLS is empty": "候補設定なし",
   }[reason] ?? reason;

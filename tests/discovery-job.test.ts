@@ -48,6 +48,7 @@ describe("runDailyDiscoveryJob", () => {
         },
       ],
       validateUrl: async (url) => ({ ok: true, url }),
+      checkContactEmail: async () => ({ ok: true, contactEmail: "info@example.com" }),
       runAgent,
     });
 
@@ -85,6 +86,7 @@ describe("runDailyDiscoveryJob", () => {
       ],
       listExistingSites: async () => [],
       validateUrl: async (url) => ({ ok: true, url }),
+      checkContactEmail: async () => ({ ok: true, contactEmail: "info@example.com" }),
       runAgent,
     });
 
@@ -96,6 +98,43 @@ describe("runDailyDiscoveryJob", () => {
         metadata: { discovery: { source: "firecrawl_search", query: "tax accountant tokyo", title: "Search Result" } },
       }),
     );
+  });
+
+  it("filters discovery candidates without public email before starting agent runs", async () => {
+    const runAgent = vi
+      .fn()
+      .mockResolvedValueOnce(buildRunReport("run-1", "https://with-email.com/"))
+      .mockResolvedValueOnce(buildRunReport("run-2", "https://also-email.com/"));
+    const checkContactEmail = vi.fn(async (candidate: { url: string }) => {
+      if (candidate.url === "https://no-email.com/") {
+        return { ok: false as const, reason: "missing_contact_email" };
+      }
+      return { ok: true as const, contactEmail: "info@example.com" };
+    });
+
+    const report = await runDailyDiscoveryJob({
+      env: {
+        REVENUE_AGENT_DISCOVERY_ENABLED: "true",
+        REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "2",
+        REVENUE_AGENT_DISCOVERY_SEED_URLS: [
+          "https://no-email.com/",
+          "https://with-email.com/",
+          "https://also-email.com/",
+        ].join(","),
+      } as NodeJS.ProcessEnv,
+      discoverCandidates: async () => [],
+      listExistingSites: async () => [],
+      validateUrl: async (url) => ({ ok: true, url }),
+      checkContactEmail,
+      runAgent,
+    });
+
+    expect(report.status).toBe("passed");
+    expect(report.selectedCount).toBe(2);
+    expect(report.skipped).toContainEqual({ url: "https://no-email.com/", reason: "missing_contact_email" });
+    expect(report.runs.map((run) => run.url)).toEqual(["https://with-email.com/", "https://also-email.com/"]);
+    expect(runAgent).not.toHaveBeenCalledWith(expect.objectContaining({ targetUrl: "https://no-email.com/" }));
+    expect(checkContactEmail).toHaveBeenCalledTimes(3);
   });
 });
 

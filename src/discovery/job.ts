@@ -11,6 +11,10 @@ export interface DiscoveryCandidate {
   title?: string;
 }
 
+export type CandidateContactEmailCheck =
+  | { ok: true; contactEmail: string }
+  | { ok: false; reason: string };
+
 export interface DailyDiscoveryReport {
   status: "disabled" | "skipped" | "passed" | "failed";
   enabled: boolean;
@@ -28,6 +32,8 @@ interface DailyDiscoveryJobOptions {
   listExistingSites?: () => Promise<SiteRecord[]>;
   runAgent?: (options: RevenueAgentRunOptions) => Promise<RevenueAgentRunReport>;
   validateUrl?: typeof validateSafeTargetUrl;
+  checkContactEmail?: (candidate: DiscoveryCandidate, env: NodeJS.ProcessEnv) => Promise<CandidateContactEmailCheck>;
+  requireContactEmail?: boolean;
 }
 
 export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {}): Promise<DailyDiscoveryReport> {
@@ -36,6 +42,7 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
   const quota = readQuota(env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA);
   const seedCandidates = readSeedCandidates(env.REVENUE_AGENT_DISCOVERY_SEED_URLS);
   const searchQueries = readList(env.REVENUE_AGENT_DISCOVERY_QUERIES);
+  const requireContactEmail = options.requireContactEmail ?? env.REVENUE_AGENT_DISCOVERY_REQUIRE_EMAIL !== "false";
   const skipped: DailyDiscoveryReport["skipped"] = [];
   const runs: DailyDiscoveryReport["runs"] = [];
 
@@ -84,6 +91,15 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
     if (!safeUrl.ok) {
       skipped.push({ url: candidate.url, reason: safeUrl.error });
       continue;
+    }
+
+    if (requireContactEmail) {
+      const checkContactEmail = options.checkContactEmail ?? defaultCheckContactEmail;
+      const contact = await checkContactEmail({ ...candidate, url: safeUrl.url }, env);
+      if (!contact.ok) {
+        skipped.push({ url: candidate.url, reason: contact.reason });
+        continue;
+      }
     }
 
     selected.push({ ...candidate, url: safeUrl.url });
@@ -160,4 +176,21 @@ export function normalizeComparableUrl(value: string): string {
   } catch {
     return value.trim();
   }
+}
+
+async function defaultCheckContactEmail(candidate: DiscoveryCandidate, env: NodeJS.ProcessEnv): Promise<CandidateContactEmailCheck> {
+  if (!env.FIRECRAWL_API_KEY) {
+    return { ok: false, reason: "FIRECRAWL_API_KEY is not set" };
+  }
+
+  const { scrapeUrl } = await import("../site-crawler/firecrawl-client.js");
+  const crawled = await scrapeUrl(candidate.url);
+  if (!crawled) {
+    return { ok: false, reason: "crawl_failed" };
+  }
+  if (!crawled.contactEmail) {
+    return { ok: false, reason: "missing_contact_email" };
+  }
+
+  return { ok: true, contactEmail: crawled.contactEmail };
 }

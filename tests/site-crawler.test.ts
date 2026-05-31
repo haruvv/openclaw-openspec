@@ -69,6 +69,27 @@ describe("crawlBatch", () => {
     });
   });
 
+  it("skips URL before Lighthouse when public email is required but not found", async () => {
+    mockScrape.mockResolvedValue({
+      url: "https://no-email.com",
+      domain: "no-email.com",
+      html: "<html><body><form><input name=\"email\"></form></body></html>",
+      title: "No Email",
+      contactMethods: [{ type: "form", value: "https://no-email.com", sourceUrl: "https://no-email.com", confidence: "medium" }],
+    });
+
+    const result = await crawlBatch(["https://no-email.com"], { requireContactEmail: true });
+
+    expect(result.targets).toHaveLength(0);
+    expect(result.skipped).toContain("https://no-email.com");
+    expect(result.skipDetails).toContainEqual({
+      url: "https://no-email.com",
+      stage: "contact",
+      reason: "missing_contact_email",
+    });
+    expect(mockLh).not.toHaveBeenCalled();
+  });
+
   it("continues with crawl-only fallback when lighthouse fails", async () => {
     mockScrape.mockResolvedValue({
       url: "https://slow.com",

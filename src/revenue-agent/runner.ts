@@ -45,7 +45,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       if (!process.env.FIRECRAWL_API_KEY) {
         return { status: "skipped", reason: "FIRECRAWL_API_KEY is not set" };
       }
-      const result = await crawlBatch([targetUrl], { threshold: 100 });
+      const result = await crawlBatch([targetUrl], { threshold: 100, requireContactEmail: true });
       target = result.targets[0];
       outputs.crawl = {
         targets: result.targets.length,
