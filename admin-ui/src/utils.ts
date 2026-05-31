@@ -45,6 +45,12 @@ export function getSeoScore(run: AgentRun): number | null {
   return typeof value === "number" ? value : null;
 }
 
+export function formatLighthouseSeo(run: AgentRun): string {
+  const score = getSeoScore(run);
+  if (score !== null) return String(score);
+  return run.summary.lighthouseStatus === "failed" ? "計測失敗" : "-";
+}
+
 export function getOpportunityScore(run: AgentRun): number | null {
   const value = run.summary.opportunityScore;
   return typeof value === "number" && Number.isFinite(value) ? value : null;

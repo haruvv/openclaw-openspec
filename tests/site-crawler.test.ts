@@ -109,7 +109,7 @@ describe("crawlBatch", () => {
     });
     const result = await crawlBatch(["https://slow.com"]);
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].seoScore).toBe(0);
+    expect(result.targets[0].seoScore).toBeUndefined();
     expect(result.targets[0].diagnostics).toContainEqual(expect.objectContaining({ id: "lighthouse-unavailable" }));
     expect(result.targets[0].diagnostics[0].description).toContain("timeout");
     expect(result.warnings).toContainEqual(expect.objectContaining({ url: "https://slow.com", stage: "lighthouse", reason: "timeout" }));

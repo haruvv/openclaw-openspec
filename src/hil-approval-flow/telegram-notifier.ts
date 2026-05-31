@@ -8,7 +8,7 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID!;
 export async function notifyHil(params: {
   targetId: string;
   domain: string;
-  seoScore: number;
+  seoScore?: number;
   approveUrl: string;
   rejectUrl: string;
 }): Promise<void> {
@@ -24,10 +24,11 @@ export async function notifyHil(params: {
 
 async function postTelegramMessage(params: {
   domain: string;
-  seoScore: number;
+  seoScore?: number;
   approveUrl: string;
   rejectUrl: string;
 }): Promise<void> {
+  const seoScore = typeof params.seoScore === "number" ? `${params.seoScore}/100` : "計測失敗";
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,7 +37,7 @@ async function postTelegramMessage(params: {
       text: [
         "[HIL承認依頼]",
         `企業: ${params.domain}`,
-        `SEOスコア: ${params.seoScore}/100`,
+        `SEOスコア: ${seoScore}`,
         "",
         `承認: ${params.approveUrl}`,
         `却下: ${params.rejectUrl}`,
@@ -52,17 +53,18 @@ async function postTelegramMessage(params: {
 
 async function sendFallbackEmail(params: {
   domain: string;
-  seoScore: number;
+  seoScore?: number;
   approveUrl: string;
   rejectUrl: string;
 }): Promise<void> {
   if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) return;
+  const seoScore = typeof params.seoScore === "number" ? `${params.seoScore}/100` : "計測失敗";
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   await sgMail.send({
     to: process.env.SENDGRID_FROM_EMAIL,
     from: process.env.SENDGRID_FROM_EMAIL,
     subject: `[HIL承認依頼] ${params.domain}`,
-    text: `企業: ${params.domain}\nSEOスコア: ${params.seoScore}/100\n\n承認: ${params.approveUrl}\n却下: ${params.rejectUrl}`,
+    text: `企業: ${params.domain}\nSEOスコア: ${seoScore}\n\n承認: ${params.approveUrl}\n却下: ${params.rejectUrl}`,
   });
   logger.info("Fallback HIL email sent", { domain: params.domain });
 }

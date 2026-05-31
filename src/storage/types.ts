@@ -61,7 +61,7 @@ export interface ArtifactBodyStorage {
 export interface HilPendingTarget {
   id: string;
   domain: string;
-  seoScore: number;
+  seoScore?: number;
   hilToken: string;
   updatedAt: Date;
 }

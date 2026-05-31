@@ -6,7 +6,7 @@ import { Empty, ErrorState, Info, Loading, Panel, StatusPill } from "../componen
 import { FindingsList, ProposalViewer, RunsTable } from "../components/tables";
 import { useApi } from "../hooks";
 import type { AgentRun, AgentRunDetail, ContactMethod, LlmRevenueAudit, SalesActions, SalesOutreachDraft, SeoDiagnostic, SettingsPayload } from "../types";
-import { formatDate, formatDuration, formatRevenueAuditConfidence, formatRevenueAuditPriority, formatSource, formatStepName, getLlmRevenueAudit, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getSeoScore, getTargetUrl, urlsMatch } from "../utils";
+import { formatDate, formatDuration, formatLighthouseSeo, formatRevenueAuditConfidence, formatRevenueAuditPriority, formatSource, formatStepName, getLlmRevenueAudit, getOpportunityFindings, getOpportunityScore, getSeoDiagnostics, getTargetUrl, urlsMatch } from "../utils";
 
 export function RunsPage() {
   const navigate = useNavigate();
@@ -71,7 +71,6 @@ export function RunDetailPage() {
   const run = data?.run;
   if (!run) return <Empty title="実行が見つかりません" />;
   const targetUrl = getTargetUrl(run);
-  const seoScore = getSeoScore(run);
   const opportunityScore = getOpportunityScore(run);
   const opportunityFindings = getOpportunityFindings(run);
   const diagnostics = getSeoDiagnostics(run);
@@ -103,7 +102,7 @@ export function RunDetailPage() {
       <Panel title="調査結果">
         <div className="mt-3 grid gap-3 md:grid-cols-4">
           <Info label="ドメイン" value={domain} />
-          <Info label="Lighthouse SEO" value={seoScore ?? "-"} />
+          <Info label="Lighthouse SEO" value={formatLighthouseSeo(run)} />
           <Info label="改善余地スコア" value={opportunityScore ?? "-"} />
           <Info label="診断項目" value={`${diagnostics.length}件`} />
         </div>

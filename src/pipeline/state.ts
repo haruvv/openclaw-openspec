@@ -7,7 +7,7 @@ interface TargetRow {
   url: string;
   contact_email?: string;
   industry?: string;
-  seo_score: number;
+  seo_score: number | null;
   diagnostics: string;
   opportunity_score?: number | null;
   opportunity_findings?: string | null;
@@ -72,7 +72,7 @@ function rowToTarget(row: TargetRow): Target {
     domain: row.domain,
     contactEmail: row.contact_email,
     industry: row.industry,
-    seoScore: row.seo_score,
+    seoScore: row.seo_score ?? undefined,
     diagnostics: JSON.parse(row.diagnostics),
     opportunityScore: row.opportunity_score ?? undefined,
     opportunityFindings: row.opportunity_findings ? JSON.parse(row.opportunity_findings) : undefined,

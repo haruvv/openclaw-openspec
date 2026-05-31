@@ -37,7 +37,8 @@ export function buildRevenueAuditPayload(input: RevenueAuditAssessorInput): Reco
       firstOutreachGoal: "reply_acquisition",
     },
     deterministicResearch: {
-      lighthouseSeoScore: target.seoScore,
+      lighthouseSeoScore: target.seoScore ?? null,
+      lighthouseStatus: typeof target.seoScore === "number" ? "passed" : "failed",
       opportunityScore: target.opportunityScore ?? null,
       diagnostics: target.diagnostics,
       opportunityFindings: target.opportunityFindings ?? [],

@@ -32,11 +32,12 @@ ${audit.outreach.firstEmail}
 - 注意事項:
 ${audit.caveats.map((caveat) => `  - ${caveat}`).join("\n") || "  - なし"}` : "LLM営業評価: なし";
 
+  const lighthouseStatus = typeof target.seoScore === "number" ? `${target.seoScore}/100` : "計測失敗";
   const userMessage = `以下のSEO診断結果をもとに、営業メールでどのように提案するかが分かる提案書を作成してください。
 
 企業名/ドメイン: ${target.domain}
 業種: ${target.industry ?? "不明"}
-Lighthouse SEOスコア: ${target.seoScore}/100
+Lighthouse SEOスコア: ${lighthouseStatus}
 改善余地スコア: ${target.opportunityScore ?? "未計測"}/100
 
 営業上の改善余地:

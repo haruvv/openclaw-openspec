@@ -69,7 +69,7 @@ export async function crawlBatch(
     }
 
     const opportunity = scoreSeoOpportunity(crawled, lhResult);
-    if (lhResult.seoScore > threshold && opportunity.opportunityScore < opportunityThreshold) {
+    if (typeof lhResult.seoScore === "number" && lhResult.seoScore > threshold && opportunity.opportunityScore < opportunityThreshold) {
       skipped.push(url);
       skipDetails.push({
         url,
@@ -117,7 +117,6 @@ export async function crawlBatch(
 function fallbackLighthouseResult(url: string, failure: FailureDiagnostic): LighthouseResult {
   return {
     url,
-    seoScore: 0,
     diagnostics: [
       {
         id: "lighthouse-unavailable",

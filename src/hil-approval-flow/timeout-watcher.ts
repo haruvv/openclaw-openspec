@@ -8,7 +8,7 @@ const TIMEOUT_MS = 48 * 60 * 60 * 1000;
 interface TargetRow {
   id: string;
   domain: string;
-  seo_score: number;
+  seo_score: number | null;
   hil_token: string;
   updated_at: number;
 }
@@ -33,7 +33,7 @@ export async function checkHilTimeouts(): Promise<void> {
     await notifyHil({
       targetId: row.id,
       domain: row.domain,
-      seoScore: row.seo_score,
+      seoScore: row.seo_score ?? undefined,
       approveUrl: approveUrl + "&reminder=1",
       rejectUrl: rejectUrl + "&reminder=1",
     });

@@ -27,7 +27,7 @@ export function initSqliteSchema(db: Database.Database): void {
       url TEXT NOT NULL,
       contact_email TEXT,
       industry TEXT,
-      seo_score INTEGER NOT NULL,
+      seo_score INTEGER,
       diagnostics TEXT NOT NULL,
       opportunity_score INTEGER,
       opportunity_findings TEXT,

@@ -25,7 +25,7 @@ export interface CrawlResult {
 
 export interface LighthouseResult {
   url: string;
-  seoScore: number;
+  seoScore?: number;
   diagnostics: SeoDiagnostic[];
 }
 
@@ -101,7 +101,7 @@ export interface Target {
   contactEmail?: string;
   contactMethods?: ContactMethod[];
   industry?: string;
-  seoScore: number;
+  seoScore?: number;
   diagnostics: SeoDiagnostic[];
   opportunityScore?: number;
   opportunityFindings?: SeoOpportunityFinding[];
@@ -125,7 +125,7 @@ export interface OutreachRecord {
 export interface HilNotification {
   targetId: string;
   domain: string;
-  seoScore: number;
+  seoScore?: number;
   approveUrl: string;
   rejectUrl: string;
   sentAt: number;

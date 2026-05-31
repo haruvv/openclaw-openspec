@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import type { AgentRun, OpportunityFinding, SiteRecord } from "../types";
 import { Empty, StatusPill } from "./common";
-import { formatDate, formatDuration, formatFindingCategory, formatFindingSeverity, formatSource, getOpportunityScore, getSeoScore, getTargetUrl } from "../utils";
+import { formatDate, formatDuration, formatFindingCategory, formatFindingSeverity, formatLighthouseSeo, formatSource, getOpportunityScore, getTargetUrl } from "../utils";
 
 export function ProposalViewer({
   title,
@@ -132,7 +132,7 @@ export function RunsTable({ runs, compact = false, detailSearch = "" }: { runs: 
   return (
     <table className="data-table">
       <thead><tr><th>状態</th><th>対象URL</th><th>Lighthouse SEO</th><th>改善余地</th><th>起点</th>{compact ? null : <th>開始</th>}<th>所要時間</th></tr></thead>
-      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><Link className="table-link" to={`/admin/seo-sales/runs/${run.id}${detailSearch}`}>{getTargetUrl(run)}</Link></td><td>{getSeoScore(run) ?? "-"}</td><td>{getOpportunityScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
+      <tbody>{runs.map((run) => <tr key={run.id}><td><StatusPill status={run.status} /></td><td><Link className="table-link" to={`/admin/seo-sales/runs/${run.id}${detailSearch}`}>{getTargetUrl(run)}</Link></td><td>{formatLighthouseSeo(run)}</td><td>{getOpportunityScore(run) ?? "-"}</td><td>{formatSource(run.source)}</td>{compact ? null : <td>{formatDate(run.startedAt)}</td>}<td>{formatDuration(run.startedAt, run.completedAt)}</td></tr>)}</tbody>
     </table>
   );
 }

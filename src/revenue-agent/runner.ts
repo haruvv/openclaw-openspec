@@ -64,21 +64,29 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
           details: outputs.crawl as Record<string, unknown>,
         };
       }
-      outputs.seoScore = target.seoScore;
       outputs.opportunityScore = target.opportunityScore;
       outputs.opportunityFindings = target.opportunityFindings ?? [];
       outputs.diagnostics = target.diagnostics;
       outputs.domain = target.domain;
       outputs.contactEmail = target.contactEmail;
       outputs.contactMethods = target.contactMethods ?? [];
-      const lighthouseFallback = target.diagnostics.some((diagnostic) => diagnostic.id === "lighthouse-unavailable");
+      if (typeof target.seoScore === "number") {
+        outputs.seoScore = target.seoScore;
+      }
+      const lighthouseWarning = result.warnings.find((warning) => warning.stage === "lighthouse");
+      const lighthouseStatus = lighthouseWarning ? "failed" : "passed";
+      outputs.lighthouseStatus = lighthouseStatus;
+      if (lighthouseWarning) {
+        outputs.lighthouseFailure = lighthouseWarning;
+      }
       const crawlWarnings = result.warnings;
       return {
         status: "passed",
         details: {
           domain: target.domain,
-          seoScore: target.seoScore,
-          lighthouseFallback,
+          seoScore: target.seoScore ?? null,
+          lighthouseStatus,
+          lighthouseFailure: lighthouseWarning,
           crawlWarnings,
           opportunityScore: target.opportunityScore,
           opportunityFindings: target.opportunityFindings?.length ?? 0,
@@ -292,7 +300,7 @@ async function telegramStep(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: process.env.TELEGRAM_CHAT_ID,
-      text: `[Smoke Test] ${target.domain} SEO score: ${target.seoScore}/100`,
+      text: `[Smoke Test] ${target.domain} SEO score: ${typeof target.seoScore === "number" ? `${target.seoScore}/100` : "failed"}`,
       disable_web_page_preview: true,
     }),
   });
@@ -405,6 +413,8 @@ async function recordRunComplete(
         contactEmail: report.outputs.contactEmail,
         contactMethods: report.outputs.contactMethods,
         seoScore: report.outputs.seoScore,
+        lighthouseStatus: report.outputs.lighthouseStatus,
+        lighthouseFailure: report.outputs.lighthouseFailure,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
         diagnostics: report.outputs.diagnostics,
@@ -446,6 +456,8 @@ async function recordSiteResult(
         contactEmail: report.outputs.contactEmail,
         contactMethods: report.outputs.contactMethods,
         seoScore: report.outputs.seoScore,
+        lighthouseStatus: report.outputs.lighthouseStatus,
+        lighthouseFailure: report.outputs.lighthouseFailure,
         opportunityScore: report.outputs.opportunityScore,
         opportunityFindings: report.outputs.opportunityFindings,
         diagnostics: report.outputs.diagnostics,
