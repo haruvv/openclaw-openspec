@@ -16,7 +16,7 @@ import { runStockAutonomousPaperCycle } from "../stock-trading/automation.js";
 import { convertStockMarketCandidateToPaperDecision } from "../stock-trading/candidate-converter.js";
 import { runStockMarketDataCollector } from "../stock-trading/market-data-collector.js";
 import { scanStockMarketDataCandidates } from "../stock-trading/market-data-scanner.js";
-import { processStockMarketSignal, reviewStockPositionExit } from "../stock-trading/paper-runner.js";
+import { reviewStockPositionExit } from "../stock-trading/paper-runner.js";
 import {
   getStockBacktestRunDetail,
   createStockResearchItem,

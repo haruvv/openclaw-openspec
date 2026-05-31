@@ -36,9 +36,9 @@ const TRADINGVIEW_ALERT_TEMPLATE = `{
   "action": "BUY",
   "strategy": "breakout_momentum",
   "indicators": {
-    "rsi": "{{plot(\"RSI\")}}",
-    "ema20": "{{plot(\"EMA20\")}}",
-    "ema50": "{{plot(\"EMA50\")}}"
+    "rsi": "{{plot("RSI")}}",
+    "ema20": "{{plot("EMA20")}}",
+    "ema50": "{{plot("EMA50")}}"
   }
 }`;
 
