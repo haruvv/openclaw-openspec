@@ -1,10 +1,13 @@
 import { scrapeUrl } from "./firecrawl-client.js";
 import { measureSeo } from "./lighthouse-runner.js";
 import { scoreSeoOpportunity } from "./opportunity-scorer.js";
+import { normalizeContactMethods } from "../discovery/contact-routing.js";
+import { qualifyBusinessSite, qualifySeoIssue } from "../discovery/qualification.js";
 import { logger } from "../utils/logger.js";
 import type { LighthouseResult, Target } from "../types/index.js";
 import { randomUUID } from "node:crypto";
 import type { FailureDiagnostic } from "../utils/failure-diagnostics.js";
+import type { SiteCandidate } from "../discovery/types.js";
 
 const DEFAULT_THRESHOLD = Number(process.env.SEO_SCORE_THRESHOLD ?? 50);
 const DEFAULT_OPPORTUNITY_THRESHOLD = Number(process.env.SEO_OPPORTUNITY_SCORE_THRESHOLD ?? 60);
@@ -20,7 +23,7 @@ export interface CrawlBatchResult {
 
 export interface CrawlSkipDetail {
   url: string;
-  stage: "crawl" | "contact" | "opportunity";
+  stage: "crawl" | "business" | "contact" | "opportunity";
   reason: string;
 }
 
@@ -29,20 +32,32 @@ export interface CrawlWarningDetail extends FailureDiagnostic {
 }
 
 export async function crawlBatch(
-  urls: string[],
+  urls: Array<string | SiteCandidate>,
   options: { threshold?: number; opportunityThreshold?: number; requireContactEmail?: boolean } = {}
 ): Promise<CrawlBatchResult> {
   const threshold = options.threshold ?? DEFAULT_THRESHOLD;
   const opportunityThreshold = options.opportunityThreshold ?? DEFAULT_OPPORTUNITY_THRESHOLD;
   const batch = urls.slice(0, MAX_BATCH_SIZE);
-  const queued = urls.slice(MAX_BATCH_SIZE);
+  const queued = urls.slice(MAX_BATCH_SIZE).map((input) => typeof input === "string" ? input : input.url);
 
   const targets: Target[] = [];
   const skipped: string[] = [];
   const skipDetails: CrawlSkipDetail[] = [];
   const warnings: CrawlWarningDetail[] = [];
 
-  for (const url of batch) {
+  for (const input of batch) {
+    const candidate = typeof input === "string" ? undefined : input;
+    const url = typeof input === "string" ? input : input.url;
+    if (candidate) {
+      const preQualification = qualifyBusinessSite(candidate);
+      if (preQualification.status === "held") {
+        skipped.push(url);
+        skipDetails.push({ url, stage: "business", reason: preQualification.reasonCode });
+        logger.info("Holding candidate before crawl", { url, reason: preQualification.reasonCode });
+        continue;
+      }
+    }
+
     const crawled = await scrapeUrl(url);
     if (!crawled) {
       skipped.push(url);
@@ -51,7 +66,23 @@ export async function crawlBatch(
       continue;
     }
 
-    if (options.requireContactEmail === true && !crawled.contactEmail) {
+    if (candidate) {
+      const businessQualification = qualifyBusinessSite(candidate, crawled);
+      if (businessQualification.status !== "passed") {
+        skipped.push(url);
+        skipDetails.push({ url, stage: "business", reason: businessQualification.reasonCode });
+        logger.info("Skipping candidate (business-site qualification failed)", { url, reason: businessQualification.reasonCode });
+        continue;
+      }
+    }
+
+    const contactMethods = normalizeContactMethods({
+      crawl: crawled,
+      hints: candidate?.contactHints,
+      fallbackUrl: url,
+    });
+
+    if (options.requireContactEmail === true && !contactMethods.some((method) => method.type === "email")) {
       skipped.push(url);
       skipDetails.push({ url, stage: "contact", reason: "missing_contact_email" });
       logger.info("Skipping URL (public contact email not found)", {
@@ -69,12 +100,18 @@ export async function crawlBatch(
     }
 
     const opportunity = scoreSeoOpportunity(crawled, lhResult);
-    if (typeof lhResult.seoScore === "number" && lhResult.seoScore > threshold && opportunity.opportunityScore < opportunityThreshold) {
+    const seoQualification = qualifySeoIssue({
+      lighthouse: lhResult,
+      opportunity,
+      seoThreshold: threshold,
+      opportunityThreshold,
+    });
+    if (seoQualification.status !== "passed") {
       skipped.push(url);
       skipDetails.push({
         url,
         stage: "opportunity",
-        reason: `seo_score_${lhResult.seoScore}_above_threshold_${threshold}_and_opportunity_${opportunity.opportunityScore}_below_${opportunityThreshold}`,
+        reason: seoQualification.reasonCode,
       });
       logger.info("URL below opportunity threshold, skipping", {
         url,
@@ -92,8 +129,10 @@ export async function crawlBatch(
       url,
       domain: crawled.domain,
       contactEmail: crawled.contactEmail,
-      contactMethods: crawled.contactMethods,
+      contactMethods,
       industry: crawled.industry,
+      leadCandidateId: candidate?.id,
+      leadSourceProvenance: candidate?.sourceProvenance,
       seoScore: lhResult.seoScore,
       diagnostics: lhResult.diagnostics,
       opportunityScore: opportunity.opportunityScore,

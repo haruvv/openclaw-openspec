@@ -1,4 +1,5 @@
 import FirecrawlApp from "firecrawl";
+import { discoverCompliantEmailMethods, hasSalesProhibition } from "../contact-discovery/compliant-email-discovery.js";
 import { getSalesOperationSettings } from "../sales/settings.js";
 import { logger } from "../utils/logger.js";
 import type { ContactMethod, CrawlResult } from "../types/index.js";
@@ -49,6 +50,7 @@ async function discoverContactMethods(url: string, html: string): Promise<Contac
   const settings = await getSalesOperationSettings();
   const methods = extractContactMethodsFromHtml(html, url);
   const contactUrls = extractContactPageUrls(html, url, settings.contactDiscoveryMaxPages);
+  const htmlParts = [html];
 
   for (const contactUrl of contactUrls) {
     const page = await scrapePage(contactUrl).catch((err) => {
@@ -56,7 +58,28 @@ async function discoverContactMethods(url: string, html: string): Promise<Contac
       return null;
     });
     if (!page) continue;
+    htmlParts.push(page.html);
     methods.push(...extractContactMethodsFromHtml(page.html, contactUrl));
+  }
+
+  const combinedHtml = htmlParts.join("\n");
+  if (hasSalesProhibition(combinedHtml)) {
+    logger.info("Sales-prohibited site detected; email contact methods suppressed", { url });
+    return dedupeContactMethods(methods.filter((method) => method.type !== "email"));
+  }
+
+  if (!methods.some((method) => method.type === "email") && process.env.CONTACT_EMAIL_DISCOVERY_DISABLED !== "true") {
+    const domain = new URL(url).hostname;
+    const discovery = await discoverCompliantEmailMethods({ domain, sourceUrl: url, html: combinedHtml }).catch((err) => {
+      logger.warn("Compliant email discovery failed", { url, error: err instanceof Error ? err.message : String(err) });
+      return null;
+    });
+    if (discovery) {
+      for (const status of discovery.providerStatuses) {
+        if (status.status === "failed") logger.warn("Email discovery provider failed", { url, provider: status.provider, reason: status.reason });
+      }
+      methods.push(...discovery.methods);
+    }
   }
 
   return dedupeContactMethods(methods);

@@ -2,6 +2,7 @@ import React from "react";
 import { ErrorState, Loading, Panel } from "../components/common";
 import {
   DiscoverySettingsPanel,
+  ContactSuppressionPanel,
   IntegrationSettingsList,
   SalesOperationSettingsPanel,
   SideEffectPolicyControls,
@@ -24,6 +25,11 @@ export function SettingsPage() {
       {data?.sales ? (
         <Panel title="営業送信設定">
           <SalesOperationSettingsPanel key={createSalesSettingsKey(data.sales)} settings={data.sales} />
+        </Panel>
+      ) : null}
+      {data ? (
+        <Panel title="連絡不要リスト">
+          <ContactSuppressionPanel suppressions={data.contactSuppressions ?? []} />
         </Panel>
       ) : null}
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.72fr)] xl:grid-cols-2">

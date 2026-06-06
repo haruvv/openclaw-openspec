@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import sgMail from "@sendgrid/mail";
 import { getAgentRunDetail } from "../agent-runs/repository.js";
+import { isContactSuppressed } from "../contact-discovery/suppression.js";
 import { getSideEffectSettings } from "../admin/side-effect-settings.js";
 import { sideEffectPolicyReason } from "../revenue-agent/security.js";
 import { withRetry } from "../utils/retry.js";
@@ -103,12 +104,27 @@ export async function sendReviewedOutreach(input: {
     await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, "SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set");
     throw new Error("SENDGRID_API_KEY or SENDGRID_FROM_EMAIL is not set");
   }
+  if (!salesSettings.sendgridFromName) {
+    await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, "sendgrid sender name is not configured");
+    throw new Error("sendgrid sender name is not configured");
+  }
+  const suppression = await isContactSuppressed({ email: recipientEmail, domain: draft.domain });
+  if (suppression.suppressed) {
+    const reason = `recipient is suppressed (${suppression.kind}:${suppression.value})`;
+    await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, reason);
+    throw new Error(reason);
+  }
   if (await hasRecentSentOutreach(draft.domain, salesSettings.outreachCooldownDays)) {
     await recordSkippedOutreach(draft, recipientEmail, subject, bodyText, "outreach already sent to this domain within cooldown window");
     throw new Error("outreach already sent to this domain within cooldown window");
   }
 
   const now = new Date();
+  const compliantBodyText = ensureOutreachComplianceFooter(bodyText, {
+    fromName: salesSettings.sendgridFromName,
+    fromEmail: process.env.SENDGRID_FROM_EMAIL,
+    senderContact: process.env.OUTREACH_SENDER_CONTACT,
+  });
   try {
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
     await withRetry(() =>
@@ -119,8 +135,8 @@ export async function sendReviewedOutreach(input: {
           name: salesSettings.sendgridFromName,
         },
         subject,
-        text: bodyText,
-        html: escapeHtml(bodyText).replace(/\n/g, "<br>"),
+        text: compliantBodyText,
+        html: escapeHtml(compliantBodyText).replace(/\n/g, "<br>"),
       }),
     );
     return createOutreachMessage({
@@ -131,7 +147,7 @@ export async function sendReviewedOutreach(input: {
       domain: draft.domain,
       recipientEmail,
       subject,
-      bodyText,
+      bodyText: compliantBodyText,
       status: "sent",
       reviewedAt: now,
       sentAt: now,
@@ -147,7 +163,7 @@ export async function sendReviewedOutreach(input: {
       domain: draft.domain,
       recipientEmail,
       subject,
-      bodyText,
+      bodyText: compliantBodyText,
       status: "failed",
       reviewedAt: now,
       error,
@@ -360,11 +376,19 @@ function buildApprovalRecommendation(input: {
     confidence,
     recommendedAmountJpy: parseRecommendedAmountJpy(recommendedOffer?.estimatedPriceRange) ?? 50000,
     rationale,
-    caveats: input.caveats,
+    caveats: [...input.caveats, ...complianceCaveatsForRecipient(input.recipientEmail)],
     recipientSource: input.recipientEmail ? "detected_email" : "manual_required",
     readyToSend: Boolean(input.recipientEmail),
     nextStep: "承認すると営業メールだけを送信します。Payment Linkは返信や関心を確認してから別操作で作成します。",
   };
+}
+
+function complianceCaveatsForRecipient(recipientEmail: string | undefined): string[] {
+  if (!recipientEmail) return [];
+  return [
+    "送信前に抑止リスト、送信者情報、配信停止案内を検証します。",
+    "Hunter/Apollo等の外部探索メールは人間承認後のみ送信できます。推測・未検証メールは低優先で扱います。",
+  ];
 }
 
 function parseRecommendedAmountJpy(value: string | undefined): number | undefined {
@@ -386,7 +410,7 @@ function parseRecommendedAmountJpy(value: string | undefined): number | undefine
 function isContactMethod(value: unknown): value is ContactMethod {
   if (!value || typeof value !== "object") return false;
   const method = value as ContactMethod;
-  return ["email", "form", "phone", "contact_page"].includes(method.type)
+  return ["email", "form", "phone", "contact_page", "social_dm", "maps_profile", "manual"].includes(method.type)
     && typeof method.value === "string"
     && method.value.length > 0
     && typeof method.sourceUrl === "string"
@@ -395,6 +419,29 @@ function isContactMethod(value: unknown): value is ContactMethod {
 
 function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function ensureOutreachComplianceFooter(bodyText: string, input: { fromName: string; fromEmail: string; senderContact?: string }): string {
+  const footerParts: string[] = [];
+  if (!hasSenderIdentity(bodyText, input)) {
+    footerParts.push(`送信者: ${input.fromName} <${input.fromEmail}>${input.senderContact ? ` / ${input.senderContact}` : ""}`);
+  }
+  if (!hasOptOutText(bodyText)) {
+    footerParts.push("今後このようなご連絡が不要な場合は、お手数ですがこのメールへの返信で「連絡不要」とお知らせください。以後のご連絡対象から除外します。");
+  }
+  if (footerParts.length === 0) return bodyText;
+  return `${bodyText.trim()}\n\n---\n${footerParts.join("\n")}`;
+}
+
+function hasSenderIdentity(bodyText: string, input: { fromName: string; fromEmail: string; senderContact?: string }): boolean {
+  const lower = bodyText.toLowerCase();
+  return lower.includes(input.fromEmail.toLowerCase())
+    || lower.includes(input.fromName.toLowerCase())
+    || Boolean(input.senderContact && lower.includes(input.senderContact.toLowerCase()));
+}
+
+function hasOptOutText(bodyText: string): boolean {
+  return /配信停止|連絡不要|今後.*不要|unsubscribe|opt[-\s]?out|do not contact/i.test(bodyText);
 }
 
 function escapeHtml(value: string): string {

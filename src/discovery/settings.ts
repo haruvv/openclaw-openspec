@@ -4,8 +4,12 @@ import { getDb } from "../utils/db.js";
 export interface DiscoverySettings {
   queries: string[];
   seedUrls: string[];
+  enabledSources: string[];
+  apolloEmployeeRanges: string[];
+  apolloMaxEmployees: number;
   dailyQuota: number;
   searchLimit: number;
+  sourceLimit: number;
   country: string;
   lang: string;
   location: string;
@@ -15,8 +19,12 @@ export interface DiscoverySettings {
 export interface SaveDiscoverySettingsInput {
   queries?: unknown;
   seedUrls?: unknown;
+  enabledSources?: unknown;
+  apolloEmployeeRanges?: unknown;
+  apolloMaxEmployees?: unknown;
   dailyQuota?: unknown;
   searchLimit?: unknown;
+  sourceLimit?: unknown;
   country?: unknown;
   lang?: unknown;
   location?: unknown;
@@ -25,8 +33,12 @@ export interface SaveDiscoverySettingsInput {
 const DISCOVERY_SETTING_KEYS = [
   "discovery.queries",
   "discovery.seedUrls",
+  "discovery.enabledSources",
+  "discovery.apolloEmployeeRanges",
+  "discovery.apolloMaxEmployees",
   "discovery.dailyQuota",
   "discovery.searchLimit",
+  "discovery.sourceLimit",
   "discovery.country",
   "discovery.lang",
   "discovery.location",
@@ -40,8 +52,12 @@ export async function getDiscoverySettings(env: NodeJS.ProcessEnv = process.env)
   return {
     queries: readList(stored.get("discovery.queries") ?? env.REVENUE_AGENT_DISCOVERY_QUERIES),
     seedUrls: readList(stored.get("discovery.seedUrls") ?? env.REVENUE_AGENT_DISCOVERY_SEED_URLS),
+    enabledSources: readSources(stored.get("discovery.enabledSources") ?? env.REVENUE_AGENT_DISCOVERY_SOURCES),
+    apolloEmployeeRanges: readEmployeeRanges(stored.get("discovery.apolloEmployeeRanges") ?? env.APOLLO_ORGANIZATION_EMPLOYEE_RANGES),
+    apolloMaxEmployees: readBoundedInteger(stored.get("discovery.apolloMaxEmployees") ?? env.APOLLO_ORGANIZATION_MAX_EMPLOYEES, 1000, 1, 10000),
     dailyQuota: readBoundedInteger(stored.get("discovery.dailyQuota") ?? env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA, 3, 1, 10),
     searchLimit: readBoundedInteger(stored.get("discovery.searchLimit") ?? env.REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT, 10, 1, 50),
+    sourceLimit: readBoundedInteger(stored.get("discovery.sourceLimit") ?? env.REVENUE_AGENT_DISCOVERY_SOURCE_LIMIT, 10, 1, 50),
     country: readShortCode(stored.get("discovery.country") ?? env.REVENUE_AGENT_DISCOVERY_SEARCH_COUNTRY, "jp"),
     lang: readShortCode(stored.get("discovery.lang") ?? env.REVENUE_AGENT_DISCOVERY_SEARCH_LANG, "ja"),
     location: readPlainText(stored.get("discovery.location") ?? env.REVENUE_AGENT_DISCOVERY_SEARCH_LOCATION),
@@ -53,8 +69,12 @@ export async function saveDiscoverySettings(input: SaveDiscoverySettingsInput): 
   const settings: DiscoverySettings = {
     queries: normalizeList(input.queries),
     seedUrls: normalizeList(input.seedUrls),
+    enabledSources: readSources(normalizeList(input.enabledSources).join(",")),
+    apolloEmployeeRanges: readEmployeeRanges(input.apolloEmployeeRanges),
+    apolloMaxEmployees: readBoundedInteger(String(input.apolloMaxEmployees ?? ""), 1000, 1, 10000),
     dailyQuota: readBoundedInteger(String(input.dailyQuota ?? ""), 3, 1, 10),
     searchLimit: readBoundedInteger(String(input.searchLimit ?? ""), 10, 1, 50),
+    sourceLimit: readBoundedInteger(String(input.sourceLimit ?? input.searchLimit ?? ""), 10, 1, 50),
     country: readShortCode(String(input.country ?? ""), "jp"),
     lang: readShortCode(String(input.lang ?? ""), "ja"),
     location: readPlainText(String(input.location ?? "")),
@@ -64,8 +84,12 @@ export async function saveDiscoverySettings(input: SaveDiscoverySettingsInput): 
   await writeStoredSettings(new Map<DiscoverySettingKey, string>([
     ["discovery.queries", settings.queries.join("\n")],
     ["discovery.seedUrls", settings.seedUrls.join("\n")],
+    ["discovery.enabledSources", settings.enabledSources.join(",")],
+    ["discovery.apolloEmployeeRanges", settings.apolloEmployeeRanges.join("\n")],
+    ["discovery.apolloMaxEmployees", String(settings.apolloMaxEmployees)],
     ["discovery.dailyQuota", String(settings.dailyQuota)],
     ["discovery.searchLimit", String(settings.searchLimit)],
+    ["discovery.sourceLimit", String(settings.sourceLimit)],
     ["discovery.country", settings.country],
     ["discovery.lang", settings.lang],
     ["discovery.location", settings.location],
@@ -79,8 +103,12 @@ export function applyDiscoverySettingsToEnv(env: NodeJS.ProcessEnv, settings: Di
     ...env,
     REVENUE_AGENT_DISCOVERY_QUERIES: settings.queries.join("\n"),
     REVENUE_AGENT_DISCOVERY_SEED_URLS: settings.seedUrls.join("\n"),
+    REVENUE_AGENT_DISCOVERY_SOURCES: settings.enabledSources.join(","),
+    APOLLO_ORGANIZATION_EMPLOYEE_RANGES: settings.apolloEmployeeRanges.join("\n"),
+    APOLLO_ORGANIZATION_MAX_EMPLOYEES: String(settings.apolloMaxEmployees),
     REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: String(settings.dailyQuota),
     REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT: String(settings.searchLimit),
+    REVENUE_AGENT_DISCOVERY_SOURCE_LIMIT: String(settings.sourceLimit),
     REVENUE_AGENT_DISCOVERY_SEARCH_COUNTRY: settings.country,
     REVENUE_AGENT_DISCOVERY_SEARCH_LANG: settings.lang,
     REVENUE_AGENT_DISCOVERY_SEARCH_LOCATION: settings.location,
@@ -113,6 +141,23 @@ function readList(value: string | undefined): string[] {
   return normalizeList(value);
 }
 
+function readSources(value: string | undefined): string[] {
+  const valid = new Set(["seed", "firecrawl_search", "google_search", "google_maps", "apollo_organization", "technology_intelligence"]);
+  const sources = normalizeList(value).filter((source) => valid.has(source));
+  return sources.length > 0 ? sources : ["seed", "firecrawl_search", "google_maps"];
+}
+
+function readEmployeeRanges(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : "";
+  const ranges = [...raw.matchAll(/\b(\d{1,6})\s*,\s*(\d{1,6})\b/g)].flatMap((match) => {
+    const min = Number(match[1]);
+    const max = Number(match[2]);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min <= 0 || max < min) return [];
+    return [`${min},${max}`];
+  });
+  return ranges.length > 0 ? uniqueList(ranges) : ["11,50", "51,200", "201,500", "501,1000"];
+}
+
 function readBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) return fallback;
@@ -127,6 +172,15 @@ function readShortCode(value: string | undefined, fallback: string): string {
 
 function readPlainText(value: string | undefined): string {
   return (value ?? "").trim().slice(0, 120);
+}
+
+function uniqueList(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    if (seen.has(value)) return [];
+    seen.add(value);
+    return [value];
+  });
 }
 
 async function readStoredSettings(): Promise<Map<DiscoverySettingKey, string>> {

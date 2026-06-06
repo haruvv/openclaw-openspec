@@ -12,6 +12,11 @@ async function main() {
   } else {
     console.log("manual crawl job: skipped (set SMOKE_RUN_CRAWL_JOB=true to enable)");
   }
+  if (process.env.SMOKE_RUN_DISCOVERY_JOB === "true") {
+    await checkDiscoveryJob();
+  } else {
+    console.log("multi-source discovery job: skipped (set SMOKE_RUN_DISCOVERY_JOB=true to enable)");
+  }
   console.log(`Production smoke checks passed for ${baseUrl}`);
 }
 
@@ -77,6 +82,26 @@ async function checkManualCrawlJob() {
   });
   assertRunPassed("manual crawl job detail", detail.run);
   console.log(`manual crawl job: passed runId=${response.runId} target=${targetUrl}`);
+}
+
+async function checkDiscoveryJob() {
+  const headers = accessHeaders();
+  if (!headers["CF-Access-Client-Id"] || !headers["CF-Access-Client-Secret"]) {
+    throw new Error("multi-source discovery job: SMOKE_CF_ACCESS_CLIENT_ID and SMOKE_CF_ACCESS_CLIENT_SECRET are required when SMOKE_RUN_DISCOVERY_JOB=true");
+  }
+
+  const response = await postJson("multi-source discovery job", adminUrl("/api/admin/seo-sales/discovery/run"), {}, headers);
+  if (!["passed", "skipped", "disabled"].includes(response.report?.status)) {
+    throw new Error(`multi-source discovery job: unexpected status ${JSON.stringify(response.report?.status ?? null)}`);
+  }
+  if (!Array.isArray(response.report?.sources)) {
+    throw new Error("multi-source discovery job: expected source execution summary");
+  }
+  const sideEffected = response.report.runs?.some((run) => run.sendEmail || run.sendTelegram || run.createPaymentLink);
+  if (sideEffected) {
+    throw new Error("multi-source discovery job: discovery run must not enable side effects");
+  }
+  console.log(`multi-source discovery job: ${response.report.status} sources=${response.report.sources.length} selected=${response.report.selectedCount}`);
 }
 
 function assertRunPassed(name, run) {

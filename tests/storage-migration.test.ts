@@ -22,6 +22,13 @@ describe("operational storage migration", () => {
       "agent_runs",
       "analyzed_sites",
       "app_settings",
+      "contact_suppressions",
+      "lead_candidate_sources",
+      "lead_candidates",
+      "lead_contact_methods",
+      "lead_priority_scores",
+      "lead_route_decisions",
+      "lead_stage_events",
       "outreach_log",
       "sales_outreach_messages",
       "sales_payment_links",
@@ -57,6 +64,14 @@ describe("operational storage migration", () => {
     const paymentColumns = db.prepare("PRAGMA table_info(sales_payment_links)").all() as { name: string }[];
     expect(paymentColumns.map((column) => column.name)).toContain("payment_link_url");
     expect(paymentColumns.map((column) => column.name)).toContain("amount_jpy");
+
+    const leadCandidateColumns = db.prepare("PRAGMA table_info(lead_candidates)").all() as { name: string }[];
+    expect(leadCandidateColumns.map((column) => column.name)).toContain("normalized_url");
+    expect(leadCandidateColumns.map((column) => column.name)).toContain("source_confidence");
+
+    const leadRouteColumns = db.prepare("PRAGMA table_info(lead_route_decisions)").all() as { name: string }[];
+    expect(leadRouteColumns.map((column) => column.name)).toContain("route");
+    expect(leadRouteColumns.map((column) => column.name)).toContain("priority_score_json");
 
     const tradeColumns = db.prepare("PRAGMA table_info(stock_trades)").all() as { name: string }[];
     expect(tradeColumns.map((column) => column.name)).toContain("execution_source");

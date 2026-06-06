@@ -352,17 +352,26 @@ function ContactMethodsPanel({ methods, onSelectEmail }: { methods: ContactMetho
     <div className="border border-slate-200 bg-slate-50 p-3">
       <div className="text-sm font-black text-slate-800">連絡先候補</div>
       {emails.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 grid gap-2">
           {emails.map((method) => (
-            <button
-              key={`${method.type}-${method.value}-${method.sourceUrl}`}
-              type="button"
-              className="btn-secondary"
-              onClick={() => onSelectEmail(method.value)}
-              title={`${formatContactConfidence(method.confidence)} / ${method.sourceUrl}`}
-            >
-              {method.value}
-            </button>
+            <div key={`${method.type}-${method.value}-${method.sourceUrl}`} className="border border-slate-200 bg-white p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => onSelectEmail(method.value)}
+                  title={`${formatContactConfidence(method.confidence)} / ${method.sourceUrl}`}
+                >
+                  {method.value}
+                </button>
+                <span className={`rounded border px-2 py-1 text-xs font-black ${method.confidence === "low" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                  {formatContactConfidence(method.confidence)}
+                </span>
+                {formatProvider(method) ? <span className="rounded border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-black text-blue-800">{formatProvider(method)}</span> : null}
+              </div>
+              {method.reason ? <div className="mt-2 text-xs font-semibold text-slate-500">{method.reason}</div> : null}
+              {method.confidence === "low" ? <div className="mt-1 text-xs font-bold text-amber-800">低信頼候補です。送信前に宛先の妥当性を確認してください。</div> : null}
+            </div>
           ))}
         </div>
       ) : null}
@@ -423,6 +432,13 @@ function SalesActionHistory({ salesActions }: { salesActions: SalesActions }) {
 
 function formatContactConfidence(value: ContactMethod["confidence"]): string {
   return { high: "高信頼", medium: "中信頼", low: "低信頼" }[value];
+}
+
+function formatProvider(method: ContactMethod): string | null {
+  const provider = typeof method.metadata?.provider === "string" ? method.metadata.provider : null;
+  if (!provider) return null;
+  const verification = typeof method.metadata?.verificationStatus === "string" ? method.metadata.verificationStatus : null;
+  return verification ? `${provider} / ${verification}` : provider;
 }
 
 function formatRecipientSource(value: SalesOutreachDraft["approval"]["recipientSource"]): string {

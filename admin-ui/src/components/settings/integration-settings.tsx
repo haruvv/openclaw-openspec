@@ -37,6 +37,9 @@ export function IntegrationSettingsList({ items }: { items: SettingsPayload["int
 
 function formatIntegrationRole(key: string): string {
   if (key.includes("FIRECRAWL")) return "候補発見";
+  if (key.includes("APOLLO")) return "候補発見/連絡先";
+  if (key.includes("HUNTER")) return "連絡先";
+  if (key.includes("GOOGLE_SEARCH") || key.includes("GOOGLE_MAPS") || key.includes("BUILTWITH") || key.includes("WAPPALYZER")) return "候補発見";
   if (key.includes("GEMINI") || key.includes("ZAI")) return "AI生成";
   if (key.includes("SENDGRID")) return "メール";
   if (key.includes("TELEGRAM")) return "通知";

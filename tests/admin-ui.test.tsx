@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../admin-ui/src/App";
 import { apiCache } from "../admin-ui/src/api";
-import { DiscoverySettingsPanel, SalesOperationSettingsPanel } from "../admin-ui/src/components/settings";
+import { ContactSuppressionPanel, DiscoverySettingsPanel, SalesOperationSettingsPanel } from "../admin-ui/src/components/settings";
 import type { AgentRun, AgentRunDetail, DiscoverySettings } from "../admin-ui/src/types";
 
 describe("admin UI routing", () => {
@@ -436,21 +436,36 @@ describe("DiscoverySettingsPanel", () => {
   it("submits a normalized discovery settings payload", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.method).toBe("PUT");
-      expect(JSON.parse(String(init?.body))).toMatchObject({
-        queries: expect.stringContaining("税理士事務所 公式サイト"),
+      const payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        queries: expect.stringContaining("美容室 公式サイト"),
         seedUrls: "https://example.com",
         dailyQuota: 4,
         searchLimit: 6,
+        apolloEmployeeRanges: expect.arrayContaining(["11,50", "51,200", "201,500", "501,1000"]),
+        apolloMaxEmployees: 1000,
         country: "us",
         lang: "en",
         location: "",
       });
+      expect(payload.enabledSources).toEqual(expect.arrayContaining(["google_maps"]));
+      expect(payload.enabledSources).toEqual(expect.not.arrayContaining(["apollo_organization"]));
       return createJsonResponse({ discovery: createDiscoverySettings({ country: "us", lang: "en" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<DiscoverySettingsPanel settings={createDiscoverySettings()} />);
 
+    expect(screen.getByLabelText("パーソナルジム")).toBeInTheDocument();
+    expect(screen.getByLabelText("外壁塗装")).toBeInTheDocument();
+    expect(screen.getByLabelText("Web予約系店舗")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Apollo企業検索")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("ポータル/指定サイト検索")).toBeInTheDocument();
+    expect(screen.getByLabelText("1-10名")).toBeInTheDocument();
+    expect(screen.getByLabelText("11-50名")).toBeInTheDocument();
+    expect(screen.getByLabelText("501-1000名")).toBeInTheDocument();
+    expect(screen.getByLabelText("最大従業員数")).toHaveValue(1000);
+    expect(screen.getByText("美容室 地域密着 公式サイト")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "変更なし" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("固定候補URL（検証用）"), { target: { value: "https://example.com" } });
     fireEvent.change(screen.getByLabelText("1日の解析上限"), { target: { value: "4" } });
@@ -508,6 +523,44 @@ describe("SalesOperationSettingsPanel", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("保存しました")).toBeInTheDocument();
+  });
+});
+
+describe("ContactSuppressionPanel", () => {
+  afterEach(() => {
+    apiCache.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("adds a contact suppression entry", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        kind: "email",
+        value: "stop@example.com",
+        reason: "do_not_contact",
+      });
+      return createJsonResponse({
+        suppressions: [{
+          id: "sup-1",
+          kind: "email",
+          value: "stop@example.com",
+          reason: "do_not_contact",
+          source: "admin",
+          createdAt: Date.now(),
+        }],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ContactSuppressionPanel suppressions={[]} />);
+
+    fireEvent.change(screen.getByLabelText("対象"), { target: { value: "stop@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "追加" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("連絡不要リストに追加しました")).toBeInTheDocument();
+    expect(screen.getByText("stop@example.com")).toBeInTheDocument();
   });
 });
 
@@ -900,6 +953,7 @@ function createSettingsResponse() {
     ],
     discovery: createDiscoverySettings(),
     sales: createSalesSettings(),
+    contactSuppressions: [],
   };
 }
 
@@ -917,6 +971,7 @@ function createDraftResponse(runId: string) {
           sourceUrl: "https://example.com/contact",
           confidence: "high",
           label: "mailto",
+          metadata: { provider: "hunter", verificationStatus: "valid" },
         },
         {
           type: "form",
@@ -1025,10 +1080,14 @@ function createRun(overrides: Partial<AgentRun> = {}): AgentRun {
 
 function createDiscoverySettings(overrides: Partial<DiscoverySettings> = {}): DiscoverySettings {
   return {
-    queries: ["税理士事務所 公式サイト"],
+    queries: ["美容室 公式サイト", "美容室 地域密着 公式サイト"],
     seedUrls: [],
+    enabledSources: ["seed", "firecrawl_search", "google_maps"],
+    apolloEmployeeRanges: ["11,50", "51,200", "201,500", "501,1000"],
+    apolloMaxEmployees: 1000,
     dailyQuota: 2,
     searchLimit: 3,
+    sourceLimit: 3,
     country: "jp",
     lang: "ja",
     location: "",

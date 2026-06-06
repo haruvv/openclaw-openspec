@@ -77,7 +77,7 @@ export interface LlmRevenueAudit {
   caveats: string[];
 }
 
-export type ContactMethodType = "email" | "form" | "phone" | "contact_page";
+export type ContactMethodType = "email" | "form" | "phone" | "contact_page" | "social_dm" | "maps_profile" | "manual";
 export type ContactMethodConfidence = "low" | "medium" | "high";
 
 export interface ContactMethod {
@@ -87,6 +87,7 @@ export interface ContactMethod {
   confidence: ContactMethodConfidence;
   label?: string;
   reason?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SeoOpportunityResult {
@@ -100,6 +101,10 @@ export interface Target {
   domain: string;
   contactEmail?: string;
   contactMethods?: ContactMethod[];
+  leadCandidateId?: string;
+  leadSourceProvenance?: unknown[];
+  leadRouteDecision?: unknown;
+  leadPriorityScore?: unknown;
   industry?: string;
   seoScore?: number;
   diagnostics: SeoDiagnostic[];

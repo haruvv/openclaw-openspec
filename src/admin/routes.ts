@@ -4,7 +4,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, Response } from "express";
 import { createAgentRun, getAgentRunDetail, listAgentRuns } from "../agent-runs/repository.js";
+import { addContactSuppression, listContactSuppressions } from "../contact-discovery/suppression.js";
 import { runDailyDiscoveryJob } from "../discovery/job.js";
+import { listLeadCandidates } from "../discovery/repository.js";
 import { applyDiscoverySettingsToEnv, getDiscoverySettings, saveDiscoverySettings } from "../discovery/settings.js";
 import { createRevenueAgentRunId, runRevenueAgent } from "../revenue-agent/runner.js";
 import { applySideEffectPolicy, sideEffectPolicyReason, validateSafeTargetUrl } from "../revenue-agent/security.js";
@@ -429,6 +431,13 @@ adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
   const sideEffects = await getSideEffectSettings();
   const integrations = [
     ["Firecrawl", "FIRECRAWL_API_KEY"],
+    ["ポータル/指定サイト検索 APIキー", "GOOGLE_SEARCH_API_KEY"],
+    ["ポータル/指定サイト検索 CX", "GOOGLE_SEARCH_CX"],
+    ["Google Maps", "GOOGLE_MAPS_API_KEY"],
+    ["Apollo", "APOLLO_API_KEY"],
+    ["Hunter", "HUNTER_API_KEY"],
+    ["BuiltWith", "BUILTWITH_API_KEY"],
+    ["Wappalyzer", "WAPPALYZER_API_KEY"],
     ["Gemini", "GEMINI_API_KEY"],
     ["Z.ai", "ZAI_API_KEY"],
     ["SendGrid", "SENDGRID_API_KEY"],
@@ -444,12 +453,22 @@ adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
     ["createPaymentLink", "決済リンク作成", sideEffects.createPaymentLink],
   ].map(([key, label, enabled]) => ({ key, label, enabled: Boolean(enabled) }));
 
-  res.json({ integrations, policies, discovery: await getDiscoverySettings(), sales: await getSalesOperationSettings() });
+  res.json({
+    integrations,
+    policies,
+    discovery: await getDiscoverySettings(),
+    sales: await getSalesOperationSettings(),
+    contactSuppressions: await listContactSuppressions(),
+  });
 });
 
 adminApiRouter.put("/seo-sales/settings/discovery", async (req, res) => {
   const discovery = await saveDiscoverySettings(req.body ?? {});
   res.json({ discovery });
+});
+
+adminApiRouter.get("/seo-sales/leads", async (_req, res) => {
+  res.json({ candidates: await listLeadCandidates() });
 });
 
 adminApiRouter.put("/seo-sales/settings/policies", async (req, res) => {
@@ -460,6 +479,20 @@ adminApiRouter.put("/seo-sales/settings/policies", async (req, res) => {
 adminApiRouter.put("/seo-sales/settings/sales", async (req, res) => {
   const sales = await saveSalesOperationSettings(req.body ?? {});
   res.json({ sales });
+});
+
+adminApiRouter.get("/seo-sales/contact-suppressions", async (_req, res) => {
+  res.json({ suppressions: await listContactSuppressions() });
+});
+
+adminApiRouter.post("/seo-sales/contact-suppressions", async (req, res) => {
+  const parsed = parseContactSuppressionBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  const suppression = await addContactSuppression({ ...parsed.value, source: "admin" });
+  res.status(201).json({ suppression, suppressions: await listContactSuppressions() });
 });
 
 adminRouter.use(
@@ -587,6 +620,30 @@ function parsePaymentLinkBody(body: unknown):
       recipientEmail: candidate.recipientEmail,
       amountJpy: candidate.amountJpy,
       sendEmail: candidate.sendEmail,
+    },
+  };
+}
+
+function parseContactSuppressionBody(body: unknown):
+  | { ok: true; value: { kind: "email" | "domain"; value: string; reason: string } }
+  | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Request body must be an object" };
+  const candidate = body as Record<string, unknown>;
+  if (candidate.kind !== "email" && candidate.kind !== "domain") return { ok: false, error: "kind must be email or domain" };
+  if (typeof candidate.value !== "string" || candidate.value.trim().length === 0) return { ok: false, error: "value is required" };
+  const value = candidate.value.trim().toLowerCase();
+  if (candidate.kind === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return { ok: false, error: "value must be a valid email" };
+  }
+  if (candidate.kind === "domain" && !/^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/.*)?$/i.test(value)) {
+    return { ok: false, error: "value must be a valid domain" };
+  }
+  return {
+    ok: true,
+    value: {
+      kind: candidate.kind,
+      value,
+      reason: typeof candidate.reason === "string" && candidate.reason.trim() ? candidate.reason.trim().slice(0, 200) : "do_not_contact",
     },
   };
 }

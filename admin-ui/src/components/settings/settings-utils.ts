@@ -2,7 +2,10 @@ import { DISCOVERY_INDUSTRIES } from "../../constants";
 import type { DiscoveryFormState, DiscoverySettings, PolicyUpdatePayload, SalesOperationSettings, SideEffectPolicy } from "../../types";
 
 export function buildDiscoveryQueries(industries: string[]): string[] {
-  return industries.map((industry) => `${industry} 公式サイト`);
+  return industries.flatMap((industry) => [
+    `${industry} 公式サイト`,
+    `${industry} 地域密着 公式サイト`,
+  ]);
 }
 
 export function parseDiscoveryQuerySelection(queries: string[]): { industries: string[]; customQueries: string[] } {
@@ -10,12 +13,13 @@ export function parseDiscoveryQuerySelection(queries: string[]): { industries: s
   const generated = new Set<string>();
 
   for (const industry of DISCOVERY_INDUSTRIES) {
-    const currentQuery = `${industry} 公式サイト`;
-    generated.add(currentQuery);
-    if (queries.includes(currentQuery)) industries.add(industry);
+    for (const currentQuery of buildDiscoveryQueries([industry])) {
+      generated.add(currentQuery);
+      if (queries.includes(currentQuery)) industries.add(industry);
+    }
 
     for (const query of queries) {
-      if (query.endsWith(` ${industry} 公式サイト`)) {
+      if (query.endsWith(` ${industry} 公式サイト`) || query.endsWith(` ${industry} 地域密着 公式サイト`)) {
         industries.add(industry);
         generated.add(query);
       }
@@ -62,8 +66,12 @@ export function createDiscoverySettingsKey(settings: DiscoverySettings): string 
   return [
     settings.queries.join("\n"),
     settings.seedUrls.join("\n"),
+    settings.enabledSources.join(","),
+    settings.apolloEmployeeRanges.join(","),
+    settings.apolloMaxEmployees,
     settings.dailyQuota,
     settings.searchLimit,
+    settings.sourceLimit,
     settings.country,
     settings.lang,
     settings.location,
@@ -87,8 +95,12 @@ export function createDiscoveryFormState(settings: DiscoverySettings): Discovery
     selectedIndustries: selection.industries,
     customQueries: selection.customQueries.join("\n"),
     seedUrls: settings.seedUrls.join("\n"),
+    enabledSources: settings.enabledSources.filter((source) => source !== "apollo_organization"),
+    apolloEmployeeRanges: settings.apolloEmployeeRanges,
+    apolloMaxEmployees: String(settings.apolloMaxEmployees),
     dailyQuota: String(settings.dailyQuota),
     searchLimit: String(settings.searchLimit),
+    sourceLimit: String(settings.sourceLimit),
     country: settings.country,
     lang: settings.lang,
     location: settings.location,
@@ -109,8 +121,12 @@ function discoveryFormKey(form: DiscoveryFormState): string {
     form.selectedIndustries.join("\n"),
     form.customQueries,
     form.seedUrls,
+    form.enabledSources.join(","),
+    form.apolloEmployeeRanges.join(","),
+    form.apolloMaxEmployees,
     form.dailyQuota,
     form.searchLimit,
+    form.sourceLimit,
     form.country,
     form.lang,
     form.location,

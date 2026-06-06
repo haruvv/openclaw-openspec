@@ -117,6 +117,68 @@ describe("crawlBatch", () => {
     expect(result.skipDetails).toHaveLength(0);
   });
 
+  it("propagates normalized candidate metadata and source contact hints", async () => {
+    mockScrape.mockResolvedValue({
+      url: "https://candidate.com",
+      domain: "candidate.com",
+      html: "<html><body>Candidate Clinic</body></html>",
+      title: "Candidate Clinic",
+    });
+    mockLh.mockResolvedValue({
+      ok: true,
+      durationMs: 900,
+      result: { url: "https://candidate.com", seoScore: 35, diagnostics: [] },
+    });
+
+    const result = await crawlBatch([{
+      id: "lead-1",
+      url: "https://candidate.com",
+      normalizedUrl: "https://candidate.com/",
+      domain: "candidate.com",
+      businessName: "Candidate Clinic",
+      category: "clinic",
+      location: "Tokyo",
+      technologies: [],
+      contactHints: [{ type: "maps_profile", value: "https://maps.example/place", sourceUrl: "https://maps.example/place", confidence: "high" }],
+      sourceProvenance: [{ source: "google_maps", confidence: "high", sourceBusinessId: "place-1", metadata: {} }],
+      sourceConfidence: "high",
+      stageEvents: [],
+      metadata: {},
+    }]);
+
+    expect(result.targets[0]).toMatchObject({
+      leadCandidateId: "lead-1",
+      leadSourceProvenance: [{ source: "google_maps" }],
+    });
+    expect(result.targets[0].contactMethods).toContainEqual(expect.objectContaining({ type: "maps_profile" }));
+  });
+
+  it("holds Maps-profile-only candidates before crawl", async () => {
+    const result = await crawlBatch([{
+      id: "lead-2",
+      url: "https://www.google.com/maps/place/?q=place_id:abc",
+      normalizedUrl: "https://www.google.com/maps/place/",
+      domain: "google.com",
+      businessName: "Maps Only",
+      category: "clinic",
+      location: "Tokyo",
+      technologies: [],
+      contactHints: [{ type: "maps_profile", value: "https://www.google.com/maps/place/?q=place_id:abc", confidence: "high" }],
+      sourceProvenance: [{ source: "google_maps", confidence: "high", sourceBusinessId: "abc", metadata: {} }],
+      sourceConfidence: "high",
+      stageEvents: [],
+      metadata: {},
+    }]);
+
+    expect(result.targets).toHaveLength(0);
+    expect(result.skipDetails).toContainEqual({
+      url: "https://www.google.com/maps/place/?q=place_id:abc",
+      stage: "business",
+      reason: "maps_profile_only",
+    });
+    expect(mockScrape).not.toHaveBeenCalled();
+  });
+
   it("queues URLs beyond batch limit of 50", async () => {
     mockScrape.mockResolvedValue(null);
     mockLh.mockResolvedValue({

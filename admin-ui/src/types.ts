@@ -1,7 +1,7 @@
 export type Status = "running" | "passed" | "failed" | "skipped";
 export type SalesOutreachStatus = "draft" | "sent" | "skipped" | "failed";
 export type SalesPaymentLinkStatus = "created" | "sent" | "failed" | "paid";
-export type ContactMethodType = "email" | "form" | "phone" | "contact_page";
+export type ContactMethodType = "email" | "form" | "phone" | "contact_page" | "social_dm" | "maps_profile" | "manual";
 export type ContactMethodConfidence = "low" | "medium" | "high";
 
 export interface ContactMethod {
@@ -11,6 +11,7 @@ export interface ContactMethod {
   confidence: ContactMethodConfidence;
   label?: string;
   reason?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface BusinessApp {
@@ -210,6 +211,7 @@ export interface SettingsPayload {
   policies: Array<{ key: "sendEmail" | "sendTelegram" | "createPaymentLink"; label: string; enabled: boolean }>;
   discovery: DiscoverySettings;
   sales: SalesOperationSettings;
+  contactSuppressions: ContactSuppression[];
 }
 
 export type SideEffectPolicy = SettingsPayload["policies"][number];
@@ -228,11 +230,24 @@ export interface SalesOperationSettings {
   configuredFromAdmin: boolean;
 }
 
+export interface ContactSuppression {
+  id: string;
+  kind: "email" | "domain";
+  value: string;
+  reason: string;
+  source: string;
+  createdAt: number;
+}
+
 export interface DiscoverySettings {
   queries: string[];
   seedUrls: string[];
+  enabledSources: string[];
+  apolloEmployeeRanges: string[];
+  apolloMaxEmployees: number;
   dailyQuota: number;
   searchLimit: number;
+  sourceLimit: number;
   country: string;
   lang: string;
   location: string;
@@ -246,6 +261,7 @@ export interface DiscoveryReport {
   candidateCount: number;
   selectedCount: number;
   skipped: Array<{ url: string; reason: string }>;
+  sources: Array<{ source: string; status: Status; candidateCount: number; reason?: string }>;
   runs: Array<{ url: string; runId: string; status: Status }>;
 }
 
@@ -620,8 +636,12 @@ export interface DiscoveryFormState {
   selectedIndustries: string[];
   customQueries: string;
   seedUrls: string;
+  enabledSources: string[];
+  apolloEmployeeRanges: string[];
+  apolloMaxEmployees: string;
   dailyQuota: string;
   searchLimit: string;
+  sourceLimit: string;
   country: string;
   lang: string;
   location: string;

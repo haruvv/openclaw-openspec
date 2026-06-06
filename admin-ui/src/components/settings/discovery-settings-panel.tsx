@@ -21,8 +21,12 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
     selectedIndustries,
     customQueries,
     seedUrls,
+    enabledSources,
+    apolloEmployeeRanges,
+    apolloMaxEmployees,
     dailyQuota,
     searchLimit,
+    sourceLimit,
     country,
     lang,
     location,
@@ -53,6 +57,24 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
     setError(null);
   }
 
+  function toggleSource(source: string) {
+    setForm((current) => ({
+      ...current,
+      enabledSources: toggleStringValue(current.enabledSources, source),
+    }));
+    setSaveNotice(null);
+    setError(null);
+  }
+
+  function toggleApolloEmployeeRange(range: string) {
+    setForm((current) => ({
+      ...current,
+      apolloEmployeeRanges: toggleStringValue(current.apolloEmployeeRanges, range),
+    }));
+    setSaveNotice(null);
+    setError(null);
+  }
+
   function selectSearchTarget(target: (typeof DISCOVERY_SEARCH_TARGETS)[number]) {
     setForm((current) => ({
       ...current,
@@ -78,8 +100,12 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
       const result = await apiPut<{ discovery: DiscoverySettings }>("/api/admin/seo-sales/settings/discovery", {
         queries: allQueries.join("\n"),
         seedUrls,
+        enabledSources,
+        apolloEmployeeRanges,
+        apolloMaxEmployees: Number(apolloMaxEmployees),
         dailyQuota: Number(dailyQuota),
         searchLimit: Number(searchLimit),
+        sourceLimit: Number(sourceLimit),
         country,
         lang,
         location,
@@ -112,6 +138,31 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
             </div>
           </fieldset>
         </div>
+        <fieldset>
+          <legend className="text-sm font-black text-slate-700">探索ソース</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {DISCOVERY_SOURCE_OPTIONS.map((source) => (
+              <label key={source.key} className="check-row">
+                <input type="checkbox" checked={enabledSources.includes(source.key)} onChange={() => toggleSource(source.key)} />
+                <span>{source.label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs font-semibold text-slate-500">主探索はGoogle MapsとFirecrawl検索です。ポータル/指定サイト検索は、Programmable Search Engineに登録した業界ポータル内を探す補助として使います。</p>
+        </fieldset>
+        <fieldset className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <legend className="px-1 text-sm font-black text-slate-700">Apolloの補完条件</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {APOLLO_EMPLOYEE_RANGE_OPTIONS.map((range) => (
+              <label key={range.key} className="check-row bg-white">
+                <input type="checkbox" checked={apolloEmployeeRanges.includes(range.key)} onChange={() => toggleApolloEmployeeRange(range.key)} />
+                <span>{range.label}</span>
+              </label>
+            ))}
+          </div>
+          <label className="mt-3 block text-sm font-black text-slate-700">最大従業員数<input className="input mt-2 w-full sm:max-w-xs" type="number" min="1" max="10000" value={apolloMaxEmployees} onChange={(event) => setFormValue("apolloMaxEmployees", event.target.value)} /></label>
+          <p className="mt-2 text-xs font-semibold text-slate-500">Google Mapsや地域検索で集めた候補をApolloで照合し、企業規模の上限超過を除外します。担当者補完にも同じApollo連携を使います。</p>
+        </fieldset>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="text-xs font-black text-slate-500">検索キーワードのプレビュー</div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -123,6 +174,7 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setFormValue("dailyQuota", event.target.value)} /></label>
           <label className="block text-sm font-black text-slate-700">検索件数/キーワード<input className="input mt-2 w-full" type="number" min="1" max="50" value={searchLimit} onChange={(event) => setFormValue("searchLimit", event.target.value)} /></label>
+          <label className="block text-sm font-black text-slate-700">ソース別候補上限<input className="input mt-2 w-full" type="number" min="1" max="50" value={sourceLimit} onChange={(event) => setFormValue("sourceLimit", event.target.value)} /></label>
         </div>
         <fieldset>
           <legend className="text-sm font-black text-slate-700">検索対象</legend>
@@ -139,6 +191,8 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
               </label>
             ))}
           </div>
+          <label className="mt-3 block text-sm font-black text-slate-700">地域名<input className="input mt-2 w-full" value={location} onChange={(event) => setFormValue("location", event.target.value)} placeholder="例: 渋谷区、横浜市、名古屋市" /></label>
+          <p className="mt-2 text-xs font-semibold text-slate-500">Google Mapsとポータル/指定サイト検索で、選んだ業種にこの地域名を掛け合わせます。</p>
         </fieldset>
         <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-black text-slate-700">詳細設定</summary>
@@ -165,3 +219,19 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
     </Panel>
   );
 }
+
+const DISCOVERY_SOURCE_OPTIONS = [
+  { key: "seed", label: "固定URL" },
+  { key: "firecrawl_search", label: "Firecrawl検索" },
+  { key: "google_maps", label: "Google Maps" },
+  { key: "google_search", label: "ポータル/指定サイト検索" },
+  { key: "technology_intelligence", label: "BuiltWith/Wappalyzer" },
+];
+
+const APOLLO_EMPLOYEE_RANGE_OPTIONS = [
+  { key: "1,10", label: "1-10名" },
+  { key: "11,50", label: "11-50名" },
+  { key: "51,200", label: "51-200名" },
+  { key: "201,500", label: "201-500名" },
+  { key: "501,1000", label: "501-1000名" },
+];

@@ -259,6 +259,7 @@ describe("admin routes", () => {
     process.env.ADMIN_TOKEN = "admin-test";
     process.env.STOCK_AI_DECISION_MODE = "deterministic";
     process.env.STOCK_PAPER_TRADE_CONFIDENCE_THRESHOLD = "0.5";
+    process.env.STOCK_MARKET_DATA_PROVIDER_KIND = "http";
     process.env.STOCK_MARKET_DATA_PROVIDER_URL = "https://provider.example/candles";
     vi.stubGlobal("fetch", vi.fn(async () => createStockAutomationCandleResponse()));
     const { upsertStockMarketDataWatchlistEntry } = await import("../src/stock-trading/repository.js");
@@ -411,6 +412,44 @@ describe("admin routes", () => {
     expect(body.sites[0]).toMatchObject({ displayUrl: "https://example.com/", latestSeoScore: 81 });
   });
 
+  it("returns lead discovery candidates from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { normalizeRawLeadCandidate } = await import("../src/discovery/normalization.js");
+    const { upsertLeadCandidate } = await import("../src/discovery/repository.js");
+    const candidate = normalizeRawLeadCandidate({
+      source: "google_maps",
+      url: "https://lead.example/",
+      businessName: "Lead Example",
+      category: "clinic",
+      location: "Tokyo",
+    });
+    await upsertLeadCandidate(candidate!);
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/leads?token=admin-test", "/api/admin");
+    const body = JSON.parse(response.body) as { candidates: Array<{ domain: string; businessName?: string }> };
+
+    expect(response.status).toBe(200);
+    expect(body.candidates).toContainEqual(expect.objectContaining({ domain: "lead.example", businessName: "Lead Example" }));
+  });
+
+  it("manages contact suppressions from the admin API", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const created = await dispatch(adminApiRouter, "/seo-sales/contact-suppressions?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { kind: "email", value: "NoThanks@Example.com", reason: "do_not_contact" },
+    });
+    const listed = await dispatch(adminApiRouter, "/seo-sales/contact-suppressions?token=admin-test", "/api/admin");
+    const settings = await dispatch(adminApiRouter, "/seo-sales/settings?token=admin-test", "/api/admin");
+
+    expect(created.status).toBe(201);
+    expect(JSON.parse(created.body).suppression).toMatchObject({ kind: "email", value: "nothanks@example.com", reason: "do_not_contact" });
+    expect(JSON.parse(listed.body).suppressions).toContainEqual(expect.objectContaining({ value: "nothanks@example.com" }));
+    expect(JSON.parse(settings.body).contactSuppressions).toContainEqual(expect.objectContaining({ value: "nothanks@example.com" }));
+  });
+
   it("loads an outreach draft for a completed run", async () => {
     process.env.ADMIN_TOKEN = "admin-test";
     const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
@@ -491,6 +530,8 @@ describe("admin routes", () => {
     process.env.REVENUE_AGENT_ALLOW_EMAIL = "true";
     process.env.SENDGRID_API_KEY = "sendgrid-test";
     process.env.SENDGRID_FROM_EMAIL = "from@example.com";
+    const sgMail = (await import("@sendgrid/mail")).default;
+    vi.mocked(sgMail.send).mockClear();
     const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
     await createAgentRun({
       id: "run-1",
@@ -519,8 +560,50 @@ describe("admin routes", () => {
 
     expect(first.status).toBe(201);
     expect(JSON.parse(first.body).message).toMatchObject({ status: "sent", recipientEmail: "info@example.com" });
+    expect(sgMail.send).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining("今後このようなご連絡が不要な場合"),
+    }));
+    expect(sgMail.send).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining("送信者: RevenueAgentPlatform <from@example.com>"),
+    }));
     expect(second.status).toBe(400);
     expect(JSON.parse(second.body).error).toContain("cooldown");
+  });
+
+  it("blocks reviewed outreach to suppressed recipients before SendGrid", async () => {
+    process.env.ADMIN_TOKEN = "admin-test";
+    process.env.REVENUE_AGENT_ALLOW_EMAIL = "true";
+    process.env.SENDGRID_API_KEY = "sendgrid-test";
+    process.env.SENDGRID_FROM_EMAIL = "from@example.com";
+    const sgMail = (await import("@sendgrid/mail")).default;
+    vi.mocked(sgMail.send).mockClear();
+    const { addContactSuppression } = await import("../src/contact-discovery/suppression.js");
+    const { createAgentRun, completeAgentRun } = await import("../src/agent-runs/repository.js");
+    await addContactSuppression({ kind: "email", value: "info@example.com", reason: "opt_out", source: "test" });
+    await createAgentRun({
+      id: "run-1",
+      agentType: "revenue_agent",
+      source: "manual",
+      input: { targetUrl: "https://example.com/" },
+      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+    });
+    await completeAgentRun({
+      id: "run-1",
+      status: "passed",
+      completedAt: new Date("2026-05-14T00:00:01.000Z"),
+      summary: { targetUrl: "https://example.com/", domain: "example.com", contactEmail: "info@example.com" },
+      steps: [],
+    });
+    const { adminApiRouter } = await import("../src/admin/routes.js");
+
+    const response = await dispatch(adminApiRouter, "/seo-sales/runs/run-1/outreach/send?token=admin-test", "/api/admin", {
+      method: "POST",
+      body: { recipientEmail: "info@example.com", subject: "確認", bodyText: "本文" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(JSON.parse(response.body).error).toContain("recipient is suppressed");
+    expect(sgMail.send).not.toHaveBeenCalled();
   });
 
   it("creates a reviewed payment link when payment policy is enabled", async () => {

@@ -7,6 +7,9 @@ import { assessRevenueAudit } from "../revenue-audit/assessor.js";
 import type { Target } from "../types/index.js";
 import { completeAgentRun, createAgentRun, upsertAgentRunStep } from "../agent-runs/repository.js";
 import { persistSiteResult } from "../sites/repository.js";
+import { chooseLeadRoute } from "../discovery/contact-routing.js";
+import { scoreLeadPriority } from "../discovery/priority.js";
+import { saveLeadPriorityScore, saveLeadRouteDecision } from "../discovery/repository.js";
 import { logger } from "../utils/logger.js";
 import type { RevenueAgentRunOptions, RevenueAgentRunReport, RevenueAgentStepResult } from "./types.js";
 import { buildFailureDiagnostic, buildSkipDiagnostic } from "../utils/failure-diagnostics.js";
@@ -45,7 +48,7 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       if (!process.env.FIRECRAWL_API_KEY) {
         return { status: "skipped", reason: "FIRECRAWL_API_KEY is not set" };
       }
-      const result = await crawlBatch([targetUrl], { threshold: 100, requireContactEmail: true });
+      const result = await crawlBatch([targetUrl], { threshold: 100, requireContactEmail: false });
       target = result.targets[0];
       outputs.crawl = {
         targets: result.targets.length,
@@ -70,6 +73,32 @@ export async function runRevenueAgent(options: RevenueAgentRunOptions): Promise<
       outputs.domain = target.domain;
       outputs.contactEmail = target.contactEmail;
       outputs.contactMethods = target.contactMethods ?? [];
+      outputs.leadCandidateId = target.leadCandidateId;
+      outputs.leadSourceProvenance = target.leadSourceProvenance ?? [];
+      const priorityScore = scoreLeadPriority({
+        seoScore: target.seoScore,
+        opportunityScore: target.opportunityScore,
+        opportunityFindings: target.opportunityFindings,
+        contactMethods: target.contactMethods ?? [],
+        manualCapacityAvailable: true,
+      });
+      const routeDecision = chooseLeadRoute({
+        contactMethods: target.contactMethods ?? [],
+        priorityScore,
+        manualCapacityAvailable: true,
+        emailPolicyEnabled: true,
+      });
+      target = { ...target, leadPriorityScore: priorityScore, leadRouteDecision: routeDecision };
+      outputs.leadPriorityScore = priorityScore;
+      outputs.leadRouteDecision = routeDecision;
+      if (target.leadCandidateId) {
+        await saveLeadPriorityScore(target.leadCandidateId, priorityScore).catch((err) => {
+          logger.warn("Lead priority persistence failed", { candidateId: target?.leadCandidateId, err });
+        });
+        await saveLeadRouteDecision(target.leadCandidateId, routeDecision).catch((err) => {
+          logger.warn("Lead route decision persistence failed", { candidateId: target?.leadCandidateId, err });
+        });
+      }
       if (typeof target.seoScore === "number") {
         outputs.seoScore = target.seoScore;
       }

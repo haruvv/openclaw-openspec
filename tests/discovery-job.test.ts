@@ -49,6 +49,7 @@ describe("runDailyDiscoveryJob", () => {
       ],
       validateUrl: async (url) => ({ ok: true, url }),
       checkContactEmail: async () => ({ ok: true, contactEmail: "info@example.com" }),
+      requireContactEmail: true,
       runAgent,
     });
 
@@ -87,15 +88,22 @@ describe("runDailyDiscoveryJob", () => {
       listExistingSites: async () => [],
       validateUrl: async (url) => ({ ok: true, url }),
       checkContactEmail: async () => ({ ok: true, contactEmail: "info@example.com" }),
+      requireContactEmail: true,
       runAgent,
     });
 
     expect(report.selectedCount).toBe(2);
-    expect(report.runs.map((run) => run.url)).toEqual(["https://seed.com/", "https://search.com/"]);
-    expect(runAgent).toHaveBeenLastCalledWith(
+    expect(report.runs.map((run) => run.url)).toEqual(["https://search.com/", "https://seed.com/"]);
+    expect(runAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         targetUrl: "https://search.com/",
-        metadata: { discovery: { source: "firecrawl_search", query: "tax accountant tokyo", title: "Search Result" } },
+        metadata: {
+          discovery: expect.objectContaining({
+            primarySource: "firecrawl_search",
+            query: "tax accountant tokyo",
+            title: "Search Result",
+          }),
+        },
       }),
     );
   });
@@ -126,6 +134,7 @@ describe("runDailyDiscoveryJob", () => {
       listExistingSites: async () => [],
       validateUrl: async (url) => ({ ok: true, url }),
       checkContactEmail,
+      requireContactEmail: true,
       runAgent,
     });
 
@@ -135,6 +144,98 @@ describe("runDailyDiscoveryJob", () => {
     expect(report.runs.map((run) => run.url)).toEqual(["https://with-email.com/", "https://also-email.com/"]);
     expect(runAgent).not.toHaveBeenCalledWith(expect.objectContaining({ targetUrl: "https://no-email.com/" }));
     expect(checkContactEmail).toHaveBeenCalledTimes(3);
+  });
+
+  it("filters likely large enterprise or chain candidates before starting agent runs", async () => {
+    const runAgent = vi.fn().mockResolvedValueOnce(buildRunReport("run-1", "https://local-salon.example/"));
+
+    const report = await runDailyDiscoveryJob({
+      env: {
+        REVENUE_AGENT_DISCOVERY_ENABLED: "true",
+        REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "5",
+      } as NodeJS.ProcessEnv,
+      discoverCandidates: async () => [
+        { url: "https://big-salon.example/recruit/", source: "google_search", title: "全国展開 美容室グループ 採用情報" },
+        { url: "https://local-salon.example/", source: "google_search", title: "地域密着 美容室 公式サイト" },
+      ],
+      listExistingSites: async () => [],
+      validateUrl: async (url) => ({ ok: true, url }),
+      runAgent,
+    });
+
+    expect(report.selectedCount).toBe(1);
+    expect(report.skipped).toContainEqual({ url: "https://big-salon.example/recruit/", reason: "large_enterprise_or_chain" });
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    expect(runAgent).toHaveBeenCalledWith(expect.objectContaining({ targetUrl: "https://local-salon.example/" }));
+  });
+
+  it("uses Apollo as a company-size check after primary discovery", async () => {
+    const runAgent = vi.fn().mockResolvedValueOnce(buildRunReport("run-1", "https://local-clinic.example/"));
+    const fetchMock = vi.fn(async (url: URL | string) => {
+      const requestUrl = new URL(String(url));
+      const domain = requestUrl.searchParams.getAll("q_organization_domains_list[]")[0];
+      if (domain === "big-clinic.example") {
+        return new Response(JSON.stringify({ organizations: [{ primary_domain: "big-clinic.example", estimated_num_employees: 1200 }] }));
+      }
+      return new Response(JSON.stringify({ organizations: [{ primary_domain: "local-clinic.example", estimated_num_employees: 35 }] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await runDailyDiscoveryJob({
+      env: {
+        REVENUE_AGENT_DISCOVERY_ENABLED: "true",
+        REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "5",
+        APOLLO_API_KEY: "apollo-key",
+        APOLLO_ORGANIZATION_SEARCH_API_BASE_URL: "https://apollo.test/api/v1/mixed_companies/search",
+        APOLLO_ORGANIZATION_MAX_EMPLOYEES: "1000",
+      } as NodeJS.ProcessEnv,
+      sourceAdapters: [
+        { id: "google_maps", discover: async () => [
+          { source: "google_maps", url: "https://big-clinic.example/", businessName: "Big Clinic", sourceBusinessId: "place-big" },
+          { source: "google_maps", url: "https://local-clinic.example/", businessName: "Local Clinic", sourceBusinessId: "place-local" },
+        ] },
+      ],
+      listExistingSites: async () => [],
+      validateUrl: async (url) => ({ ok: true, url }),
+      runAgent,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(report.selectedCount).toBe(1);
+    expect(report.skipped).toContainEqual({ url: "https://big-clinic.example/", reason: "apollo_company_too_large" });
+    expect(runAgent).toHaveBeenCalledWith(expect.objectContaining({ targetUrl: "https://local-clinic.example/" }));
+  });
+
+  it("collects from multiple lead source adapters and continues after one source fails", async () => {
+    const runAgent = vi.fn().mockResolvedValueOnce(buildRunReport("run-1", "https://maps.example/"));
+
+    const report = await runDailyDiscoveryJob({
+      env: {
+        REVENUE_AGENT_DISCOVERY_ENABLED: "true",
+        REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "5",
+      } as NodeJS.ProcessEnv,
+      sourceAdapters: [
+        { id: "google_maps", discover: async () => [{ source: "google_maps", url: "https://maps.example/", businessName: "Maps Example", sourceBusinessId: "place-1" }] },
+        { id: "technology_intelligence", discover: async () => [{ source: "technology_intelligence", domain: "maps.example", technologies: ["WordPress"] }] },
+        { id: "google_search", discover: async () => { throw new Error("provider_failed"); } },
+      ],
+      listExistingSites: async () => [],
+      validateUrl: async (url) => ({ ok: true, url }),
+      runAgent,
+    });
+
+    expect(report.sources.map((source) => source.status)).toEqual(["passed", "passed", "failed"]);
+    expect(report.candidateCount).toBe(1);
+    expect(report.selectedCount).toBe(1);
+    expect(runAgent).toHaveBeenCalledWith(expect.objectContaining({
+      targetUrl: "https://maps.example/",
+      metadata: {
+        discovery: expect.objectContaining({
+          sources: ["google_maps", "technology_intelligence"],
+          businessName: "Maps Example",
+        }),
+      },
+    }));
   });
 });
 

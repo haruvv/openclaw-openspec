@@ -196,6 +196,19 @@ function DiscoveryRunPanel() {
             <tbody>{report.runs.map((run) => <tr key={run.runId}><td><StatusPill status={run.status} /></td><td>{run.url}</td><td><Link className="table-link" to={`/admin/seo-sales/runs/${run.runId}`}>開く</Link></td></tr>)}</tbody>
           </table>
         ) : null}
+        {report?.sources.length ? (
+          <div className="border border-slate-200 bg-white p-3">
+            <div className="text-xs font-black text-slate-500">探索ソース</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {report.sources.map((source) => (
+                <div key={source.source} className="flex items-center justify-between gap-2 border border-slate-100 bg-slate-50 px-3 py-2">
+                  <span className="text-sm font-bold text-slate-700">{formatDiscoverySource(source.source)}</span>
+                  <span className="flex items-center gap-2 text-xs font-black text-slate-500"><StatusPill status={source.status} />{source.candidateCount}件</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {report?.status === "disabled" ? (
           <p className="border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-600">手動の候補発見は無効です。Cloudflare の環境変数で REVENUE_AGENT_DISCOVERY_MANUAL_ENABLED=false になっていないか確認してください。</p>
         ) : null}
@@ -219,4 +232,15 @@ function DiscoveryRunPanel() {
       </div>
     </section>
   );
+}
+
+function formatDiscoverySource(source: string): string {
+  return {
+    seed: "固定URL",
+    firecrawl_search: "Firecrawl検索",
+    google_search: "ポータル/指定サイト検索",
+    google_maps: "Google Maps",
+    apollo_organization: "Apollo企業検索",
+    technology_intelligence: "BuiltWith/Wappalyzer",
+  }[source] ?? source;
 }

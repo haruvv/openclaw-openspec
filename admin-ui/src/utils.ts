@@ -179,6 +179,12 @@ export function formatDiscoverySummary(report: DiscoveryReport): string {
   if (report.selectedCount === 0 && report.skipped.some((item) => item.reason === "missing_contact_email")) {
     return "公開メールのある候補URLが見つかりませんでした。検索件数または検索条件を増やしてください。";
   }
+  if (report.selectedCount === 0 && report.skipped.some((item) => item.reason === "large_enterprise_or_chain")) {
+    return "中小企業向け条件に合う新規候補が見つかりませんでした。検索地域や業種を調整してください。";
+  }
+  if (report.selectedCount === 0 && report.skipped.some((item) => item.reason === "apollo_company_too_large")) {
+    return "Apolloの企業規模条件に合う新規候補が見つかりませんでした。最大従業員数や業種を調整してください。";
+  }
   if (report.selectedCount === 0) return "新しく解析するURLはありませんでした。既に解析済み、またはURL検証で除外されています。";
   return "候補発見は完了しました。";
 }
@@ -189,6 +195,8 @@ export function formatSkipReason(reason: string): string {
     crawl_failed: "クロール失敗",
     discovery_sources_empty: "検索条件なし",
     missing_contact_email: "公開メールなし",
+    large_enterprise_or_chain: "大手/チェーン候補",
+    apollo_company_too_large: "Apollo企業規模上限超過",
     no_candidates_found: "検索結果なし",
     "REVENUE_AGENT_DISCOVERY_SEED_URLS is empty": "候補設定なし",
   }[reason] ?? reason;

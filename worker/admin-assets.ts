@@ -16,7 +16,7 @@ export async function maybeServeAdminUiAsset(request: Request, env: AssetEnviron
 
   const directResponse = await env.ASSETS.fetch(request);
   if (directResponse.status !== 404 || hasFileExtension(url.pathname)) {
-    return directResponse;
+    return withAdminHtmlCacheHeaders(directResponse);
   }
 
   if (!acceptsHtml(request)) {
@@ -24,7 +24,7 @@ export async function maybeServeAdminUiAsset(request: Request, env: AssetEnviron
   }
 
   const indexUrl = new URL("/admin/index.html", url.origin);
-  return env.ASSETS.fetch(new Request(indexUrl, request));
+  return withAdminHtmlCacheHeaders(await env.ASSETS.fetch(new Request(indexUrl, request)));
 }
 
 function isAssetSafeMethod(method: string): boolean {
@@ -39,4 +39,18 @@ function hasFileExtension(pathname: string): boolean {
 function acceptsHtml(request: Request): boolean {
   const accept = request.headers.get("accept");
   return !accept || accept.includes("text/html") || accept.includes("*/*");
+}
+
+function withAdminHtmlCacheHeaders(response: Response): Response {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-store, no-cache, must-revalidate");
+  headers.set("pragma", "no-cache");
+  headers.set("expires", "0");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
