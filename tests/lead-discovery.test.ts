@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apolloOrganizationSourceAdapter, executeLeadSourceAdapters, googleMapsSourceAdapter, readEnabledSources, technologyIntelligenceSourceAdapter } from "../src/discovery/adapters.js";
+import { apolloOrganizationSourceAdapter, executeLeadSourceAdapters, googleMapsSourceAdapter, portalSearchSourceAdapter, readEnabledSources, technologyIntelligenceSourceAdapter } from "../src/discovery/adapters.js";
 import { chooseLeadRoute, normalizeContactMethods } from "../src/discovery/contact-routing.js";
 import { mergeSiteCandidates, normalizeRawLeadCandidate } from "../src/discovery/normalization.js";
 import { scoreLeadPriority } from "../src/discovery/priority.js";
@@ -53,6 +53,35 @@ describe("lead discovery domain", () => {
     const b = normalizeRawLeadCandidate({ source: "google_maps", url: "https://b.example/", businessName: "Same Name", category: "restaurant", location: "Osaka" });
 
     expect(mergeSiteCandidates([a!, b!])).toHaveLength(2);
+  });
+
+  it("merges portal profile provenance into a matching official-site candidate", () => {
+    const portal = normalizeRawLeadCandidate({
+      source: "portal_search",
+      url: "https://portal.example/clinic/123",
+      businessName: "代々木テスト歯科",
+      location: "東京都渋谷区代々木1-1-1",
+      contactHints: [{ type: "phone", value: "03-1234-5678" }],
+      metadata: {
+        portalUrl: "https://portal.example/clinic/123",
+        profileOnly: true,
+        officialUrlExtracted: false,
+      },
+    });
+    const maps = normalizeRawLeadCandidate({
+      source: "google_maps",
+      url: "https://yoyogi-dental.example/",
+      businessName: "代々木テスト歯科",
+      location: "東京都渋谷区代々木1-1-1",
+      contactHints: [{ type: "phone", value: "03-1234-5678" }],
+      sourceBusinessId: "place-123",
+    });
+
+    const merged = mergeSiteCandidates([portal!, maps!]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].url).toBe("https://yoyogi-dental.example/");
+    expect(merged[0].sourceProvenance.map((source) => source.source)).toEqual(["portal_search", "google_maps"]);
   });
 
   it("isolates source adapter failures", async () => {
@@ -181,6 +210,87 @@ describe("lead discovery domain", () => {
       url: "https://www.google.com/maps/place/?q=place_id:place-2",
       businessName: "Fallback Shop",
       metadata: { detailsHydrated: false },
+    });
+  });
+
+  it("extracts official business URLs from configured portal profile pages", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`
+      <html>
+        <head><title>青山テスト整体院 | ポータル</title></head>
+        <body>
+          <h1>青山テスト整体院</h1>
+          <p>住所: 東京都港区南青山1-1-1</p>
+          <p>03-1111-2222</p>
+          <a href="/internal">ポータル内リンク</a>
+          <a href="https://instagram.com/test">Instagram</a>
+          <a href="https://official-salon.example/">公式サイト</a>
+        </body>
+      </html>
+    `)));
+
+    const candidates = await portalSearchSourceAdapter.discover({
+      queries: ["整体 公式サイト"],
+      seedUrls: [],
+      limit: 5,
+      country: "jp",
+      lang: "ja",
+      location: "港区",
+      env: {
+        REVENUE_AGENT_PORTAL_DISCOVERY_URLS: "https://portal.example/shop/123",
+      } as NodeJS.ProcessEnv,
+    }, { now: new Date("2026-06-06T00:00:00Z") });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      source: "portal_search",
+      url: "https://official-salon.example/",
+      businessName: "青山テスト整体院",
+      location: "東京都港区南青山1-1-1",
+      sourceBusinessId: "https://portal.example/shop/123",
+      confidence: "medium",
+      metadata: {
+        portalUrl: "https://portal.example/shop/123",
+        portalDomain: "portal.example",
+        officialUrlExtracted: true,
+        profileOnly: false,
+      },
+    });
+    expect(candidates[0].contactHints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "phone", value: "03-1111-2222" }),
+      expect.objectContaining({ type: "manual", value: "https://portal.example/shop/123" }),
+    ]));
+  });
+
+  it("keeps portal profile-only candidates when no official URL is available", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`
+      <html>
+        <head><title>代々木テスト歯科</title></head>
+        <body>
+          <h1>代々木テスト歯科</h1>
+          <a href="https://portal.example/reserve/123">予約</a>
+          <a href="https://facebook.com/test">Facebook</a>
+        </body>
+      </html>
+    `)));
+
+    const candidates = await portalSearchSourceAdapter.discover({
+      queries: ["歯科 公式サイト"],
+      seedUrls: [],
+      limit: 5,
+      country: "jp",
+      lang: "ja",
+      location: "渋谷区",
+      env: {
+        REVENUE_AGENT_PORTAL_DISCOVERY_URLS: "https://portal.example/clinic/123",
+      } as NodeJS.ProcessEnv,
+    }, { now: new Date("2026-06-06T00:00:00Z") });
+
+    expect(candidates[0]).toMatchObject({
+      source: "portal_search",
+      url: "https://portal.example/clinic/123",
+      businessName: "代々木テスト歯科",
+      confidence: "low",
+      metadata: { officialUrlExtracted: false, profileOnly: true, extractionMethod: "profile_only" },
     });
   });
 

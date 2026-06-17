@@ -237,6 +237,36 @@ describe("runDailyDiscoveryJob", () => {
       },
     }));
   });
+
+  it("holds portal profile-only candidates before starting agent runs", async () => {
+    const runAgent = vi.fn();
+
+    const report = await runDailyDiscoveryJob({
+      env: {
+        REVENUE_AGENT_DISCOVERY_ENABLED: "true",
+        REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: "5",
+      } as NodeJS.ProcessEnv,
+      sourceAdapters: [
+        { id: "portal_search", discover: async () => [{
+          source: "portal_search",
+          url: "https://portal.example/salon/123",
+          businessName: "青山テストサロン",
+          metadata: {
+            portalUrl: "https://portal.example/salon/123",
+            profileOnly: true,
+            officialUrlExtracted: false,
+          },
+        }] },
+      ],
+      listExistingSites: async () => [],
+      validateUrl: async (url) => ({ ok: true, url }),
+      runAgent,
+    });
+
+    expect(report.selectedCount).toBe(0);
+    expect(report.skipped).toContainEqual({ url: "https://portal.example/salon/123", reason: "portal_profile_only" });
+    expect(runAgent).not.toHaveBeenCalled();
+  });
 });
 
 function buildRunReport(id: string, targetUrl: string) {

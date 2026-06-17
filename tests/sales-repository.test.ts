@@ -21,12 +21,13 @@ describe("sales repository", () => {
   it("stores outreach and payment link records in SQLite fallback", async () => {
     const { createAgentRun } = await import("../src/agent-runs/repository.js");
     const { createOutreachMessage, createPaymentLinkRecord, getSalesActionsForRun, hasRecentSentOutreach } = await import("../src/sales/repository.js");
+    const now = new Date();
     await createAgentRun({
       id: "run-1",
       agentType: "revenue_agent",
       source: "manual",
       input: { targetUrl: "https://example.com/" },
-      startedAt: new Date("2026-05-14T00:00:00.000Z"),
+      startedAt: now,
     });
 
     await createOutreachMessage({
@@ -37,8 +38,8 @@ describe("sales repository", () => {
       subject: "確認",
       bodyText: "本文",
       status: "sent",
-      reviewedAt: new Date("2026-05-14T00:00:00.000Z"),
-      sentAt: new Date("2026-05-14T00:00:01.000Z"),
+      reviewedAt: now,
+      sentAt: now,
     });
     await createPaymentLinkRecord({
       runId: "run-1",
@@ -48,7 +49,7 @@ describe("sales repository", () => {
       stripePaymentLinkId: "plink_test",
       paymentLinkUrl: "https://buy.stripe.com/test",
       status: "created",
-      expiresAt: new Date("2026-06-14T00:00:00.000Z"),
+      expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
     });
 
     await expect(hasRecentSentOutreach("example.com", 30)).resolves.toBe(true);

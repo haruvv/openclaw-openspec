@@ -24,6 +24,8 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
     enabledSources,
     apolloEmployeeRanges,
     apolloMaxEmployees,
+    portalDomains,
+    portalUrls,
     dailyQuota,
     searchLimit,
     sourceLimit,
@@ -103,6 +105,8 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
         enabledSources,
         apolloEmployeeRanges,
         apolloMaxEmployees: Number(apolloMaxEmployees),
+        portalDomains,
+        portalUrls,
         dailyQuota: Number(dailyQuota),
         searchLimit: Number(searchLimit),
         sourceLimit: Number(sourceLimit),
@@ -148,7 +152,22 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
               </label>
             ))}
           </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">主探索はGoogle MapsとFirecrawl検索です。ポータル/指定サイト検索は、Programmable Search Engineに登録した業界ポータル内を探す補助として使います。</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">主探索はGoogle MapsとFirecrawl検索です。業界ポータル探索は、登録したポータルや指定サイト内から公式サイト候補を補う補助ソースです。全Web検索としては使いません。</p>
+        </fieldset>
+        <fieldset className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <legend className="px-1 text-sm font-black text-slate-700">業界ポータル探索</legend>
+          <div className="mt-2 grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="text-sm font-black text-slate-700" htmlFor="portal-domains">対象ポータルドメイン</label>
+              <textarea id="portal-domains" className="textarea mt-2" value={portalDomains} onChange={(event) => setFormValue("portalDomains", event.target.value)} placeholder={"example-portal.jp\nclinic-directory.example"} />
+              <p className="mt-2 text-xs font-semibold text-slate-500">1行1ドメイン。Google Custom Search APIが設定済みなら、このドメイン内を `site:` 検索して掲載ページを探します。</p>
+            </div>
+            <div>
+              <label className="text-sm font-black text-slate-700" htmlFor="portal-urls">直接読むポータルURL</label>
+              <textarea id="portal-urls" className="textarea mt-2" value={portalUrls} onChange={(event) => setFormValue("portalUrls", event.target.value)} placeholder={"https://example-portal.jp/shop/123\nhttps://clinic-directory.example/clinic/abc"} />
+              <p className="mt-2 text-xs font-semibold text-slate-500">検索せずに確認したい掲載ページを指定します。公式サイトリンクがない掲載ページはSEO解析前に保留します。</p>
+            </div>
+          </div>
         </fieldset>
         <fieldset className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <legend className="px-1 text-sm font-black text-slate-700">Apolloの補完条件</legend>
@@ -192,7 +211,7 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
             ))}
           </div>
           <label className="mt-3 block text-sm font-black text-slate-700">地域名<input className="input mt-2 w-full" value={location} onChange={(event) => setFormValue("location", event.target.value)} placeholder="例: 渋谷区、横浜市、名古屋市" /></label>
-          <p className="mt-2 text-xs font-semibold text-slate-500">Google Mapsとポータル/指定サイト検索で、選んだ業種にこの地域名を掛け合わせます。</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">Google Maps、Firecrawl検索、業界ポータル探索で、選んだ業種にこの地域名を掛け合わせます。</p>
         </fieldset>
         <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-black text-slate-700">詳細設定</summary>
@@ -224,7 +243,8 @@ const DISCOVERY_SOURCE_OPTIONS = [
   { key: "seed", label: "固定URL" },
   { key: "firecrawl_search", label: "Firecrawl検索" },
   { key: "google_maps", label: "Google Maps" },
-  { key: "google_search", label: "ポータル/指定サイト検索" },
+  { key: "portal_search", label: "業界ポータル探索" },
+  { key: "google_search", label: "PSE指定サイト検索" },
   { key: "technology_intelligence", label: "BuiltWith/Wappalyzer" },
 ];
 

@@ -51,6 +51,9 @@ const LARGE_ENTERPRISE_PATH_PATTERNS = [
 ];
 
 export function qualifyBusinessSite(candidate: SiteCandidate, crawl?: CrawlResult): BusinessSiteQualification {
+  if (isPortalProfileOnly(candidate)) {
+    return { status: "held", reasonCode: "portal_profile_only", message: "Portal profile exists but no official business website URL was found", confidence: "medium" };
+  }
   if (candidate.sourceProvenance.some((source) => source.source === "google_maps") && !hasCrawlableBusinessUrl(candidate)) {
     return { status: "held", reasonCode: "maps_profile_only", message: "Maps profile exists but no website URL was found", confidence: "medium" };
   }
@@ -62,6 +65,14 @@ export function qualifyBusinessSite(candidate: SiteCandidate, crawl?: CrawlResul
     return { status: "passed", reasonCode: "business_site_evidence", message: "Candidate has enough business-site evidence", confidence: candidate.sourceConfidence };
   }
   return { status: "rejected", reasonCode: "insufficient_business_evidence", message: "Candidate lacks business-site evidence", confidence: "low" };
+}
+
+function isPortalProfileOnly(candidate: SiteCandidate): boolean {
+  return candidate.sourceProvenance.some((source) => (
+    source.source === "portal_search" &&
+    source.metadata.profileOnly === true &&
+    source.metadata.officialUrlExtracted !== true
+  ));
 }
 
 export function qualifySmallBusinessFit(candidate: SiteCandidate): BusinessSiteQualification {

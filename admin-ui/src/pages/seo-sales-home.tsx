@@ -238,8 +238,9 @@ function formatDiscoverySource(source: string): string {
   return {
     seed: "固定URL",
     firecrawl_search: "Firecrawl検索",
-    google_search: "ポータル/指定サイト検索",
+    google_search: "PSE指定サイト検索",
     google_maps: "Google Maps",
+    portal_search: "業界ポータル探索",
     apollo_organization: "Apollo企業検索",
     technology_intelligence: "BuiltWith/Wappalyzer",
   }[source] ?? source;

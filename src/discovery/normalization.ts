@@ -67,6 +67,12 @@ export function mergeSiteCandidates(candidates: SiteCandidate[], now = new Date(
       merged.push(candidate);
       continue;
     }
+    if (isProfileOnlyPortalCandidate(match) && !isProfileOnlyPortalCandidate(candidate)) {
+      match.url = candidate.url;
+      match.normalizedUrl = candidate.normalizedUrl;
+      match.domain = candidate.domain;
+      match.id = candidate.id;
+    }
     match.sourceProvenance = mergeProvenance(match.sourceProvenance, candidate.sourceProvenance);
     match.sourceConfidence = maxConfidence(match.sourceConfidence, candidate.sourceConfidence);
     match.technologies = uniqueStrings([...match.technologies, ...candidate.technologies]);
@@ -93,6 +99,7 @@ export function areSameCandidate(a: SiteCandidate, b: SiteCandidate): boolean {
   if (a.domain && b.domain && a.domain === b.domain) return true;
   const aIds = new Set(a.sourceProvenance.flatMap((source) => source.sourceBusinessId ? [`${source.source}:${source.sourceBusinessId}`] : []));
   if (b.sourceProvenance.some((source) => source.sourceBusinessId && aIds.has(`${source.source}:${source.sourceBusinessId}`))) return true;
+  if (isPortalOfficialComplement(a, b) || isPortalOfficialComplement(b, a)) return true;
   const aIdentity = businessIdentityKey(a);
   const bIdentity = businessIdentityKey(b);
   return Boolean(aIdentity && bIdentity && aIdentity === bIdentity);
@@ -198,9 +205,33 @@ function mergeProvenance(a: SourceProvenance[], b: SourceProvenance[]): SourcePr
   });
 }
 
+function isPortalOfficialComplement(portalCandidate: SiteCandidate, officialCandidate: SiteCandidate): boolean {
+  if (!isProfileOnlyPortalCandidate(portalCandidate)) return false;
+  if (isProfileOnlyPortalCandidate(officialCandidate)) return false;
+  const nameMatches = normalizeIdentityText(portalCandidate.businessName) && normalizeIdentityText(portalCandidate.businessName) === normalizeIdentityText(officialCandidate.businessName);
+  if (!nameMatches) return false;
+  if (sharedPhone(portalCandidate, officialCandidate)) return true;
+  const portalLocation = normalizeIdentityText(portalCandidate.location);
+  const officialLocation = normalizeIdentityText(officialCandidate.location);
+  return Boolean(portalLocation && officialLocation && (portalLocation.includes(officialLocation) || officialLocation.includes(portalLocation)));
+}
+
+function isProfileOnlyPortalCandidate(candidate: SiteCandidate): boolean {
+  return candidate.sourceProvenance.some((source) => source.source === "portal_search" && source.metadata.profileOnly === true);
+}
+
+function sharedPhone(a: SiteCandidate, b: SiteCandidate): boolean {
+  const phones = new Set(a.contactHints.filter((hint) => hint.type === "phone").map((hint) => normalizePhone(hint.value)).filter(Boolean));
+  return b.contactHints.some((hint) => hint.type === "phone" && phones.has(normalizePhone(hint.value)));
+}
+
+function normalizePhone(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 function defaultConfidence(source: RawLeadCandidate["source"]): SourceConfidence {
   if (source === "google_maps" || source === "apollo_organization" || source === "technology_intelligence") return "high";
-  if (source === "google_search" || source === "firecrawl_search") return "medium";
+  if (source === "google_search" || source === "portal_search" || source === "firecrawl_search") return "medium";
   return "low";
 }
 

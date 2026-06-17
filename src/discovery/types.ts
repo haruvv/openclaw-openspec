@@ -4,6 +4,7 @@ export type LeadSourceId =
   | "seed"
   | "firecrawl_search"
   | "google_search"
+  | "portal_search"
   | "google_maps"
   | "apollo_organization"
   | "technology_intelligence";

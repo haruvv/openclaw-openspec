@@ -245,6 +245,8 @@ export interface DiscoverySettings {
   enabledSources: string[];
   apolloEmployeeRanges: string[];
   apolloMaxEmployees: number;
+  portalDomains: string[];
+  portalUrls: string[];
   dailyQuota: number;
   searchLimit: number;
   sourceLimit: number;
@@ -639,6 +641,8 @@ export interface DiscoveryFormState {
   enabledSources: string[];
   apolloEmployeeRanges: string[];
   apolloMaxEmployees: string;
+  portalDomains: string;
+  portalUrls: string;
   dailyQuota: string;
   searchLimit: string;
   sourceLimit: string;

@@ -431,8 +431,8 @@ adminApiRouter.get("/seo-sales/settings", async (_req, res) => {
   const sideEffects = await getSideEffectSettings();
   const integrations = [
     ["Firecrawl", "FIRECRAWL_API_KEY"],
-    ["ポータル/指定サイト検索 APIキー", "GOOGLE_SEARCH_API_KEY"],
-    ["ポータル/指定サイト検索 CX", "GOOGLE_SEARCH_CX"],
+    ["PSE指定サイト検索 APIキー", "GOOGLE_SEARCH_API_KEY"],
+    ["PSE指定サイト検索 CX", "GOOGLE_SEARCH_CX"],
     ["Google Maps", "GOOGLE_MAPS_API_KEY"],
     ["Apollo", "APOLLO_API_KEY"],
     ["Hunter", "HUNTER_API_KEY"],

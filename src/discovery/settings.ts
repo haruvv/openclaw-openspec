@@ -7,6 +7,8 @@ export interface DiscoverySettings {
   enabledSources: string[];
   apolloEmployeeRanges: string[];
   apolloMaxEmployees: number;
+  portalDomains: string[];
+  portalUrls: string[];
   dailyQuota: number;
   searchLimit: number;
   sourceLimit: number;
@@ -22,6 +24,8 @@ export interface SaveDiscoverySettingsInput {
   enabledSources?: unknown;
   apolloEmployeeRanges?: unknown;
   apolloMaxEmployees?: unknown;
+  portalDomains?: unknown;
+  portalUrls?: unknown;
   dailyQuota?: unknown;
   searchLimit?: unknown;
   sourceLimit?: unknown;
@@ -36,6 +40,8 @@ const DISCOVERY_SETTING_KEYS = [
   "discovery.enabledSources",
   "discovery.apolloEmployeeRanges",
   "discovery.apolloMaxEmployees",
+  "discovery.portalDomains",
+  "discovery.portalUrls",
   "discovery.dailyQuota",
   "discovery.searchLimit",
   "discovery.sourceLimit",
@@ -55,6 +61,8 @@ export async function getDiscoverySettings(env: NodeJS.ProcessEnv = process.env)
     enabledSources: readSources(stored.get("discovery.enabledSources") ?? env.REVENUE_AGENT_DISCOVERY_SOURCES),
     apolloEmployeeRanges: readEmployeeRanges(stored.get("discovery.apolloEmployeeRanges") ?? env.APOLLO_ORGANIZATION_EMPLOYEE_RANGES),
     apolloMaxEmployees: readBoundedInteger(stored.get("discovery.apolloMaxEmployees") ?? env.APOLLO_ORGANIZATION_MAX_EMPLOYEES, 1000, 1, 10000),
+    portalDomains: readList(stored.get("discovery.portalDomains") ?? env.REVENUE_AGENT_PORTAL_DISCOVERY_DOMAINS),
+    portalUrls: readList(stored.get("discovery.portalUrls") ?? env.REVENUE_AGENT_PORTAL_DISCOVERY_URLS),
     dailyQuota: readBoundedInteger(stored.get("discovery.dailyQuota") ?? env.REVENUE_AGENT_DISCOVERY_DAILY_QUOTA, 3, 1, 10),
     searchLimit: readBoundedInteger(stored.get("discovery.searchLimit") ?? env.REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT, 10, 1, 50),
     sourceLimit: readBoundedInteger(stored.get("discovery.sourceLimit") ?? env.REVENUE_AGENT_DISCOVERY_SOURCE_LIMIT, 10, 1, 50),
@@ -72,6 +80,8 @@ export async function saveDiscoverySettings(input: SaveDiscoverySettingsInput): 
     enabledSources: readSources(normalizeList(input.enabledSources).join(",")),
     apolloEmployeeRanges: readEmployeeRanges(input.apolloEmployeeRanges),
     apolloMaxEmployees: readBoundedInteger(String(input.apolloMaxEmployees ?? ""), 1000, 1, 10000),
+    portalDomains: normalizeDomains(input.portalDomains),
+    portalUrls: normalizeUrls(input.portalUrls),
     dailyQuota: readBoundedInteger(String(input.dailyQuota ?? ""), 3, 1, 10),
     searchLimit: readBoundedInteger(String(input.searchLimit ?? ""), 10, 1, 50),
     sourceLimit: readBoundedInteger(String(input.sourceLimit ?? input.searchLimit ?? ""), 10, 1, 50),
@@ -87,6 +97,8 @@ export async function saveDiscoverySettings(input: SaveDiscoverySettingsInput): 
     ["discovery.enabledSources", settings.enabledSources.join(",")],
     ["discovery.apolloEmployeeRanges", settings.apolloEmployeeRanges.join("\n")],
     ["discovery.apolloMaxEmployees", String(settings.apolloMaxEmployees)],
+    ["discovery.portalDomains", settings.portalDomains.join("\n")],
+    ["discovery.portalUrls", settings.portalUrls.join("\n")],
     ["discovery.dailyQuota", String(settings.dailyQuota)],
     ["discovery.searchLimit", String(settings.searchLimit)],
     ["discovery.sourceLimit", String(settings.sourceLimit)],
@@ -106,6 +118,8 @@ export function applyDiscoverySettingsToEnv(env: NodeJS.ProcessEnv, settings: Di
     REVENUE_AGENT_DISCOVERY_SOURCES: settings.enabledSources.join(","),
     APOLLO_ORGANIZATION_EMPLOYEE_RANGES: settings.apolloEmployeeRanges.join("\n"),
     APOLLO_ORGANIZATION_MAX_EMPLOYEES: String(settings.apolloMaxEmployees),
+    REVENUE_AGENT_PORTAL_DISCOVERY_DOMAINS: settings.portalDomains.join("\n"),
+    REVENUE_AGENT_PORTAL_DISCOVERY_URLS: settings.portalUrls.join("\n"),
     REVENUE_AGENT_DISCOVERY_DAILY_QUOTA: String(settings.dailyQuota),
     REVENUE_AGENT_DISCOVERY_SEARCH_LIMIT: String(settings.searchLimit),
     REVENUE_AGENT_DISCOVERY_SOURCE_LIMIT: String(settings.sourceLimit),
@@ -142,9 +156,27 @@ function readList(value: string | undefined): string[] {
 }
 
 function readSources(value: string | undefined): string[] {
-  const valid = new Set(["seed", "firecrawl_search", "google_search", "google_maps", "apollo_organization", "technology_intelligence"]);
+  const valid = new Set(["seed", "firecrawl_search", "google_search", "portal_search", "google_maps", "apollo_organization", "technology_intelligence"]);
   const sources = normalizeList(value).filter((source) => valid.has(source));
   return sources.length > 0 ? sources : ["seed", "firecrawl_search", "google_maps"];
+}
+
+function normalizeDomains(value: unknown): string[] {
+  return uniqueList(normalizeList(value).flatMap((item) => {
+    const domain = item.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0]?.replace(/^www\./, "");
+    return domain ? [domain] : [];
+  }));
+}
+
+function normalizeUrls(value: unknown): string[] {
+  return uniqueList(normalizeList(value).filter((item) => {
+    try {
+      const url = new URL(item);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }));
 }
 
 function readEmployeeRanges(value: unknown): string[] {

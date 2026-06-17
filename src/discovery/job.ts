@@ -4,7 +4,7 @@ import { listSites } from "../sites/repository.js";
 import type { SiteRecord } from "../sites/types.js";
 import { buildDefaultLeadSourceAdapters, executeLeadSourceAdapters, readEnabledSources } from "./adapters.js";
 import { mergeSiteCandidates, normalizeComparableUrl as normalizeLeadComparableUrl, normalizeRawLeadCandidate } from "./normalization.js";
-import { qualifyApolloCompanySizeFit, qualifySmallBusinessFit } from "./qualification.js";
+import { qualifyApolloCompanySizeFit, qualifyBusinessSite, qualifySmallBusinessFit } from "./qualification.js";
 import { upsertLeadCandidate } from "./repository.js";
 import { scoreLeadPriority } from "./priority.js";
 import type { LeadSourceAdapter, LeadSourceId, LeadSourceRunReport, SiteCandidate } from "./types.js";
@@ -104,6 +104,12 @@ export async function runDailyDiscoveryJob(options: DailyDiscoveryJobOptions = {
     const normalized = normalizeComparableUrl(candidate.url);
     if (seen.has(normalized)) {
       skipped.push({ url: candidate.url, reason: "already_analyzed" });
+      continue;
+    }
+
+    const businessSiteFit = qualifyBusinessSite(candidate);
+    if (businessSiteFit.status === "held") {
+      skipped.push({ url: candidate.url, reason: businessSiteFit.reasonCode });
       continue;
     }
 

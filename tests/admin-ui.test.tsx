@@ -444,6 +444,8 @@ describe("DiscoverySettingsPanel", () => {
         searchLimit: 6,
         apolloEmployeeRanges: expect.arrayContaining(["11,50", "51,200", "201,500", "501,1000"]),
         apolloMaxEmployees: 1000,
+        portalDomains: "portal.example",
+        portalUrls: "https://portal.example/shop/123",
         country: "us",
         lang: "en",
         location: "",
@@ -460,7 +462,8 @@ describe("DiscoverySettingsPanel", () => {
     expect(screen.getByLabelText("外壁塗装")).toBeInTheDocument();
     expect(screen.getByLabelText("Web予約系店舗")).toBeInTheDocument();
     expect(screen.queryByLabelText("Apollo企業検索")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("ポータル/指定サイト検索")).toBeInTheDocument();
+    expect(screen.getByLabelText("業界ポータル探索")).toBeInTheDocument();
+    expect(screen.getByLabelText("PSE指定サイト検索")).toBeInTheDocument();
     expect(screen.getByLabelText("1-10名")).toBeInTheDocument();
     expect(screen.getByLabelText("11-50名")).toBeInTheDocument();
     expect(screen.getByLabelText("501-1000名")).toBeInTheDocument();
@@ -468,6 +471,8 @@ describe("DiscoverySettingsPanel", () => {
     expect(screen.getByText("美容室 地域密着 公式サイト")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "変更なし" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("固定候補URL（検証用）"), { target: { value: "https://example.com" } });
+    fireEvent.change(screen.getByLabelText("対象ポータルドメイン"), { target: { value: "portal.example" } });
+    fireEvent.change(screen.getByLabelText("直接読むポータルURL"), { target: { value: "https://portal.example/shop/123" } });
     fireEvent.change(screen.getByLabelText("1日の解析上限"), { target: { value: "4" } });
     fireEvent.change(screen.getByLabelText("検索件数/キーワード"), { target: { value: "6" } });
     fireEvent.click(screen.getByLabelText("英語サイト / 米国"));
@@ -1085,6 +1090,8 @@ function createDiscoverySettings(overrides: Partial<DiscoverySettings> = {}): Di
     enabledSources: ["seed", "firecrawl_search", "google_maps"],
     apolloEmployeeRanges: ["11,50", "51,200", "201,500", "501,1000"],
     apolloMaxEmployees: 1000,
+    portalDomains: [],
+    portalUrls: [],
     dailyQuota: 2,
     searchLimit: 3,
     sourceLimit: 3,

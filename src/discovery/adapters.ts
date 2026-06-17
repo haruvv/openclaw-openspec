@@ -1,4 +1,5 @@
 import { discoverFirecrawlSearchCandidates } from "./firecrawl-search.js";
+import { discoverPortalSearchCandidates } from "./portal-search.js";
 import type {
   LeadDiscoveryContext,
   LeadSourceAdapter,
@@ -8,7 +9,7 @@ import type {
   RawLeadCandidate,
 } from "./types.js";
 
-export const DEFAULT_DISCOVERY_SOURCES: LeadSourceId[] = ["seed", "firecrawl_search", "google_search", "google_maps", "apollo_organization", "technology_intelligence"];
+export const DEFAULT_DISCOVERY_SOURCES: LeadSourceId[] = ["seed", "firecrawl_search", "google_search", "google_maps", "portal_search", "apollo_organization", "technology_intelligence"];
 const DEFAULT_PRIMARY_DISCOVERY_SOURCES: LeadSourceId[] = ["seed", "firecrawl_search", "google_maps"];
 
 export async function executeLeadSourceAdapters(
@@ -46,6 +47,7 @@ export function buildDefaultLeadSourceAdapters(enabledSources: LeadSourceId[]): 
     firecrawlSearchSourceAdapter,
     googleSearchSourceAdapter,
     googleMapsSourceAdapter,
+    portalSearchSourceAdapter,
     apolloOrganizationSourceAdapter,
     technologyIntelligenceSourceAdapter,
   ].filter((adapter) => enabled.has(adapter.id));
@@ -109,6 +111,13 @@ export const googleSearchSourceAdapter: LeadSourceAdapter = {
       }
     }
     return candidates;
+  },
+};
+
+export const portalSearchSourceAdapter: LeadSourceAdapter = {
+  id: "portal_search",
+  async discover(input) {
+    return discoverPortalSearchCandidates(input);
   },
 };
 
