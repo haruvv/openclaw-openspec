@@ -175,15 +175,15 @@ export function formatDiscoveryStatus(status: DiscoveryReport["status"]): string
 export function formatDiscoverySummary(report: DiscoveryReport): string {
   if (report.status === "disabled") return "手動の候補発見は無効です。";
   if (report.runs.length > 0) return `${report.runs.length}件の解析を開始しました。`;
-  if (report.candidateCount === 0) return "候補URLが見つかりませんでした。営業対象の業種を設定してください。";
+  if (report.candidateCount === 0) return "飲食店の候補URLが見つかりませんでした。検索地域や追加条件を調整してください。";
   if (report.selectedCount === 0 && report.skipped.some((item) => item.reason === "missing_contact_email")) {
     return "公開メールのある候補URLが見つかりませんでした。検索件数または検索条件を増やしてください。";
   }
   if (report.selectedCount === 0 && report.skipped.some((item) => item.reason === "large_enterprise_or_chain")) {
-    return "中小企業向け条件に合う新規候補が見つかりませんでした。検索地域や業種を調整してください。";
+    return "中小企業向け条件に合う新規候補が見つかりませんでした。検索地域や追加条件を調整してください。";
   }
   if (report.selectedCount === 0 && report.skipped.some((item) => item.reason === "apollo_company_too_large")) {
-    return "Apolloの企業規模条件に合う新規候補が見つかりませんでした。最大従業員数や業種を調整してください。";
+    return "Apolloの企業規模条件に合う新規候補が見つかりませんでした。最大従業員数や検索地域を調整してください。";
   }
   if (report.selectedCount === 0) return "新しく解析するURLはありませんでした。既に解析済み、またはURL検証で除外されています。";
   return "候補発見は完了しました。";

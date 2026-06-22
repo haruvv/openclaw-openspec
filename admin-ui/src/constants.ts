@@ -1,20 +1,10 @@
-export const DISCOVERY_INDUSTRIES = [
-  "美容室",
-  "整体",
-  "歯科",
-  "税理士",
-  "弁護士",
-  "工務店",
-  "不動産",
-  "パーソナルジム",
-  "士業",
-  "クリニック",
-  "学習塾",
-  "探偵",
-  "外壁塗装",
-  "リフォーム",
-  "エステ",
-  "Web予約系店舗",
+export const RESTAURANT_DISCOVERY_QUERIES = [
+  "飲食店 公式サイト",
+  "レストラン 公式サイト",
+  "居酒屋 公式サイト",
+  "カフェ 公式サイト",
+  "飲食店 予約 公式サイト",
+  "レストラン メニュー 公式サイト",
 ];
 export const DISCOVERY_SEARCH_TARGETS = [
   { label: "日本語サイト / 日本", country: "jp", lang: "ja", location: "" },

@@ -438,7 +438,7 @@ describe("DiscoverySettingsPanel", () => {
       expect(init?.method).toBe("PUT");
       const payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(payload).toMatchObject({
-        queries: expect.stringContaining("美容室 公式サイト"),
+        queries: expect.stringContaining("飲食店 公式サイト"),
         seedUrls: "https://example.com",
         dailyQuota: 4,
         searchLimit: 6,
@@ -458,9 +458,12 @@ describe("DiscoverySettingsPanel", () => {
 
     render(<DiscoverySettingsPanel settings={createDiscoverySettings()} />);
 
-    expect(screen.getByLabelText("パーソナルジム")).toBeInTheDocument();
-    expect(screen.getByLabelText("外壁塗装")).toBeInTheDocument();
-    expect(screen.getByLabelText("Web予約系店舗")).toBeInTheDocument();
+    expect(screen.getByText("営業対象")).toBeInTheDocument();
+    expect(screen.getByText("飲食店")).toBeInTheDocument();
+    expect(screen.getByText("レストラン")).toBeInTheDocument();
+    expect(screen.queryByLabelText("パーソナルジム")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("外壁塗装")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Web予約系店舗")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Apollo企業検索")).not.toBeInTheDocument();
     expect(screen.getByLabelText("業界ポータル探索")).toBeInTheDocument();
     expect(screen.getByLabelText("PSE指定サイト検索")).toBeInTheDocument();
@@ -468,7 +471,8 @@ describe("DiscoverySettingsPanel", () => {
     expect(screen.getByLabelText("11-50名")).toBeInTheDocument();
     expect(screen.getByLabelText("501-1000名")).toBeInTheDocument();
     expect(screen.getByLabelText("最大従業員数")).toHaveValue(1000);
-    expect(screen.getByText("美容室 地域密着 公式サイト")).toBeInTheDocument();
+    expect(screen.getByText("飲食店 公式サイト")).toBeInTheDocument();
+    expect(screen.getByText("レストラン メニュー 公式サイト")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "変更なし" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("固定候補URL（検証用）"), { target: { value: "https://example.com" } });
     fireEvent.change(screen.getByLabelText("対象ポータルドメイン"), { target: { value: "portal.example" } });
@@ -1085,7 +1089,14 @@ function createRun(overrides: Partial<AgentRun> = {}): AgentRun {
 
 function createDiscoverySettings(overrides: Partial<DiscoverySettings> = {}): DiscoverySettings {
   return {
-    queries: ["美容室 公式サイト", "美容室 地域密着 公式サイト"],
+    queries: [
+      "飲食店 公式サイト",
+      "レストラン 公式サイト",
+      "居酒屋 公式サイト",
+      "カフェ 公式サイト",
+      "飲食店 予約 公式サイト",
+      "レストラン メニュー 公式サイト",
+    ],
     seedUrls: [],
     enabledSources: ["seed", "firecrawl_search", "google_maps"],
     apolloEmployeeRanges: ["11,50", "51,200", "201,500", "501,1000"],

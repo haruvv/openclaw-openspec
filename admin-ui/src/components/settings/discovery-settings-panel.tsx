@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { apiCache, apiPut } from "../../api";
-import { DISCOVERY_INDUSTRIES, DISCOVERY_SEARCH_TARGETS } from "../../constants";
+import { DISCOVERY_SEARCH_TARGETS } from "../../constants";
 import { Panel, StatusPill } from "../common";
 import type { DiscoveryFormState, DiscoverySettings } from "../../types";
 import {
   buildDiscoveryQueries,
   createDiscoveryFormState,
+  hasFixedDiscoveryQueryChanges,
   hasDiscoveryFormChanges,
   splitLines,
   toggleStringValue,
@@ -14,11 +15,11 @@ import {
 export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettings }) {
   const [form, setForm] = useState(() => createDiscoveryFormState(settings));
   const [savedForm, setSavedForm] = useState(() => createDiscoveryFormState(settings));
+  const [savedQueries, setSavedQueries] = useState(settings.queries);
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const {
-    selectedIndustries,
     customQueries,
     seedUrls,
     enabledSources,
@@ -34,9 +35,9 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
     location,
     configuredFromAdmin,
   } = form;
-  const generatedQueries = buildDiscoveryQueries(selectedIndustries);
+  const generatedQueries = buildDiscoveryQueries();
   const allQueries = [...generatedQueries, ...splitLines(customQueries)];
-  const hasChanges = hasDiscoveryFormChanges(form, savedForm);
+  const hasChanges = hasDiscoveryFormChanges(form, savedForm) || hasFixedDiscoveryQueryChanges(savedQueries);
 
   useEffect(() => {
     if (!saveNotice) return;
@@ -46,15 +47,6 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
 
   function setFormValue<Key extends keyof DiscoveryFormState>(key: Key, value: DiscoveryFormState[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
-    setSaveNotice(null);
-    setError(null);
-  }
-
-  function toggleIndustry(industry: string) {
-    setForm((current) => ({
-      ...current,
-      selectedIndustries: toggleStringValue(current.selectedIndustries, industry),
-    }));
     setSaveNotice(null);
     setError(null);
   }
@@ -118,6 +110,7 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
       const nextForm = createDiscoveryFormState(result.discovery);
       setForm(nextForm);
       setSavedForm(nextForm);
+      setSavedQueries(result.discovery.queries);
       setSaveNotice("保存しました");
     } catch (err) {
       setError(err instanceof Error ? err.message : "設定を保存できませんでした");
@@ -129,18 +122,14 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
   return (
     <Panel title="自動候補発見設定" action={configuredFromAdmin ? <StatusPill status="passed" label="管理画面設定" /> : <StatusPill status="skipped" label="環境変数設定" />}>
       <form className="space-y-4" onSubmit={save}>
-        <div>
-          <fieldset>
-            <legend className="text-sm font-black text-slate-700">営業対象の業種</legend>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {DISCOVERY_INDUSTRIES.map((industry) => (
-                <label key={industry} className="check-row">
-                  <input type="checkbox" checked={selectedIndustries.includes(industry)} onChange={() => toggleIndustry(industry)} />
-                  <span>{industry}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-black text-slate-700">営業対象</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="rounded-md bg-white px-3 py-1.5 text-sm font-black text-slate-800 ring-1 ring-slate-200">飲食店</span>
+            <span className="rounded-md bg-white px-3 py-1.5 text-sm font-black text-slate-800 ring-1 ring-slate-200">レストラン</span>
+            <span className="rounded-md bg-white px-3 py-1.5 text-sm font-black text-slate-800 ring-1 ring-slate-200">カフェ・居酒屋</span>
+          </div>
+          <p className="mt-2 text-xs font-semibold text-slate-500">候補発見は飲食店に固定しています。美容室や汎用店舗の業種選択は使いません。</p>
         </div>
         <fieldset>
           <legend className="text-sm font-black text-slate-700">探索ソース</legend>
@@ -159,12 +148,12 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
           <div className="mt-2 grid gap-3 md:grid-cols-2">
             <div>
               <label className="text-sm font-black text-slate-700" htmlFor="portal-domains">対象ポータルドメイン</label>
-              <textarea id="portal-domains" className="textarea mt-2" value={portalDomains} onChange={(event) => setFormValue("portalDomains", event.target.value)} placeholder={"example-portal.jp\nclinic-directory.example"} />
+              <textarea id="portal-domains" className="textarea mt-2" value={portalDomains} onChange={(event) => setFormValue("portalDomains", event.target.value)} placeholder={"restaurant-portal.example\nlocal-gourmet.example"} />
               <p className="mt-2 text-xs font-semibold text-slate-500">1行1ドメイン。Google Custom Search APIが設定済みなら、このドメイン内を `site:` 検索して掲載ページを探します。</p>
             </div>
             <div>
               <label className="text-sm font-black text-slate-700" htmlFor="portal-urls">直接読むポータルURL</label>
-              <textarea id="portal-urls" className="textarea mt-2" value={portalUrls} onChange={(event) => setFormValue("portalUrls", event.target.value)} placeholder={"https://example-portal.jp/shop/123\nhttps://clinic-directory.example/clinic/abc"} />
+              <textarea id="portal-urls" className="textarea mt-2" value={portalUrls} onChange={(event) => setFormValue("portalUrls", event.target.value)} placeholder={"https://restaurant-portal.example/shop/123\nhttps://local-gourmet.example/restaurant/abc"} />
               <p className="mt-2 text-xs font-semibold text-slate-500">検索せずに確認したい掲載ページを指定します。公式サイトリンクがない掲載ページはSEO解析前に保留します。</p>
             </div>
           </div>
@@ -185,10 +174,10 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="text-xs font-black text-slate-500">検索キーワードのプレビュー</div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {allQueries.length > 0 ? allQueries.slice(0, 12).map((query) => <span key={query} className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{query}</span>) : <span className="text-sm font-bold text-slate-500">営業対象の業種を選択してください</span>}
+            {allQueries.slice(0, 12).map((query) => <span key={query} className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{query}</span>)}
             {allQueries.length > 12 ? <span className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">他 {allQueries.length - 12}件</span> : null}
           </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">選んだ業種の公式サイトを探し、解析結果から改善余地が大きいサイトを営業候補にします。</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">飲食店の公式サイトを探し、解析結果から改善余地が大きいサイトを営業候補にします。</p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-sm font-black text-slate-700">1日の解析上限<input className="input mt-2 w-full" type="number" min="1" max="10" value={dailyQuota} onChange={(event) => setFormValue("dailyQuota", event.target.value)} /></label>
@@ -211,15 +200,15 @@ export function DiscoverySettingsPanel({ settings }: { settings: DiscoverySettin
             ))}
           </div>
           <label className="mt-3 block text-sm font-black text-slate-700">地域名<input className="input mt-2 w-full" value={location} onChange={(event) => setFormValue("location", event.target.value)} placeholder="例: 渋谷区、横浜市、名古屋市" /></label>
-          <p className="mt-2 text-xs font-semibold text-slate-500">Google Maps、Firecrawl検索、業界ポータル探索で、選んだ業種にこの地域名を掛け合わせます。</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">Google Maps、Firecrawl検索、業界ポータル探索で、飲食店キーワードにこの地域名を掛け合わせます。</p>
         </fieldset>
         <details className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-black text-slate-700">詳細設定</summary>
           <div className="mt-3 space-y-4">
             <div>
               <label className="text-sm font-black text-slate-700" htmlFor="custom-discovery-queries">追加の検索条件</label>
-              <textarea id="custom-discovery-queries" className="textarea mt-2" value={customQueries} onChange={(event) => setFormValue("customQueries", event.target.value)} placeholder={"港区 税理士事務所 公式サイト\n横浜市 歯科医院 公式サイト"} />
-              <p className="mt-2 text-xs font-semibold text-slate-500">通常は空で構いません。チェック項目にない業種や市区町村を指定したいときだけ使います。</p>
+              <textarea id="custom-discovery-queries" className="textarea mt-2" value={customQueries} onChange={(event) => setFormValue("customQueries", event.target.value)} placeholder={"渋谷区 レストラン 公式サイト\n横浜市 カフェ メニュー 公式サイト"} />
+              <p className="mt-2 text-xs font-semibold text-slate-500">通常は空で構いません。料理ジャンルや市区町村を追加で指定したいときだけ使います。</p>
             </div>
             <div>
               <label className="text-sm font-black text-slate-700" htmlFor="seed-urls">固定候補URL（検証用）</label>

@@ -1,35 +1,23 @@
-import { DISCOVERY_INDUSTRIES } from "../../constants";
+import { RESTAURANT_DISCOVERY_QUERIES } from "../../constants";
 import type { DiscoveryFormState, DiscoverySettings, PolicyUpdatePayload, SalesOperationSettings, SideEffectPolicy } from "../../types";
 
-export function buildDiscoveryQueries(industries: string[]): string[] {
-  return industries.flatMap((industry) => [
-    `${industry} 公式サイト`,
-    `${industry} 地域密着 公式サイト`,
-  ]);
+export function buildDiscoveryQueries(): string[] {
+  return RESTAURANT_DISCOVERY_QUERIES;
 }
 
 export function parseDiscoveryQuerySelection(queries: string[]): { industries: string[]; customQueries: string[] } {
-  const industries = new Set<string>();
-  const generated = new Set<string>();
-
-  for (const industry of DISCOVERY_INDUSTRIES) {
-    for (const currentQuery of buildDiscoveryQueries([industry])) {
-      generated.add(currentQuery);
-      if (queries.includes(currentQuery)) industries.add(industry);
-    }
-
-    for (const query of queries) {
-      if (query.endsWith(` ${industry} 公式サイト`) || query.endsWith(` ${industry} 地域密着 公式サイト`)) {
-        industries.add(industry);
-        generated.add(query);
-      }
-    }
-  }
+  const generated = new Set([...RESTAURANT_DISCOVERY_QUERIES, ...LEGACY_GENERATED_DISCOVERY_QUERIES]);
 
   return {
-    industries: [...industries],
+    industries: [],
     customQueries: queries.filter((query) => !generated.has(query)),
   };
+}
+
+export function hasFixedDiscoveryQueryChanges(queries: string[]): boolean {
+  const expected = buildDiscoveryQueries();
+  const legacy = new Set(LEGACY_GENERATED_DISCOVERY_QUERIES);
+  return expected.some((query) => !queries.includes(query)) || queries.some((query) => legacy.has(query));
 }
 
 export function splitLines(value: string): string[] {
@@ -122,7 +110,6 @@ export function toggleStringValue(items: string[], value: string): string[] {
 
 function discoveryFormKey(form: DiscoveryFormState): string {
   return [
-    form.selectedIndustries.join("\n"),
     form.customQueries,
     form.seedUrls,
     form.enabledSources.join(","),
@@ -138,3 +125,25 @@ function discoveryFormKey(form: DiscoveryFormState): string {
     form.location,
   ].join("|");
 }
+
+const LEGACY_GENERATED_DISCOVERY_QUERIES = [
+  "美容室",
+  "整体",
+  "歯科",
+  "税理士",
+  "弁護士",
+  "工務店",
+  "不動産",
+  "パーソナルジム",
+  "士業",
+  "クリニック",
+  "学習塾",
+  "探偵",
+  "外壁塗装",
+  "リフォーム",
+  "エステ",
+  "Web予約系店舗",
+].flatMap((industry) => [
+  `${industry} 公式サイト`,
+  `${industry} 地域密着 公式サイト`,
+]);
